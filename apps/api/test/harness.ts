@@ -3,6 +3,8 @@ import { AI_SERVICE_EMAIL, type DocumentType } from '@kyc-setu/shared';
 import { createApp } from '../src/app.js';
 import { buildServices } from '../src/services.js';
 import { makeJpeg, makePng } from './fixtures.js';
+import { encryptForStorage } from '../src/modules/kyc/personal-codec.js';
+import { parsePiiKey } from '@kyc-setu/shared/pii';
 import { allDeps, createFakeKycStore, createFakeStore, testEnv } from './helpers.js';
 
 export const PASSWORD = 'password123';
@@ -29,6 +31,7 @@ export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] 
   await store.addUser('a@kycsetu.dev', PASSWORD, 'CUSTOMER');
   await store.addUser('b@kycsetu.dev', PASSWORD, 'CUSTOMER');
   await store.addUser('officer@kycsetu.dev', PASSWORD, 'OFFICER');
+  await store.addUser('auditor@kycsetu.dev', PASSWORD, 'AUDITOR');
   const service = await store.addUser(AI_SERVICE_EMAIL, '!disabled', 'AI_SERVICE');
 
   async function signedIn(
@@ -76,8 +79,49 @@ export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] 
     agent.post(`/kyc/sessions/${sessionId}/documents/submit`);
 
   /** Runs one extraction attempt for a document, like the queue worker would. */
+  const piiKey = parsePiiKey(testEnv(envOverrides).PII_ENCRYPTION_KEY);
+
+  /** The typed details a customer would have entered (encrypted exactly as Phase 1 stores them). */
+  function setTypedDetails(sessionId: string, over: Record<string, unknown> = {}) {
+    const session = kycStore.sessions.find((s) => s.id === sessionId);
+    if (!session) throw new Error('no session');
+    session.personalDetails = encryptForStorage(
+      {
+        fullName: 'Rahul Kumar Sharma',
+        dateOfBirth: '1990-05-15',
+        gender: 'MALE',
+        panNumber: 'ABCDE1234F',
+        // Matches the "2341 2341 4321" in the AI contract sample's raw text.
+        aadhaarNumber: '234123414321',
+        mobile: '9876543210',
+        email: 'rahul@example.com',
+        ...over,
+      },
+      piiKey,
+    );
+  }
+
   const process = (documentId: string, attempt = 1, maxAttempts = 4) =>
     services.extraction.process(documentId, { attempt, maxAttempts });
+
+  /** Customer -> documents uploaded and submitted -> all three extracted (session at DOCS_EXTRACTED). */
+  async function reachExtracted(agent: Agent, typed: Record<string, unknown> = {}) {
+    const docs = await withDocuments(agent);
+    setTypedDetails(docs.sessionId, typed);
+    const res = await submit(agent, docs.sessionId);
+    if (res.status !== 200) throw new Error(`submit failed: ${res.status}`);
+    for (const t of ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK'] as const)
+      await services.extraction.process(docs.ids[t], { attempt: 1, maxAttempts: 4 });
+    return docs;
+  }
+
+  /** Runs the queued risk job the way the worker would (the processor is exercised in its own test). */
+  const runQueuedRisk = async () => {
+    const out = [];
+    for (const { sessionId } of fakes.enqueuer.riskQueued.splice(0))
+      out.push(await services.risk.runAutomatic(sessionId));
+    return out;
+  };
 
   return {
     app,
@@ -90,7 +134,11 @@ export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] 
     signedIn,
     withDocuments,
     submit,
+    reachExtracted,
+    runQueuedRisk,
     process,
+    piiKey,
+    setTypedDetails,
     setClock: (d: Date) => {
       clock = d;
     },

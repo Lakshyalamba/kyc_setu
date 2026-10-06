@@ -20,6 +20,8 @@ import {
   type KycServiceDeps,
 } from './modules/kyc/kyc.service.js';
 import type { KycStore } from './modules/kyc/store.js';
+import { createRiskService, type RiskService } from './modules/risk/risk.service.js';
+import type { RiskStore } from './modules/risk/store.js';
 import type { VerificationEnqueuer } from './queue/verification.js';
 
 export interface ServiceDeps {
@@ -30,6 +32,7 @@ export interface ServiceDeps {
   documentStore: DocumentStore;
   objectStore: ObjectStore;
   extractionStore: ExtractionStore;
+  riskStore: RiskStore;
   /** Queues extraction jobs when documents are submitted. */
   enqueuer: VerificationEnqueuer;
   aiClient: AiClient;
@@ -43,6 +46,7 @@ export interface Services {
   kyc: KycService;
   docs: DocumentsService;
   extraction: ExtractionService;
+  risk: RiskService;
   kms: KmsClient;
 }
 
@@ -80,5 +84,15 @@ export function buildServices(deps: ServiceDeps): Services {
     piiKey,
     ...deps.kycOverrides,
   });
-  return { kyc, docs, extraction, kms };
+  const risk = createRiskService({
+    env,
+    store: deps.riskStore,
+    kycStore: deps.kycStore,
+    extractionStore: deps.extractionStore,
+    enqueuer: deps.enqueuer,
+    kms,
+    piiKey,
+    ...deps.kycOverrides,
+  });
+  return { kyc, docs, extraction, risk, kms };
 }

@@ -411,13 +411,22 @@ export function createFakeExtractionStore(
 
 export interface FakeEnqueuer extends VerificationEnqueuer {
   queued: string[];
+  riskQueued: { sessionId: string; run: number }[];
   failNext: boolean;
 }
 
 export function createFakeEnqueuer(): FakeEnqueuer {
   const e: FakeEnqueuer = {
     queued: [],
+    riskQueued: [],
     failNext: false,
+    async enqueueRisk(sessionId, run) {
+      if (e.failNext) {
+        e.failNext = false;
+        throw new Error('redis is down');
+      }
+      e.riskQueued.push({ sessionId, run });
+    },
     async enqueueExtractions(ids) {
       if (e.failNext) {
         e.failNext = false;
@@ -475,5 +484,66 @@ export function allDeps(audits: AuditEntry[], kycStore: FakeKycStore) {
   const objectStore = createFakeObjectStore();
   const enqueuer = createFakeEnqueuer();
   const aiClient = createFakeAiClient();
-  return { documentStore, extractionStore, objectStore, enqueuer, aiClient };
+  const riskStore = createFakeRiskStore(audits);
+  return { documentStore, extractionStore, objectStore, enqueuer, aiClient, riskStore };
+}
+
+// ---- Risk fakes ----
+import type {
+  AssessmentRecord,
+  BiometricRecord,
+  PriorCandidate,
+  RiskStore,
+} from '../src/modules/risk/store.js';
+
+export interface FakeRiskStore extends RiskStore {
+  assessments: AssessmentRecord[];
+  biometrics: BiometricRecord[];
+  /** Pretend these APPROVED sessions of other users exist; the fake filters them like the real query. */
+  priors: PriorCandidate[];
+}
+
+export function createFakeRiskStore(audits: AuditEntry[]): FakeRiskStore {
+  const assessments: AssessmentRecord[] = [];
+  const biometrics: BiometricRecord[] = [];
+  const priors: PriorCandidate[] = [];
+  let tick = 0;
+  const stamp = () => new Date(Date.UTC(2026, 9, 10, 0, 0, tick++));
+  return {
+    assessments,
+    biometrics,
+    priors,
+    latestAssessment: async (sessionId) =>
+      assessments
+        .filter((a) => a.sessionId === sessionId)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null,
+    countAssessments: async (sessionId, trigger) =>
+      assessments.filter((a) => a.sessionId === sessionId && a.trigger === trigger).length,
+    async insertAssessment(input, buildAudits) {
+      const row: AssessmentRecord = { ...input, id: randomUUID(), createdAt: stamp() };
+      assessments.push(row);
+      audits.push(...buildAudits(row));
+      return row;
+    },
+    latestBiometrics: async (sessionId, { includeDevInjected }) =>
+      biometrics
+        .filter((b) => b.sessionId === sessionId && (includeDevInjected || b.source === 'PIPELINE'))
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null,
+    async recordBiometrics(input, audit) {
+      const row: BiometricRecord = { ...input, id: randomUUID(), createdAt: stamp() };
+      biometrics.push(row);
+      audits.push(audit(row));
+      return row;
+    },
+    findPriorApprovedCandidates: async ({ userId, panHmac, aadhaarLast4 }) =>
+      priors.filter(
+        (p) =>
+          p.userId !== userId &&
+          ((panHmac !== null && p.panNumberHmac === panHmac) ||
+            (aadhaarLast4 !== null && p.aadhaarNumberLast4 === aadhaarLast4)),
+      ),
+    async writeAudit(entry) {
+      audits.push(entry);
+    },
+  };
 }

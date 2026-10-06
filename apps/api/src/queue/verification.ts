@@ -4,15 +4,26 @@ import type { ExtractionStore } from '../modules/extraction/store.js';
 
 export const VERIFICATION_QUEUE = 'verification';
 export const EXTRACT_JOB = 'extract';
+export const RISK_JOB = 'risk';
 
 export interface ExtractJobData {
   documentId: string;
   kind: 'extract';
 }
 
+export interface RiskJobData {
+  sessionId: string;
+  kind: 'risk';
+}
+
+/** Everything the verification queue carries. */
+export type VerificationJobData = ExtractJobData | RiskJobData;
+
 /** What the document-submit flow needs from the queue. */
 export interface VerificationEnqueuer {
   enqueueExtractions(documentIds: string[]): Promise<void>;
+  /** `run` is 1 for the first automatic assessment of a session, 2 for the next, and so on. */
+  enqueueRisk(sessionId: string, run: number): Promise<void>;
 }
 
 /** 1 first attempt + one retry per configured backoff delay. */
@@ -23,8 +34,8 @@ export function createVerificationQueue(
   backoffSeconds: number[],
   /** Tests pass a unique name so they can't collide with a running dev worker on the same Redis. */
   name: string = VERIFICATION_QUEUE,
-): Queue<ExtractJobData> {
-  return new Queue<ExtractJobData>(name, {
+): Queue<VerificationJobData> {
+  return new Queue<VerificationJobData>(name, {
     connection,
     defaultJobOptions: {
       attempts: maxAttemptsFor(backoffSeconds),
@@ -37,9 +48,13 @@ export function createVerificationQueue(
 
 /** A deterministic job id makes enqueueing idempotent: the same document can't be queued twice. */
 export const extractJobId = (documentId: string) => `extract-${documentId}`;
+export const riskJobId = (sessionId: string, run: number) => `risk-${sessionId}-${run}`;
 
-export function createBullEnqueuer(queue: Queue<ExtractJobData>): VerificationEnqueuer {
+export function createBullEnqueuer(queue: Queue<VerificationJobData>): VerificationEnqueuer {
   return {
+    async enqueueRisk(sessionId, run) {
+      await queue.add(RISK_JOB, { sessionId, kind: 'risk' }, { jobId: riskJobId(sessionId, run) });
+    },
     async enqueueExtractions(documentIds) {
       if (documentIds.length === 0) return;
       await queue.addBulk(

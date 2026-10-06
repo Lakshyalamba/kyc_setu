@@ -7,6 +7,7 @@ import { createS3ObjectStore } from './modules/documents/object-store.js';
 import { createPrismaDocumentStore } from './modules/documents/store.js';
 import { createHttpAiClient } from './modules/extraction/ai-client.js';
 import { createPrismaExtractionStore } from './modules/extraction/store.js';
+import { createPrismaRiskStore } from './modules/risk/store.js';
 import { createPrismaKycStore } from './modules/kyc/store.js';
 import { createRedis } from './queue/connection.js';
 import { processPing } from './queue/jobs/ping.js';
@@ -47,7 +48,7 @@ const verificationQueue = createVerificationQueue(
 );
 const enqueuer = createBullEnqueuer(verificationQueue);
 const extractionStore = createPrismaExtractionStore(prisma);
-const { extraction } = buildServices({
+const { extraction, risk } = buildServices({
   env,
   store,
   kycStore: createPrismaKycStore(prisma),
@@ -62,12 +63,14 @@ const { extraction } = buildServices({
     env.S3_BUCKET,
   ),
   extractionStore,
+  riskStore: createPrismaRiskStore(prisma),
   enqueuer,
   aiClient: createHttpAiClient(env),
 });
 const verificationWorker = createVerificationWorker({
   connection: createRedis(env.REDIS_URL),
   extraction,
+  risk,
   backoffSeconds: env.EXTRACTION_BACKOFF_SECONDS,
   concurrency: 2,
 });
