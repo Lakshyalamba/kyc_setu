@@ -2,6 +2,7 @@ import { prisma } from '@kyc-setu/db';
 import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 import { createApp } from './app.js';
 import { loadEnv } from './config/env.js';
+import { createPrismaKycStore } from './modules/kyc/store.js';
 import { createPrismaAuthStore } from './modules/auth/store.js';
 import { createRedis } from './queue/connection.js';
 import { createHealthProbe } from './queue/health.js';
@@ -23,6 +24,7 @@ const queue = createSystemQueue(redis);
 const app = createApp({
   env,
   store: createPrismaAuthStore(prisma),
+  kycStore: createPrismaKycStore(prisma),
   healthProbe: createHealthProbe({ prisma, redis, queue }),
 });
 
