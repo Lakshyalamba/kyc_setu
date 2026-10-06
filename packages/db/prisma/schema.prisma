@@ -43,6 +43,18 @@ enum OtpChannel {
   EMAIL
 }
 
+enum DocumentType {
+  PAN
+  AADHAAR_FRONT
+  AADHAAR_BACK
+  SIGNATURE
+}
+
+enum SignedUrlPurpose {
+  CUSTOMER_PREVIEW
+  OFFICER_REVIEW
+}
+
 enum ActorType {
   USER
   SYSTEM
@@ -58,6 +70,7 @@ model User {
 
   kycSessions   KycSession[]
   otpChallenges OtpChallenge[]
+  signedUrls    SignedUrlIssue[]
 
   @@map("users")
 }
@@ -82,6 +95,7 @@ model KycSession {
   user           User            @relation(fields: [userId], references: [id], onDelete: Restrict)
   consentVersion ConsentVersion? @relation(fields: [consentVersionId], references: [id], onDelete: Restrict)
   otpChallenges  OtpChallenge[]
+  documents      Document[]
 
   // Note: a partial unique index on (userId) WHERE status NOT IN (APPROVED, REJECTED, EXPIRED)
   // enforces "one active session per user". Prisma can't express it; it lives in the migration SQL.
@@ -121,6 +135,54 @@ model OtpChallenge {
   @@index([userId, createdAt])
   @@index([sessionId])
   @@map("otp_challenges")
+}
+
+/// An uploaded identity document. The file itself lives AES-256-GCM encrypted in object storage;
+/// the per-document data key is wrapped by the KMS and stored here (envelope encryption).
+/// "Active" means replacedById IS NULL. A replaced row points at its replacement; a deleted row
+/// points at itself. Rows and ciphertext are never removed.
+model Document {
+  id         String       @id @default(uuid()) @db.Uuid
+  sessionId  String       @db.Uuid
+  type       DocumentType
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  /// SHA-256 of the plaintext, hex.
+  sha256     String
+  uploadedAt DateTime     @default(now())
+  replacedById String?    @db.Uuid
+
+  encryptedDataKey Bytes
+  kmsKeyId         String
+  iv               Bytes
+  authTag          Bytes
+
+  session         KycSession       @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  replacedBy      Document?        @relation("DocumentReplacement", fields: [replacedById], references: [id], onDelete: Restrict)
+  replaces        Document[]       @relation("DocumentReplacement")
+  signedUrlIssues SignedUrlIssue[]
+
+  // Partial unique index (sessionId, type) WHERE replacedById IS NULL and a DEFERRABLE self-FK
+  // live in the migration SQL; Prisma can't express them.
+  @@index([sessionId, type])
+  @@map("documents")
+}
+
+/// One row per signed-URL grant. The row id is the public part of the URL token.
+model SignedUrlIssue {
+  id             String           @id @default(uuid()) @db.Uuid
+  documentId     String           @db.Uuid
+  issuedToUserId String           @db.Uuid
+  purpose        SignedUrlPurpose
+  expiresAt      DateTime
+  issuedAt       DateTime         @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  user     User     @relation(fields: [issuedToUserId], references: [id], onDelete: Restrict)
+
+  @@index([documentId])
+  @@map("signed_url_issues")
 }
 
 /// Append-only: no updatedAt, never updated or deleted by application code.
