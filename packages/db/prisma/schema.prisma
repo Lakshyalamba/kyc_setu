@@ -76,6 +76,24 @@ enum ExtractionStatus {
   SKIPPED
 }
 
+enum RiskBand {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum RiskTrigger {
+  AUTO
+  RECOMPUTE
+}
+
+enum BiometricSource {
+  /// Written by the selfie / face-match pipeline (Phase 4).
+  PIPELINE
+  /// Written by the dev-only signal injector. Ignored when NODE_ENV=production.
+  DEV_INJECTED
+}
+
 enum ActorType {
   USER
   SYSTEM
@@ -120,6 +138,8 @@ model KycSession {
   consentVersion ConsentVersion? @relation(fields: [consentVersionId], references: [id], onDelete: Restrict)
   otpChallenges  OtpChallenge[]
   documents      Document[]
+  riskAssessments  RiskAssessment[]
+  biometricSignals BiometricSignal[]
 
   // Note: a partial unique index on (userId) WHERE status NOT IN (APPROVED, REJECTED, EXPIRED)
   // enforces "one active session per user". Prisma can't express it; it lives in the migration SQL.
@@ -246,6 +266,54 @@ model SignedUrlIssue {
 
   @@index([documentId])
   @@map("signed_url_issues")
+}
+
+/// The result of one run of the rule-based risk engine. Append-only: a re-run (e.g. after a resubmission)
+/// is a NEW row, and the current assessment is the newest by createdAt. A DB trigger rejects UPDATE/DELETE.
+/// Nothing here contains names, dates of birth or document numbers: `inputsSnapshot` is derived numbers
+/// and booleans only.
+model RiskAssessment {
+  id             String      @id @default(uuid()) @db.Uuid
+  sessionId      String      @db.Uuid
+  score          Int
+  band           RiskBand
+  /// The band the score alone gives; `band` can be higher because of band floors / hard-fail.
+  rawBand        RiskBand
+  hardFail       Boolean
+  triggeredRules Json        @db.JsonB
+  bandFloors     Json        @db.JsonB
+  appliedRules   String[]
+  skippedRules   Json        @db.JsonB
+  engineVersion  String
+  inputsSnapshot Json        @db.JsonB
+  trigger        RiskTrigger
+  /// The officer who asked for a recompute (null for automatic runs).
+  triggeredById  String?     @db.Uuid
+  createdAt      DateTime    @default(now())
+
+  session KycSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, createdAt])
+  @@map("risk_assessments")
+}
+
+/// Face-match and liveness outputs for a session. Phase 4 (selfie capture + face match) owns writing real
+/// ones; until then only the dev-only injector writes (source DEV_INJECTED). The risk worker reads the newest.
+model BiometricSignal {
+  id                String          @id @default(uuid()) @db.Uuid
+  sessionId         String          @db.Uuid
+  source            BiometricSource
+  /// Similarity between the selfie and the ID photo, 0..1. Null if not computed.
+  faceMatchScore    Float?
+  faceMatchModel    String?
+  /// Null if the liveness check did not run.
+  livenessPassed    Boolean?
+  createdAt         DateTime        @default(now())
+
+  session KycSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, createdAt])
+  @@map("biometric_signals")
 }
 
 /// Append-only: no updatedAt, never updated or deleted by application code.

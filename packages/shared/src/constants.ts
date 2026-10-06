@@ -78,6 +78,11 @@ export const AUDIT_ACTIONS = {
   EXTRACTION_ATTEMPT_FAILED: 'extraction.attempt_failed',
   EXTRACTION_FAILED: 'extraction.failed',
   EXTRACTION_SESSION_FLAGGED: 'extraction.session_flagged',
+  RISK_JOB_ENQUEUED: 'risk.job_enqueued',
+  RISK_EVALUATED: 'risk.evaluated',
+  RISK_RECOMPUTED: 'risk.recomputed',
+  RISK_FAILED: 'risk.failed',
+  DEV_BIOMETRICS_INJECTED: 'dev.biometrics_injected',
 } as const;
 
 export const KYC_SESSION_TTL_HOURS = 24;
@@ -140,3 +145,5 @@ export const AI_INTERNAL_LINK_TTL_SECONDS = 60;
 
 /** The non-human account the verification worker acts as (seeded; it has no usable password). */
 export const AI_SERVICE_EMAIL = 'ai-service@kycsetu.internal';
+
+export const RISK_BANDS = ['LOW', 'MEDIUM', 'HIGH'] as const;
