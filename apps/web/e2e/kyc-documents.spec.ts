@@ -118,7 +118,8 @@ test('documents: upload all four, preview via signed URLs, replace, submit, and 
   await expect(page).toHaveURL(/\/kyc\/selfie$/);
   await expect(page.getByText('Coming next')).toBeVisible();
   const done = await prisma.kycSession.findUniqueOrThrow({ where: { id: session.id } });
-  expect(done.status).toBe('DOCS_UPLOADED');
+  // With the worker and AI service running, extraction may already have moved it on.
+  expect(['DOCS_UPLOADED', 'DOCS_EXTRACTED']).toContain(done.status);
 
   // 7. Audit trail: one row per upload, replace, signed-URL issue and view.
   const docIds = (await prisma.document.findMany({ where: { sessionId: session.id } })).map(

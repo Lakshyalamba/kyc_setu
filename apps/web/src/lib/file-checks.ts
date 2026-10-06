@@ -1,10 +1,13 @@
 import { ALLOWED_DOCUMENT_MIME, MAX_DOCUMENT_BYTES, type DocumentType } from '@kyc-setu/shared';
 
-/** Smallest image we'll accept; below this, text on a card is unreadable. */
+/**
+ * Smallest image we'll accept. For identity documents this matches the OCR service's own gate
+ * (min side 400 px), so we don't upload files that are certain to be rejected as low quality.
+ */
 export const MIN_IMAGE_SIDE: Record<DocumentType, number> = {
-  PAN: 200,
-  AADHAAR_FRONT: 200,
-  AADHAAR_BACK: 200,
+  PAN: 400,
+  AADHAAR_FRONT: 400,
+  AADHAAR_BACK: 400,
   SIGNATURE: 40,
 };
 export const MAX_IMAGE_SIDE = 10_000;

@@ -22,6 +22,8 @@ describe('checkDimensions', () => {
   it('enforces sane sizes', () => {
     expect(checkDimensions(1200, 800, 'PAN')).toBeNull();
     expect(checkDimensions(600, 200, 'SIGNATURE')).toBeNull();
+    expect(checkDimensions(400, 400, 'PAN')).toBeNull();
+    expect(checkDimensions(399, 800, 'PAN')).toMatch(/too small/);
     expect(checkDimensions(100, 100, 'PAN')).toMatch(/too small/);
     expect(checkDimensions(20000, 500, 'PAN')).toMatch(/too large/);
   });

@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * End-to-end tests drive the real stack: web (:3000) + api (:4000) + Postgres/Redis/MinIO.
  * Prereqs: `make up && pnpm db:migrate && pnpm seed` (the consent text comes from the seed).
- * The web and api servers are started here if they aren't already running.
+ * The web and api servers and the queue worker are started here if they aren't already running.
+ * The OCR specs (kyc-extraction) also need the AI service: `make ai` (Docker) or `pnpm dev:ai`.
  */
 export default defineConfig({
   testDir: './e2e',
@@ -25,6 +26,13 @@ export default defineConfig({
       cwd: '../..',
       url: 'http://localhost:4000/healthz',
       reuseExistingServer: !process.env['CI'],
+      timeout: 120_000,
+    },
+    {
+      // The queue worker has no HTTP port, so wait for its log line instead of a URL.
+      command: 'pnpm --filter @kyc-setu/api run dev:worker',
+      cwd: '../..',
+      wait: { stdout: /listening on queue "verification"/ },
       timeout: 120_000,
     },
     {
