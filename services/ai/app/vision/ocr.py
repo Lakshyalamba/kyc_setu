@@ -86,7 +86,7 @@ def _has_devanagari(text: str) -> bool:
 class PaddleOcrEngine:
     """English engine always; a Devanagari engine for the Aadhaar back's Hindi text."""
 
-    def __init__(self, *, cpu_threads: int | None = None, enable_mkldnn: bool | None = None) -> None:
+    def __init__(self, *, cpu_threads: int | None = None, enable_mkldnn: bool = False) -> None:
         from paddleocr import PaddleOCR  # imported here: it is slow, and tests without OCR skip it
 
         common = dict(
@@ -97,8 +97,10 @@ class PaddleOcrEngine:
         )
         if cpu_threads is not None:
             common["cpu_threads"] = cpu_threads
-        if enable_mkldnn is not None:
-            common["enable_mkldnn"] = enable_mkldnn
+        # oneDNN is OFF unless explicitly requested. With PaddlePaddle 3.x's new executor, the oneDNN path
+        # fails on Linux x86-64 for these models ("ConvertPirAttribute2RuntimeAttribute not support
+        # pir::ArrayAttribute<pir::DoubleAttribute>"), and arm64 builds have no oneDNN at all.
+        common["enable_mkldnn"] = bool(enable_mkldnn)
         self._en = PaddleOCR(text_recognition_model_name=EN_RECOGNITION_MODEL, **common)
         self._hi = PaddleOCR(text_recognition_model_name=HI_RECOGNITION_MODEL, **common)
         # The Paddle predictor is not thread-safe; OCR is CPU-bound anyway, so serialise it.

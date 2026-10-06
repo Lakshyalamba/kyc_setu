@@ -27,10 +27,10 @@ class Settings(BaseSettings):
     min_sharpness: float = 50.0
     min_side_px: int = 400
 
-    # Paddle inference tuning. Unset = Paddle's defaults. The Linux arm64 build of PaddlePaddle segfaults on
+    # Paddle inference tuning. Threads unset = Paddle's default. The Linux arm64 build of PaddlePaddle segfaults on
     # its default thread setting, so the Dockerfile pins AI_OCR_CPU_THREADS=2 (see services/ai/README.md).
     ocr_cpu_threads: int | None = None
-    ocr_enable_mkldnn: bool | None = None
+    ocr_enable_mkldnn: bool = False  # oneDNN is off by default: it fails on Linux x86-64 (see app/vision/ocr.py)
 
     max_pixels: int = 40_000_000
     pdf_render_dpi: int = 200
