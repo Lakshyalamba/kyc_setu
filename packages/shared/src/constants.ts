@@ -23,6 +23,8 @@ export const KYC_STEPS = [
   'SELFIE',
   'REVIEW',
 ] as const;
+export const DOCUMENT_TYPES = ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK', 'SIGNATURE'] as const;
+export const SIGNED_URL_PURPOSES = ['CUSTOMER_PREVIEW', 'OFFICER_REVIEW'] as const;
 export const OTP_CHANNELS = ['SMS', 'EMAIL'] as const;
 
 export const ACTOR_TYPES = ['USER', 'SYSTEM', 'AI'] as const;
@@ -53,6 +55,13 @@ export const AUDIT_ACTIONS = {
   KYC_CONSENT_ACCEPTED: 'kyc.consent.accepted',
   KYC_PERSONAL_PATCHED: 'kyc.personal.patched',
   KYC_PERSONAL_SUBMITTED: 'kyc.personal.submitted',
+  DOCUMENT_UPLOADED: 'document.uploaded',
+  DOCUMENT_REPLACED: 'document.replaced',
+  DOCUMENT_DELETED: 'document.deleted',
+  DOCUMENT_UPLOAD_FAILED: 'document.upload_failed',
+  DOCUMENT_SIGNED_URL_ISSUED: 'document.signed_url_issued',
+  DOCUMENT_VIEWED: 'document.viewed',
+  KYC_DOCUMENTS_SUBMITTED: 'kyc.documents.submitted',
 } as const;
 
 export const KYC_SESSION_TTL_HOURS = 24;
@@ -61,3 +70,33 @@ export const OTP_TTL_SECONDS = 300;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_MAX_SENDS = 3;
 export const OTP_SEND_WINDOW_SECONDS = 600;
+
+export const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024;
+/** Multipart framing overhead allowed on top of the file when rejecting by Content-Length. */
+export const MULTIPART_OVERHEAD_BYTES = 64 * 1024;
+export const SIGNED_URL_TTL_SECONDS = 300;
+
+/** What each document type may be, checked against the sniffed bytes (never the client header). */
+export const ALLOWED_DOCUMENT_MIME = {
+  PAN: ['image/jpeg', 'image/png', 'application/pdf'],
+  AADHAAR_FRONT: ['image/jpeg', 'image/png', 'application/pdf'],
+  AADHAAR_BACK: ['image/jpeg', 'image/png', 'application/pdf'],
+  SIGNATURE: ['image/png'],
+} as const satisfies Record<(typeof DOCUMENT_TYPES)[number], readonly string[]>;
+
+/** Reasons recorded on `document.upload_failed` audit rows (never file contents). */
+export const UPLOAD_FAILURE_REASONS = [
+  'TOO_LARGE',
+  'UNSUPPORTED_TYPE',
+  'MIME_MISMATCH',
+  'MISSING_FILE',
+  'INVALID_TYPE_FIELD',
+  'MALFORMED_MULTIPART',
+  'STORAGE_ERROR',
+] as const;
+
+/**
+ * Retention placeholder: documents are currently kept indefinitely and the bucket has no lifecycle
+ * rule. A later phase sets a value here and applies it as an object-store lifecycle policy.
+ */
+export const DOCUMENT_RETENTION_DAYS: number | null = null;

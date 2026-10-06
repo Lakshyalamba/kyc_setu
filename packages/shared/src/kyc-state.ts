@@ -7,10 +7,11 @@
  *   Any state before SUBMITTED -> EXPIRED (only once `expiresAt` has passed).
  */
 import { KYC_STATUSES } from './constants.js';
-import type { KycStatus, KycStep } from './schemas/common.js';
+import { DOCUMENT_TYPES } from './constants.js';
+import type { DocumentType, KycStatus, KycStep } from './schemas/common.js';
 
 export { KYC_STATUSES };
-export type { KycStatus, KycStep };
+export type { DocumentType, KycStatus, KycStep };
 
 export interface KycSessionState {
   id: string;
@@ -20,6 +21,11 @@ export interface KycSessionState {
   completedSteps: KycStep[];
   consentVersionId: string | null;
   expiresAt: Date;
+  /**
+   * Types of the session's ACTIVE documents. Only consulted by the DOCS_UPLOADED guard; when absent
+   * it is treated as "unknown" and that guard fails (safe default).
+   */
+  documentTypes?: readonly DocumentType[];
 }
 
 export interface Transition {
@@ -42,17 +48,19 @@ export const isTerminal = (status: KycStatus): boolean => TERMINAL_STATUSES.incl
 
 const contactVerified = (s: KycSessionState) => s.completedSteps.includes('CONTACT');
 const hasConsent = (s: KycSessionState) => s.consentVersionId !== null;
+const hasAllDocuments = (s: KycSessionState) =>
+  DOCUMENT_TYPES.every((t) => s.documentTypes?.includes(t));
 const isPastExpiry = (s: KycSessionState, now: Date) => s.expiresAt.getTime() <= now.getTime();
 
 export const transitions: Transition[] = [
   { from: 'DRAFT', to: ['CONSENT_GIVEN'], guard: contactVerified },
   { from: 'CONSENT_GIVEN', to: ['PERSONAL_SUBMITTED'], guard: hasConsent },
-  { from: 'PERSONAL_SUBMITTED', to: ['DOCS_UPLOADED'] },
+  { from: 'PERSONAL_SUBMITTED', to: ['DOCS_UPLOADED'], guard: hasAllDocuments },
   { from: 'DOCS_UPLOADED', to: ['SELFIE_CAPTURED'] },
   { from: 'SELFIE_CAPTURED', to: ['SUBMITTED'] },
   { from: 'SUBMITTED', to: ['UNDER_REVIEW'] },
   { from: 'UNDER_REVIEW', to: ['APPROVED', 'REJECTED', 'RESUBMIT_REQUESTED'] },
-  { from: 'RESUBMIT_REQUESTED', to: ['DOCS_UPLOADED'] },
+  { from: 'RESUBMIT_REQUESTED', to: ['DOCS_UPLOADED'], guard: hasAllDocuments },
   // Lazy expiry: allowed from any pre-SUBMITTED state, but only after expiresAt has passed.
   ...PRE_SUBMITTED.map((from): Transition => ({ from, to: ['EXPIRED'], guard: isPastExpiry })),
 ];

@@ -22,6 +22,7 @@ const session = (status: KycStatus, over: Partial<KycSessionState> = {}): KycSes
   completedSteps: ['CONTACT'],
   consentVersionId: 'c1',
   expiresAt: PAST, // expired, so EXPIRED edges are open in the matrix
+  documentTypes: ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK', 'SIGNATURE'],
   ...over,
 });
 
@@ -96,6 +97,40 @@ describe('state machine', () => {
         NOW,
       ),
     ).toBe(false);
+  });
+
+  it('guard: DOCS_UPLOADED needs all four active document types', () => {
+    const to = 'DOCS_UPLOADED';
+    for (const from of ['PERSONAL_SUBMITTED', 'RESUBMIT_REQUESTED'] as const) {
+      expect(canTransition(session(from, { documentTypes: [] }), to, NOW)).toBe(false);
+      expect(canTransition(session(from, { documentTypes: undefined }), to, NOW)).toBe(false);
+      expect(canTransition(session(from, { documentTypes: ['PAN', 'SIGNATURE'] }), to, NOW)).toBe(
+        false,
+      );
+      expect(
+        canTransition(
+          session(from, { documentTypes: ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK'] }),
+          to,
+          NOW,
+        ),
+      ).toBe(false);
+      expect(canTransition(session(from), to, NOW)).toBe(true);
+    }
+  });
+
+  it('PERSONAL_SUBMITTED -> DOCS_UPLOADED completes DOCUMENTS and moves to SELFIE', () => {
+    const { session: next, audit } = applyTransition(
+      session('PERSONAL_SUBMITTED', {
+        currentStep: 'DOCUMENTS',
+        completedSteps: ['CONTACT', 'CONSENT', 'PERSONAL'],
+      }),
+      'DOCS_UPLOADED',
+      'u1',
+      NOW,
+    );
+    expect(next).toMatchObject({ status: 'DOCS_UPLOADED', currentStep: 'SELFIE' });
+    expect(next.completedSteps).toEqual(['CONTACT', 'CONSENT', 'PERSONAL', 'DOCUMENTS']);
+    expect(audit.metadata).toEqual({ from: 'PERSONAL_SUBMITTED', to: 'DOCS_UPLOADED' });
   });
 
   it('updates steps and returns an audit entry', () => {
