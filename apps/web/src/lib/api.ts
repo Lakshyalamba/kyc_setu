@@ -7,6 +7,8 @@ export class ApiError extends Error {
     public readonly status: number,
     public readonly code: string,
     message: string,
+    /** Server-provided details (e.g. `{ attemptsRemaining }`, or per-field issues on 422). */
+    public readonly details?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -14,7 +16,7 @@ export class ApiError extends Error {
 }
 
 export interface ApiOptions<S extends z.ZodType> {
-  method?: 'GET' | 'POST';
+  method?: 'GET' | 'POST' | 'PATCH';
   body?: unknown;
   /** Response schema; the payload is validated before it reaches callers. */
   schema: S;
@@ -47,7 +49,12 @@ export function createApi(opts: { cookie?: string } = {}) {
     if (!res.ok) {
       const err = errorResponseSchema.safeParse(payload);
       throw err.success
-        ? new ApiError(res.status, err.data.error.code, err.data.error.message)
+        ? new ApiError(
+            res.status,
+            err.data.error.code,
+            err.data.error.message,
+            err.data.error.details,
+          )
         : new ApiError(res.status, 'UNKNOWN', `Request failed (${res.status})`);
     }
     return schema.parse(payload);

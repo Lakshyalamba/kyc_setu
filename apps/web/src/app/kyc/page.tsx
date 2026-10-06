@@ -1,25 +1,29 @@
 import { redirect } from 'next/navigation';
-import { LogoutButton } from '@/components/logout-button';
+import { StartKyc } from '@/components/kyc/start-kyc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { getSessionUser } from '@/lib/api-server';
+import { getCurrentKycSession, requireCustomer } from '@/lib/kyc-server';
+import { stepPath } from '@/lib/kyc-steps';
 
 export const dynamic = 'force-dynamic';
 
-export default async function KycPage() {
-  const user = await getSessionUser('customer');
-  if (!user) redirect('/login');
+export default async function KycIndexPage() {
+  await requireCustomer();
+  const session = await getCurrentKycSession();
+  // Resume: send the customer to wherever they left off.
+  if (session) redirect(stepPath(session.currentStep));
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-4 px-5 py-10">
-      <Card>
-        <CardHeader>
-          <CardTitle>KYC flow coming soon</CardTitle>
-          <CardDescription>Signed in as {user.email}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <LogoutButton realm="customer" />
-        </CardContent>
-      </Card>
-    </main>
+    <Card>
+      <CardHeader>
+        <CardTitle>Let’s verify your identity</CardTitle>
+        <CardDescription>
+          It takes a few minutes. Keep your mobile phone, PAN and Aadhaar handy. You can stop at any
+          point and pick up where you left off.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <StartKyc />
+      </CardContent>
+    </Card>
   );
 }
