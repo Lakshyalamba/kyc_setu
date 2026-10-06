@@ -5,10 +5,11 @@ and fintechs: customers complete KYC on their phone (consent, details, PAN + Aad
 selfie), the backend orchestrates AI verification (OCR, cross-document validation, face match, risk
 scoring), and bank officers review submissions before approving or rejecting.
 
-**Status: Phase 2 (document upload + encrypted storage)** on top of Phase 1 (KYC session + personal details) and
-the Phase 0 foundations. A customer can verify their mobile, give consent, fill in personal details, and upload
-PAN, Aadhaar (front/back) and a signature, all in a resumable multi-step form. Selfie, AI checks and the officer
-dashboard come later; see [What's not built yet](#whats-not-built-yet).
+**Status: Phase 3 (OCR + field extraction)** on top of Phase 2 (encrypted document upload), Phase 1 (KYC session +
+personal details) and the Phase 0 foundations. A customer can verify their mobile, give consent, fill in personal
+details and upload PAN, Aadhaar (front/back) and a signature; a background worker then reads each document with
+OCR and stores the extracted fields. Selfie, face match, risk scoring and the officer dashboard come later; see
+[What's not built yet](#whats-not-built-yet).
 
 ## Architecture
 
@@ -20,20 +21,23 @@ dashboard come later; see [What's not built yet](#whats-not-built-yet).
                     └────────────┬─────────────┘
                                  │ REST + httpOnly JWT cookie
                     ┌────────────▼─────────────┐        ┌───────────────────────┐
-                    │  apps/api  (Express, TS) │ ─────▶ │ services/ai (FastAPI) │ :8000
-                    │  zod-validated routes    │  HTTP  │ /extract/pan          │
-                    │  auth · audit · storage  │        │ /extract/aadhaar      │
-                    └───┬──────────┬─────────┬─┘        │ /match   (stubs)      │
-                        │          │         │          └───────────────────────┘
-                 Prisma │   BullMQ │         │ S3 presigned URLs
-                  ┌─────▼───┐  ┌───▼────┐  ┌─▼───────┐
-                  │Postgres │  │ Redis  │  │  MinIO  │
-                  │   16    │  │   7    │  │ (S3)    │
-                  └─────────┘  └───▲────┘  └─────────┘
-                                   │
-                    ┌──────────────┴───────────┐
-                    │ apps/api worker process  │  (src/worker.ts)
-                    └──────────────────────────┘
+                    │  apps/api  (Express, TS) │        │ services/ai (FastAPI) │ :8000
+                    │  zod-validated routes    │        │ PaddleOCR + OpenCV    │
+                    │  auth · audit · storage  │        │ /extract/pan          │
+                    └───┬──────────┬─────────┬─┘        │ /extract/aadhaar      │
+                        │          │         │          │ /match   (stub)       │
+                 Prisma │   BullMQ │         │ S3       └───────────▲───────────┘
+                  ┌─────▼───┐  ┌───▼────┐  ┌─▼───────┐              │ POST (+ short-lived
+                  │Postgres │  │ Redis  │  │  MinIO  │              │  link to the document)
+                  │   16    │  │   7    │  │ (S3)    │              │
+                  └─────────┘  └───▲────┘  └─────────┘              │
+                                   │                                │
+                    ┌──────────────┴────────────────────────────────┴─┐
+                    │ apps/api worker process (src/worker.ts)         │
+                    │  queues: system, verification (extract jobs)    │
+                    │  the ONLY writer of OCR results; the AI service │
+                    │  is a stateless function (image in, JSON out)   │
+                    └─────────────────────────────────────────────────┘
 
   packages/shared  zod schemas, types, constants, storage (presign) helpers
   packages/db      Prisma schema, migrations, client, seed
@@ -48,10 +52,14 @@ cp .env.example .env     # 1. local-dev defaults work as-is
 make up                  # 2. Postgres, Redis, MinIO
 pnpm install             # 3. also generates the Prisma client
 pnpm db:migrate          # 4. apply migrations
-pnpm seed                # 5. officer, auditor, 2 customers
-pnpm dev                 # 6. web :3000, api :4000 (+ worker), ai :8000
-pnpm test                # 7. (optional) needs `make up`
+pnpm seed                # 5. officer, auditor, 2 customers, consent text, the AI service account
+make ai                  # 6. OCR service in Docker (first build is slow and ~4 GB; models are baked in)
+pnpm dev                 # 7. web :3000, api :4000, queue worker
+pnpm test                # 8. (optional) needs `make up`
 ```
+
+`pnpm dev` does not start the OCR service. Run it with `make ai`, or natively with `pnpm dev:ai` (not both: they
+share port 8000). Without it, documents upload fine, but extraction jobs keep retrying and end as `ERROR`.
 
 Then open <http://localhost:3000>.
 
@@ -93,22 +101,26 @@ MinIO console <http://localhost:9001> (`minioadmin` / `minioadmin`).
 Defined in `.env` (git-ignored; copy from `.env.example`). Each app validates what it needs with zod
 on boot and exits with a list of problems if anything is missing or malformed.
 
-| Variable                          | Used by | Description                                                      |
-| --------------------------------- | ------- | ---------------------------------------------------------------- |
-| `NODE_ENV`                        | api     | `development` \| `test` \| `production` (secure cookies in prod) |
-| `DATABASE_URL`                    | api, db | Postgres connection string                                       |
-| `TEST_DATABASE_URL`               | tests   | Separate DB (`kyc_setu_test`) so tests never touch dev data      |
-| `REDIS_URL`                       | api     | BullMQ + health                                                  |
-| `S3_ENDPOINT`                     | api     | MinIO / S3 endpoint                                              |
-| `S3_REGION`                       | api     | Defaults to `us-east-1`                                          |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | api     | Object-storage credentials                                       |
-| `S3_BUCKET`                       | api     | Bucket created on API boot (default `kyc-documents`)             |
-| `API_PORT`                        | api     | Default `4000`                                                   |
-| `JWT_SECRET`                      | api     | ≥ 32 chars. `openssl rand -base64 48`                            |
-| `JWT_EXPIRES_IN_SECONDS`          | api     | Session lifetime, default 86400                                  |
-| `WEB_ORIGIN`                      | api     | Allowed CORS origin (credentials enabled)                        |
-| `AI_SERVICE_URL`                  | api     | Base URL of the FastAPI service (unused until Phase 2)           |
-| `NEXT_PUBLIC_API_URL`             | web     | API base URL the browser and server components call              |
+| Variable                          | Used by | Description                                                                                                   |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`                        | api     | `development` \| `test` \| `production` (secure cookies in prod)                                              |
+| `DATABASE_URL`                    | api, db | Postgres connection string                                                                                    |
+| `TEST_DATABASE_URL`               | tests   | Separate DB (`kyc_setu_test`) so tests never touch dev data                                                   |
+| `REDIS_URL`                       | api     | BullMQ + health                                                                                               |
+| `S3_ENDPOINT`                     | api     | MinIO / S3 endpoint                                                                                           |
+| `S3_REGION`                       | api     | Defaults to `us-east-1`                                                                                       |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | api     | Object-storage credentials                                                                                    |
+| `S3_BUCKET`                       | api     | Bucket created on API boot (default `kyc-documents`)                                                          |
+| `API_PORT`                        | api     | Default `4000`                                                                                                |
+| `JWT_SECRET`                      | api     | ≥ 32 chars. `openssl rand -base64 48`                                                                         |
+| `JWT_EXPIRES_IN_SECONDS`          | api     | Session lifetime, default 86400                                                                               |
+| `WEB_ORIGIN`                      | api     | Allowed CORS origin (credentials enabled)                                                                     |
+| `AI_SERVICE_URL`                  | api     | Base URL of the OCR service                                                                                   |
+| `AI_INTERNAL_KEY`                 | api, ai | Shared secret (≥ 32 chars) sent as `X-Internal-Key`; the service rejects callers without it                   |
+| `AI_REQUEST_TIMEOUT_MS`           | api     | Per-request timeout when calling the OCR service (default 60000)                                              |
+| `EXTRACTION_BACKOFF_SECONDS`      | api     | Delays before retries 1, 2, 3 of a failed extraction (default `10,60,300`, so 4 attempts in total)            |
+| `OCR_RAW_TEXT_RETENTION_DAYS`     | api     | How long encrypted raw OCR text may be kept (default 90). The cleanup job exists but is **not scheduled** yet |
+| `NEXT_PUBLIC_API_URL`             | web     | API base URL the browser and server components call                                                           |
 
 ## KYC flow (Phase 1)
 
@@ -178,6 +190,53 @@ by the API before they reach MinIO, and read back only through a short-lived, pe
   Metadata never contains bytes, file names or PII.
 - **Retention:** none yet. `DOCUMENT_RETENTION_DAYS` is a `null` placeholder and the bucket has no lifecycle rule.
 
+## OCR extraction (Phase 3)
+
+When a customer submits their documents (`PERSONAL_SUBMITTED → DOCS_UPLOADED`), the same database transaction
+creates one `extractions` row per document (`PENDING`; the signature is `SKIPPED`) and the
+`extraction.job_enqueued` audit rows. Then one BullMQ job per document goes to the `verification` queue.
+
+```
+worker ──(1) mint a 60 s AI_INTERNAL link + service-account token──▶ API file proxy
+worker ──(2) POST /extract/pan|aadhaar { signedUrl } + X-Internal-Key + bearer ──▶ AI service
+AI service ──(3) GET signedUrl with the bearer token ──▶ API file proxy (decrypts) ──▶ plaintext image
+AI service ──(4) OCR + parse ──▶ JSON (fields, confidence, bbox, quality, rawText)
+worker ──(5) validate, encrypt, write `extractions`, audit, maybe advance the session
+```
+
+| Route (customer auth)                  | Purpose                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `GET /kyc/sessions/:id/extractions`    | Per-document `status` and `completedAt` only. **Never the extracted values**                                       |
+| `GET /kyc/documents/:docId/extraction` | Same for one document (403 for anyone who doesn't own it)                                                          |
+| `GET /dev/extractions/:documentId`     | **Dev only** (not registered when `NODE_ENV=production`). Officer login. Everything stored, for tuning the parsers |
+
+- **Statuses.** `OK`, `LOW_QUALITY` (blurry or under 400 px; OCR is skipped and the warning says why),
+  `PARSE_FAILED`, `WRONG_DOCUMENT` (e.g. a PAN card in the Aadhaar slot), `SKIPPED` (signature) and `ERROR`
+  (our infrastructure failed). `PENDING` until finished.
+- **Session state.** `DOCS_UPLOADED → DOCS_EXTRACTED` fires when every document has a finished result.
+  Problems the customer can't fix any more (the documents are locked after submit) are recorded as `flags` on the
+  session for the future officer dashboard: `EXTRACTION_LOW_QUALITY`, `EXTRACTION_WRONG_DOCUMENT`,
+  `EXTRACTION_PARSE_FAILED`. An `ERROR` holds the session at `DOCS_UPLOADED` with `EXTRACTION_ERROR`.
+- **Retries.** 1 attempt + 3 retries after 10 s, 60 s and 300 s. Network errors and HTTP 5xx retry; HTTP 4xx and
+  contract violations fail immediately. Every attempt is audited (`extraction.attempt_failed`), the end is
+  `extraction.failed` and a loud log line. Document jobs are idempotent (`extract-<documentId>`), and the worker
+  re-queues stale `PENDING` rows on boot, so a crash between commit and enqueue loses nothing.
+- **Sensitive data.** The service returns Aadhaar only masked (`XXXX-XXXX-1234`). The full number can exist only
+  in `rawText`, which the worker envelope-encrypts (same scheme as documents). The PAN inside `fields` is field-encrypted;
+  the indexed `panNumberHmac` is a keyed hash (equality checks without a plaintext PAN) and `aadhaarNumberLast4`
+  is the last four digits. The debug route redacts any 12-digit Aadhaar number in the text it returns.
+  Audit rows carry field **names** and counts only.
+- **The AI service is a stateless function.** No database, no object storage. Because it fetches a URL it is given,
+  it is guarded against SSRF: origin allow-list, `/files/` paths only, no redirects, size and time limits, and a
+  shared secret on every call. See [`services/ai/README.md`](services/ai/README.md) for the pipeline, the model
+  choices, and per-component licences.
+- **Service account.** `ai-service@kycsetu.internal` (`UserKind.SERVICE`, role `AI_SERVICE`) has no usable password,
+  can never log in, and its only power is to be the recipient of `AI_INTERNAL` links. No HTTP route issues those.
+- **Try it:** with everything running, `pnpm demo:docs` signs up a fresh customer, walks Phases 1 and 2 with the
+  synthetic sample documents in `scripts/sample-docs` and prints the OCR results (`--blurred`, `--pan-as-aadhaar`
+  exercise the failure statuses). The samples are generated, clearly fake ("SAMPLE DOCUMENT - NOT REAL") and must
+  never be replaced with real documents.
+
 ## Design notes
 
 - **Auth.** argon2id password hashes; HS256 JWT (`sub`, `role`) in an `httpOnly`, `SameSite=Lax`
@@ -201,12 +260,12 @@ by the API before they reach MinIO, and read back only through a short-lived, pe
 
 ## What's not built yet
 
-| Phase | Scope                                                                                                                                                                                             |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 3     | Selfie capture UI (`SELFIE_CAPTURED`, `SUBMITTED`) and AI verification: real OCR for PAN/Aadhaar, cross-document validation, wired API ↔ AI jobs                                                  |
-| 4     | Face match + liveness, risk scoring engine                                                                                                                                                        |
-| 5     | Officer dashboard: review queue (`OFFICER_REVIEW` signed URLs), approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                                      |
-| 6     | Hardening & deploy: rate limiting, email verification / password reset, observability, a real KMS (AWS) and key rotation, document retention + lifecycle rules, real SMS provider, hosting config |
+| Phase | Scope                                                                                                                                                                                                                                                                                 |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4     | Selfie capture UI (`SELFIE_CAPTURED`, `SUBMITTED`; must wait for `DOCS_EXTRACTED`), face match + liveness, cross-document validation (extracted vs typed details, name and DOB), risk scoring engine                                                                                  |
+| 5     | Officer dashboard: review queue (`OFFICER_REVIEW` signed URLs, extracted values, flags), approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                                                                                                 |
+| 6     | Hardening & deploy: rate limiting, email verification / password reset, observability, a real KMS (AWS) and key rotation, document and raw-OCR-text retention (the sweeper exists but is unscheduled), real SMS provider, OCR accuracy work on real (consented) scans, hosting config |
 
 Also deliberately omitted so far: CSRF tokens (SameSite=Lax + JSON/multipart-only + strict CORS for now), a job to expire
-idle sessions, virus scanning of uploads, and any deployment config.
+idle sessions, virus scanning of uploads, a way to re-run extraction for a document that ended in `ERROR`, and any
+deployment config.

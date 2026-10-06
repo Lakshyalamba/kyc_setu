@@ -8,20 +8,22 @@
   },
   "scripts": {
     "postinstall": "pnpm db:generate",
-    "dev": "pnpm build:libs && (pnpm --filter @kyc-setu/api --filter @kyc-setu/web --parallel run dev & pnpm dev:ai & wait)",
-    "dev:ai": "cd services/ai && uv run uvicorn app.main:app --reload --port 8000",
+    "dev": "pnpm build:libs && pnpm --filter @kyc-setu/api --filter @kyc-setu/web --parallel run dev",
+    "dev:ai": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run uvicorn app.main:app --reload --port 8000",
     "build:libs": "tsc -b",
     "build": "pnpm build:libs && pnpm --filter @kyc-setu/web run build",
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "tsc -b && pnpm --filter @kyc-setu/web run typecheck",
     "test": "pnpm build:libs && pnpm -r --workspace-concurrency=1 --if-present run test && pnpm test:ai",
-    "test:ai": "cd services/ai && uv run pytest -q",
+    "test:ai": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m \"not ocr\"",
     "db:generate": "pnpm --filter @kyc-setu/db run generate",
     "db:migrate": "pnpm --filter @kyc-setu/db run migrate",
     "db:validate": "pnpm --filter @kyc-setu/db run validate",
     "seed": "pnpm --filter @kyc-setu/db run seed",
-    "e2e": "pnpm --filter @kyc-setu/web run e2e"
+    "e2e": "pnpm --filter @kyc-setu/web run e2e",
+    "demo:docs": "pnpm --filter @kyc-setu/api run demo:docs --",
+    "test:ai:ocr": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m ocr"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
