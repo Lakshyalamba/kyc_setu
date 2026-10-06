@@ -1,0 +1,20 @@
+[project]
+name = "kyc-setu-ai"
+version = "0.0.0"
+description = "KYC Setu AI service (Phase 0: deterministic stubs, no models)"
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.uv]
+package = false
