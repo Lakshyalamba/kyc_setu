@@ -205,8 +205,25 @@ export function createDocumentsRouter(deps: {
 }
 
 /**
+ * Who is asking for a file? People present their session cookie. The AI service has no cookie: it
+ * presents the short-lived bearer token the worker minted for the seeded service account.
+ */
+async function authenticateViewer(req: Request, purpose: string, env: Env) {
+  if (purpose === 'AI_INTERNAL') {
+    const bearer = req.get('authorization')?.replace(/^Bearer\s+/i, '');
+    const claims = bearer ? await verifyToken(bearer, env.JWT_SECRET) : null;
+    if (claims && claims.role !== 'AI_SERVICE') throw forbidden();
+    return claims;
+  }
+  const realm = purpose === 'OFFICER_REVIEW' ? 'officer' : 'customer';
+  const cookie: unknown = req.cookies?.[cookieName(realm)];
+  return typeof cookie === 'string' ? verifyToken(cookie, env.JWT_SECRET) : null;
+}
+
+/**
  * GET /files/:token, the decryption proxy. The token is a bearer credential AND the caller must
- * hold the session cookie of the user it was issued to (a leaked URL is useless to anyone else).
+ * authenticate as the user it was issued to: a session cookie for people, a short-lived service
+ * token for the AI service. A leaked URL is useless to anyone else.
  */
 export function createFilesRouter(deps: { docs: DocumentsService; env: Env }): Router {
   const { docs, env } = deps;
@@ -217,9 +234,9 @@ export function createFilesRouter(deps: { docs: DocumentsService; env: Env }): R
     if (!params.success) throw new AppError(404, 'NOT_FOUND', 'Not found');
     const { issue, doc } = await docs.resolveToken(params.data.token);
 
-    const realm = issue.purpose === 'OFFICER_REVIEW' ? 'officer' : 'customer';
-    const cookie: unknown = req.cookies?.[cookieName(realm)];
-    const claims = typeof cookie === 'string' ? await verifyToken(cookie, env.JWT_SECRET) : null;
+    // Who is asking? People present their session cookie. The AI service has no cookie: it presents the
+    // short-lived bearer token the worker minted for the seeded service account.
+    const claims = await authenticateViewer(req, issue.purpose, env);
     if (!claims) throw unauthorized();
     if (claims.userId !== issue.issuedToUserId) throw forbidden();
 

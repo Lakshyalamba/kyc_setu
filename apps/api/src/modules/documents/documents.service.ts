@@ -6,6 +6,7 @@ import {
   AUDIT_ACTIONS,
   DOCUMENT_TYPES,
   MAX_DOCUMENT_BYTES,
+  AI_INTERNAL_LINK_TTL_SECONDS,
   SIGNED_URL_TTL_SECONDS,
   applyTransition,
   type DocumentDto,
@@ -23,6 +24,7 @@ import type { AuditEntry } from '../auth/store.js';
 import type { KycService, RequestMeta } from '../kyc/kyc.service.js';
 import { patchFrom, toState } from '../kyc/kyc.service.js';
 import type { KycStore, SessionRecord } from '../kyc/store.js';
+import type { VerificationEnqueuer } from '../../queue/verification.js';
 import type { ObjectStore } from './object-store.js';
 import {
   createFileToken,
@@ -58,6 +60,8 @@ export interface DocumentsServiceDeps {
   store: DocumentStore;
   objects: ObjectStore;
   kms: KmsClient;
+  /** Queues extraction jobs after a successful documents submit. */
+  enqueuer: VerificationEnqueuer;
   now?: () => Date;
   newId?: () => string;
 }
@@ -100,7 +104,7 @@ async function peek(stream: Readable, n: number): Promise<{ head: Buffer; rest: 
 }
 
 export function createDocumentsService(deps: DocumentsServiceDeps) {
-  const { env, kyc, kycStore, store, objects, kms } = deps;
+  const { env, kyc, kycStore, store, objects, kms, enqueuer } = deps;
   const now = deps.now ?? (() => new Date());
   const newId = deps.newId ?? randomUUID;
 
@@ -122,10 +126,6 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
         `Documents can't be changed while the session is ${s.status}`,
       );
     }
-  }
-
-  async function activeTypes(sessionId: string): Promise<DocumentType[]> {
-    return (await store.listActive(sessionId)).map((d) => d.type);
   }
 
   return {
@@ -312,7 +312,8 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
     async submit(userId: string, sessionId: string, m: RequestMeta) {
       const s = await kyc.loadOwned(userId, sessionId);
       requireMutable(s);
-      const documentTypes = await activeTypes(s.id);
+      const active = await store.listActive(s.id);
+      const documentTypes = active.map((d) => d.type);
       const missing = DOCUMENT_TYPES.filter((t) => !documentTypes.includes(t));
       if (missing.length > 0) {
         throw new AppError(409, 'DOCUMENTS_INCOMPLETE', 'Upload all required documents first', {
@@ -325,20 +326,87 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
         userId,
         now(),
       );
-      const updated = await kycStore.updateSession(s.id, s.status, patchFrom(next), [
-        transition,
-        audit(userId, AUDIT_ACTIONS.KYC_DOCUMENTS_SUBMITTED, 'KycSession', s.id, {
-          documentCount: documentTypes.length,
-          ...requestMeta(m),
-        }),
-      ]);
+      // One extraction row per document, created in the SAME transaction as the state change, so a
+      // submitted session can never exist without its extraction work. A signature has nothing to read.
+      const extractions = active.map((d) => ({
+        documentId: d.id,
+        status: d.type === 'SIGNATURE' ? ('SKIPPED' as const) : ('PENDING' as const),
+      }));
+      const toQueue = active.filter((d) => d.type !== 'SIGNATURE');
+      const updated = await kycStore.updateSession(
+        s.id,
+        s.status,
+        patchFrom(next),
+        [
+          transition,
+          audit(userId, AUDIT_ACTIONS.KYC_DOCUMENTS_SUBMITTED, 'KycSession', s.id, {
+            documentCount: documentTypes.length,
+            ...requestMeta(m),
+          }),
+          ...toQueue.map((d) =>
+            audit(userId, AUDIT_ACTIONS.EXTRACTION_JOB_ENQUEUED, 'Document', d.id, {
+              documentId: d.id,
+              sessionId: s.id,
+              type: d.type,
+            }),
+          ),
+        ],
+        undefined,
+        extractions,
+      );
       if (!updated)
         throw new AppError(
           409,
           'CONFLICT',
           'The session changed while processing your request. Please retry.',
         );
+      try {
+        await enqueuer.enqueueExtractions(toQueue.map((d) => d.id));
+      } catch (err) {
+        // The rows are committed as PENDING; the worker's recovery sweep re-queues them.
+        console.error(
+          '[documents] could not enqueue extraction jobs; the recovery sweep will retry',
+          (err as Error).message,
+        );
+      }
       return kyc.toDto(updated);
+    },
+
+    /**
+     * A 60-second link for the AI service to read one document. Only the verification worker calls
+     * this, for the seeded service account: there is no HTTP route that issues AI_INTERNAL links.
+     */
+    async issueInternalUrl(
+      serviceUserId: string,
+      docId: string,
+    ): Promise<{ url: string; expiresAt: Date }> {
+      const doc = await store.findById(docId);
+      if (!doc) throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found');
+      const expiresAt = new Date(now().getTime() + AI_INTERNAL_LINK_TTL_SECONDS * 1000);
+      const issue = await store.createSignedUrlIssue(
+        { documentId: doc.id, issuedToUserId: serviceUserId, purpose: 'AI_INTERNAL', expiresAt },
+        (i) => ({
+          ...audit(serviceUserId, AUDIT_ACTIONS.DOCUMENT_SIGNED_URL_ISSUED, 'Document', doc.id, {
+            documentId: doc.id,
+            issueId: i.id,
+            purpose: 'AI_INTERNAL',
+            expiresAt: expiresAt.toISOString(),
+            issuedTo: serviceUserId,
+          }),
+          actorType: 'AI',
+        }),
+      );
+      const token = createFileToken(
+        {
+          issueId: issue.id,
+          documentId: doc.id,
+          purpose: 'AI_INTERNAL',
+          issuedToUserId: serviceUserId,
+          expiresAtMs: expiresAt.getTime(),
+        },
+        env.FILE_URL_SECRET,
+      );
+      return { url: `${env.API_PUBLIC_URL}/files/${token}`, expiresAt };
     },
 
     /** GET /kyc/documents/:docId/signed-url */
@@ -456,8 +524,8 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
         );
         throw new AppError(500, 'DOCUMENT_INTEGRITY_ERROR', 'This document could not be read');
       }
-      await store.writeAudit(
-        audit(viewerUserId, AUDIT_ACTIONS.DOCUMENT_VIEWED, 'Document', doc.id, {
+      await store.writeAudit({
+        ...audit(viewerUserId, AUDIT_ACTIONS.DOCUMENT_VIEWED, 'Document', doc.id, {
           documentId: doc.id,
           viewerUserId,
           bytesStreamed: bytes.length,
@@ -465,7 +533,8 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
           purpose: issue.purpose,
           ...requestMeta(m),
         }),
-      );
+        actorType: issue.purpose === 'AI_INTERNAL' ? 'AI' : 'USER',
+      });
       return { bytes, mimeType: doc.mimeType };
     },
   };

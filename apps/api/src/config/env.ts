@@ -34,6 +34,20 @@ export const envSchema = z
     }, 'PII_ENCRYPTION_KEY must be 32 random bytes, base64 encoded (openssl rand -base64 32)'),
     WEB_ORIGIN: z.string().url(),
     AI_SERVICE_URL: z.string().url(),
+    /** Shared secret sent to the AI service as X-Internal-Key. */
+    AI_INTERNAL_KEY: z.string().min(32, 'AI_INTERNAL_KEY must be at least 32 characters'),
+    AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    /** Seconds to wait before retry 1, 2 and 3 of a failed extraction (so 4 attempts in total). */
+    EXTRACTION_BACKOFF_SECONDS: z
+      .string()
+      .default('10,60,300')
+      .transform((v) => v.split(',').map((n) => Number(n.trim())))
+      .refine(
+        (a) => a.length >= 1 && a.every((n) => Number.isFinite(n) && n >= 0),
+        'comma-separated seconds',
+      ),
+    /** How long raw OCR text is kept before the (not yet scheduled) sweeper may delete it. */
+    OCR_RAW_TEXT_RETENTION_DAYS: z.coerce.number().int().positive().default(90),
     API_PUBLIC_URL: z.string().url().default('http://localhost:4000'),
     /** `local` wraps data keys with KMS_LOCAL_MASTER_KEY (dev only); `aws` is a stub for now. */
     KMS_PROVIDER: z.enum(['local', 'aws']).default('local'),

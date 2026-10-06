@@ -1,6 +1,9 @@
 import { prisma } from '@kyc-setu/db';
 import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 import { createApp } from './app.js';
+import { createHttpAiClient } from './modules/extraction/ai-client.js';
+import { createPrismaExtractionStore } from './modules/extraction/store.js';
+import { createBullEnqueuer, createVerificationQueue } from './queue/verification.js';
 import { assertBucketPrivate, createS3ObjectStore } from './modules/documents/object-store.js';
 import { createPrismaDocumentStore } from './modules/documents/store.js';
 import { loadEnv } from './config/env.js';
@@ -24,12 +27,16 @@ console.log(`[api] bucket "${env.S3_BUCKET}" ${bucketState}, no public access`);
 
 const redis = createRedis(env.REDIS_URL);
 const queue = createSystemQueue(redis);
+const verificationQueue = createVerificationQueue(redis, env.EXTRACTION_BACKOFF_SECONDS);
 const app = createApp({
   env,
   store: createPrismaAuthStore(prisma),
   kycStore: createPrismaKycStore(prisma),
   documentStore: createPrismaDocumentStore(prisma),
   objectStore: createS3ObjectStore(s3, env.S3_BUCKET),
+  extractionStore: createPrismaExtractionStore(prisma),
+  enqueuer: createBullEnqueuer(verificationQueue),
+  aiClient: createHttpAiClient(env),
   healthProbe: createHealthProbe({ prisma, redis, queue }),
 });
 
@@ -41,6 +48,7 @@ async function shutdown(signal: string): Promise<void> {
   console.log(`[api] ${signal} received, shutting down`);
   server.close();
   await queue.close();
+  await verificationQueue.close();
   redis.disconnect();
   await prisma.$disconnect();
   process.exit(0);

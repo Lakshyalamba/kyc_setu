@@ -11,7 +11,8 @@
     "start": "node --env-file=../../.env dist/src/server.js",
     "start:worker": "node --env-file=../../.env dist/src/worker.js",
     "ping": "tsx --env-file=../../.env src/scripts/ping.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "demo:docs": "tsx --env-file=../../.env src/scripts/demo-docs.ts"
   },
   "devDependencies": {
     "@types/busboy": "^1.5.4",

@@ -10,6 +10,7 @@ export interface SessionRecord {
   completedSteps: KycStep[];
   /** Raw stored JSON; PAN/Aadhaar values inside are encrypted. */
   personalDetails: unknown;
+  flags: string[];
   consentVersionId: string | null;
   consentAcceptedAt: Date | null;
   createdAt: Date;
@@ -23,6 +24,7 @@ export interface SessionPatch {
   personalDetails?: Record<string, unknown>;
   consentVersionId?: string;
   consentAcceptedAt?: Date;
+  flags?: string[];
 }
 
 export interface OtpRecord {
@@ -66,6 +68,8 @@ export interface KycStore {
     patch: SessionPatch,
     audits: AuditEntry[],
     markOtpVerified?: { id: string; at: Date },
+    /** Extraction rows to create in the same transaction (used when documents are submitted). */
+    extractions?: { documentId: string; status: 'PENDING' | 'SKIPPED' }[],
   ): Promise<SessionRecord | null>;
   latestConsent(now: Date): Promise<ConsentRecord | null>;
 
@@ -117,7 +121,7 @@ export function createPrismaKycStore(prisma: PrismaClient): KycStore {
       }
     },
 
-    updateSession: (id, expected, patch, audits, markOtpVerified) =>
+    updateSession: (id, expected, patch, audits, markOtpVerified, extractions) =>
       prisma.$transaction(async (tx) => {
         const { personalDetails, ...rest } = patch;
         const result = await tx.kycSession.updateMany({
@@ -132,6 +136,16 @@ export function createPrismaKycStore(prisma: PrismaClient): KycStore {
           await tx.otpChallenge.update({
             where: { id: markOtpVerified.id },
             data: { verifiedAt: markOtpVerified.at },
+          });
+        }
+        if (extractions?.length) {
+          await tx.extraction.createMany({
+            data: extractions.map((e) => ({
+              documentId: e.documentId,
+              status: e.status,
+              completedAt: e.status === 'SKIPPED' ? new Date() : null,
+            })),
+            skipDuplicates: true,
           });
         }
         if (audits.length > 0) await tx.auditLog.createMany({ data: audits.map(auditData) });
