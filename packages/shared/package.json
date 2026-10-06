@@ -17,6 +17,10 @@
     "./pii": {
       "types": "./dist/server/pii.d.ts",
       "default": "./dist/server/pii.js"
+    },
+    "./crypto": {
+      "types": "./dist/crypto/index.d.ts",
+      "default": "./dist/crypto/index.js"
     }
   },
   "scripts": {
