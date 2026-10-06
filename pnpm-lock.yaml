@@ -196,6 +196,9 @@ importers:
       '@kyc-setu/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@kyc-setu/risk':
+        specifier: workspace:*
+        version: link:../../packages/risk
       '@kyc-setu/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -358,6 +361,18 @@ importers:
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
+
+  packages/risk:
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.4
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.15))
 
   packages/shared:
     dependencies:
