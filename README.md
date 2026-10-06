@@ -5,9 +5,10 @@ and fintechs: customers complete KYC on their phone (consent, details, PAN + Aad
 selfie), the backend orchestrates AI verification (OCR, cross-document validation, face match, risk
 scoring), and bank officers review submissions before approving or rejecting.
 
-**Status: Phase 0 (foundations).** This repo contains the scaffolding everything else plugs into:
-monorepo, infra, database, auth, job queue, object storage, an AI service stub, and a minimal web
-app. No KYC features yet; see [What's not built yet](#whats-not-built-yet).
+**Status: Phase 1 (KYC session + personal details)** on top of the Phase 0 foundations (monorepo, infra,
+database, auth, job queue, object storage, AI service stub). A customer can verify their mobile, give
+consent and fill in personal details in a resumable multi-step form. Documents, selfie, AI checks and the
+officer dashboard come later; see [What's not built yet](#whats-not-built-yet).
 
 ## Architecture
 
@@ -109,6 +110,40 @@ on boot and exits with a list of problems if anything is missing or malformed.
 | `AI_SERVICE_URL`                  | api     | Base URL of the FastAPI service (unused until Phase 2)           |
 | `NEXT_PUBLIC_API_URL`             | web     | API base URL the browser and server components call              |
 
+## KYC flow (Phase 1)
+
+Customer steps (`/kyc/[step]`): **Contact** (mobile OTP) → **Consent** → **Personal details** → Documents →
+Selfie → Review (the last three are "Coming next" stubs). The server's `currentStep` is the source of truth,
+so reloading or logging in on another device resumes at the right step, and visiting a different step's URL
+redirects back.
+
+| Route (customer auth)                    | Purpose                                                               |
+| ---------------------------------------- | --------------------------------------------------------------------- |
+| `POST /kyc/sessions`                     | Create a `DRAFT` session (24 h expiry) or return the active one       |
+| `GET /kyc/sessions/current`              | Active session with `currentStep` / `completedSteps` (404 if none)    |
+| `POST /kyc/sessions/:id/otp/send`        | 6-digit OTP, argon2-hashed; max 3 sends / 10 min / user; 5-min expiry |
+| `POST /kyc/sessions/:id/otp/verify`      | Max 5 attempts per code; completes the `CONTACT` step                 |
+| `GET /kyc/consent/current`               | Latest consent version                                                |
+| `POST /kyc/sessions/:id/consent`         | `DRAFT → CONSENT_GIVEN`, pins the consent version                     |
+| `PATCH /kyc/sessions/:id/personal`       | Partial, validated save (no transition)                               |
+| `POST /kyc/sessions/:id/personal/submit` | Full validation; `CONSENT_GIVEN → PERSONAL_SUBMITTED`                 |
+
+- **State machine:** `packages/shared/src/kyc-state.ts` (pure, fully unit-tested). Status progression:
+  `DRAFT → CONSENT_GIVEN → PERSONAL_SUBMITTED → DOCS_UPLOADED → SELFIE_CAPTURED → SUBMITTED → UNDER_REVIEW →
+APPROVED | REJECTED | RESUBMIT_REQUESTED → DOCS_UPLOADED`. Any pre-`SUBMITTED` status can move to `EXPIRED`
+  once `expiresAt` has passed. Expiry is applied lazily on every session read/transition (no job).
+  Sessions in `RESUBMIT_REQUESTED` do not expire yet.
+- **No real SMS.** The OTP is logged to the API's stdout (`[dev-otp]`) and returned as `devCode` in the response
+  **only when the API's `NODE_ENV` is not `production`**; the web app shows it in a dismissible banner.
+- **PII.** PAN and Aadhaar are AES-256-GCM encrypted inside `personalDetails`; responses never contain the full
+  Aadhaar (`XXXX-XXXX-1234`), so a resumed form shows it masked with a "Change" button. Audit logs hold only
+  field **names** (`kyc.personal.patched` → `{"fields": ["address.city", "fullName"]}`), never values or OTP codes.
+- **Autosave.** The form saves 2 s after the last keystroke, sending only fields that currently pass
+  validation. Clearing a field does not erase the saved value.
+- **Audit actions:** `kyc.session.created`, `kyc.session.transitioned` (`{from, to}`), `kyc.otp.sent`,
+  `kyc.otp.verified`, `kyc.otp.failed`, `kyc.consent.accepted`, `kyc.personal.patched`, `kyc.personal.submitted`.
+- **Email** is collected at the Contact step but not verified in Phase 1 (only the mobile is).
+
 ## Design notes
 
 - **Auth.** argon2id password hashes; HS256 JWT (`sub`, `role`) in an `httpOnly`, `SameSite=Lax`
@@ -132,15 +167,13 @@ on boot and exits with a list of problems if anything is missing or malformed.
 
 ## What's not built yet
 
-| Phase | Scope                                                                                                                             |
-| ----- | --------------------------------------------------------------------------------------------------------------------------------- |
-| 1     | Customer KYC flow: consent, personal details, PAN + Aadhaar upload UI, signature, selfie, session state machine                   |
-| 2     | AI verification: real OCR for PAN/Aadhaar, cross-document validation, wired API ↔ AI jobs                                         |
-| 3     | Face match + liveness                                                                                                             |
-| 4     | Risk scoring engine                                                                                                               |
-| 5     | Officer dashboard: review queue, approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                     |
-| 6     | Hardening & deploy: rate limiting, email verification / password reset, observability, PII encryption & retention, hosting config |
+| Phase | Scope                                                                                                                                                      |
+| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2     | Document upload: PAN + Aadhaar images (presigned MinIO uploads), signature, selfie capture UI; `DOCS_UPLOADED`, `SELFIE_CAPTURED`, `SUBMITTED` transitions |
+| 3     | AI verification: real OCR for PAN/Aadhaar, cross-document validation, wired API ↔ AI jobs                                                                  |
+| 4     | Face match + liveness, risk scoring engine                                                                                                                 |
+| 5     | Officer dashboard: review queue, approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                              |
+| 6     | Hardening & deploy: rate limiting, email verification / password reset, observability, PII key rotation & retention, real SMS provider, hosting config     |
 
-Phase 0 also deliberately omits: `KycSession` creation endpoints (the table exists), document
-metadata tables, rate limiting, CSRF tokens (SameSite=Lax + JSON-only + strict CORS for now), and
-any deployment config.
+Also deliberately omitted so far: CSRF tokens (SameSite=Lax + JSON-only + strict CORS for now), a job to expire
+idle sessions, and any deployment config.

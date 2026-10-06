@@ -7,3 +7,5 @@ services/ai
 packages/db/prisma/migrations
 *.tsbuildinfo
 next-env.d.ts
+playwright-report
+test-results
