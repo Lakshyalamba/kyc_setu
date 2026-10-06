@@ -1,0 +1,39 @@
+{
+  "name": "@kyc-setu/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm run dev:server & pnpm run dev:worker & wait",
+    "dev:server": "tsx watch --env-file=../../.env src/server.ts",
+    "dev:worker": "tsx watch --env-file=../../.env src/worker.ts",
+    "build": "tsc -b",
+    "start": "node --env-file=../../.env dist/src/server.js",
+    "start:worker": "node --env-file=../../.env dist/src/worker.js",
+    "ping": "tsx --env-file=../../.env src/scripts/ping.ts",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^26.6.4",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.3.1",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.3"
+  },
+  "dependencies": {
+    "@kyc-setu/db": "workspace:*",
+    "@kyc-setu/shared": "workspace:*",
+    "argon2": "^0.45.1",
+    "bullmq": "^6.3.11",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "helmet": "^8.3.0",
+    "ioredis": "^6.0.0",
+    "jose": "^6.2.12",
+    "zod": "^4.6.5"
+  }
+}
