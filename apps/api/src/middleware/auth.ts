@@ -9,11 +9,14 @@ import { verifyToken } from '../lib/jwt.js';
  * Verifies the JWT cookie and sets `req.auth`. If `?realm=officer|customer` is given only that
  * cookie is considered; otherwise the customer cookie is tried first, then the officer cookie.
  */
-export function createRequireAuth(env: Env): RequestHandler {
+export function createRequireAuth(env: Env, fixedRealm?: Realm): RequestHandler {
   return async (req, _res, next) => {
     const requested = req.query['realm'];
-    const realms: Realm[] =
-      requested === 'officer' || requested === 'customer' ? [requested] : ['customer', 'officer'];
+    const realms: Realm[] = fixedRealm
+      ? [fixedRealm]
+      : requested === 'officer' || requested === 'customer'
+        ? [requested]
+        : ['customer', 'officer'];
     for (const realm of realms) {
       const token: unknown = req.cookies?.[cookieName(realm)];
       if (typeof token !== 'string') continue;

@@ -9,13 +9,16 @@ export interface UserRecord {
   createdAt: Date;
 }
 
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json };
+
 export interface AuditEntry {
   actorId: string | null;
   actorType: 'USER' | 'SYSTEM' | 'AI';
   action: string;
   entityType: string;
   entityId: string;
-  metadata?: Record<string, string | number | boolean | null>;
+  /** Never put PII values or OTP codes here: field names and ids only. */
+  metadata?: Record<string, Json>;
 }
 
 /** Persistence seam for auth; the Prisma implementation is used in prod, a fake in unit tests. */

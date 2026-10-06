@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { parsePiiKey } from '@kyc-setu/shared/pii';
 
 export const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -12,6 +13,14 @@ export const envSchema = z.object({
   S3_BUCKET: z.string().min(3).default('kyc-documents'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN_SECONDS: z.coerce.number().int().positive().default(86_400),
+  PII_ENCRYPTION_KEY: z.string().refine((v) => {
+    try {
+      parsePiiKey(v);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'PII_ENCRYPTION_KEY must be 32 random bytes, base64 encoded (openssl rand -base64 32)'),
   WEB_ORIGIN: z.string().url(),
   AI_SERVICE_URL: z.string().url(),
 });
