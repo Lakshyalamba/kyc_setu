@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
-import { createFakeStore, testEnv, type FakeStore } from './helpers.js';
+import { createFakeKycStore, createFakeStore, testEnv, type FakeStore } from './helpers.js';
 
 const healthy = async () => ({ database: 'up' as const, redis: 'up' as const, queue: null });
 
 let store: FakeStore;
-const build = () => createApp({ env: testEnv(), store, healthProbe: healthy });
+const build = () =>
+  createApp({
+    env: testEnv(),
+    store,
+    kycStore: createFakeKycStore(store.audits),
+    healthProbe: healthy,
+  });
 
 beforeEach(async () => {
   store = createFakeStore();

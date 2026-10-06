@@ -5,11 +5,13 @@ import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@kyc-setu/db';
 import { createApp } from '../src/app.js';
+import { createPrismaKycStore } from '../src/modules/kyc/store.js';
 import { createPrismaAuthStore } from '../src/modules/auth/store.js';
 import { createRedis } from '../src/queue/connection.js';
 import { createHealthProbe } from '../src/queue/health.js';
 import { processPing } from '../src/queue/jobs/ping.js';
 import { PING_JOB, createSystemQueue } from '../src/queue/queues.js';
+import { verhoeffGenerate } from '@kyc-setu/shared';
 import { testEnv } from './helpers.js';
 
 const up = process.env['INFRA_UP'] === '1';
@@ -25,7 +27,18 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
   const queue = createSystemQueue(redis, queueName);
 
   beforeAll(async () => {
-    await prisma.$executeRawUnsafe('TRUNCATE "audit_logs", "kyc_sessions", "users" CASCADE');
+    await prisma.$executeRawUnsafe(
+      'TRUNCATE "audit_logs", "otp_challenges", "kyc_sessions", "users" CASCADE',
+    );
+    await prisma.consentVersion.upsert({
+      where: { version: '1.0.0' },
+      update: {},
+      create: {
+        version: '1.0.0',
+        bodyMarkdown: '# Test consent',
+        effectiveFrom: new Date('2026-01-01'),
+      },
+    });
   });
   afterAll(async () => {
     await queue.obliterate({ force: true }).catch(() => undefined);
@@ -38,6 +51,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
     const app = createApp({
       env: testEnv(),
       store,
+      kycStore: createPrismaKycStore(prisma),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
     });
     const email = `it-${randomUUID()}@example.com`;
@@ -63,6 +77,88 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
     const health = await request(app).get('/healthz');
     expect(health.status).toBe(200);
     expect(health.body.checks).toMatchObject({ database: 'up', redis: 'up' });
+  });
+
+  it('KYC flow against real Postgres: encrypted PII, masked responses, audit trail, one active session', async () => {
+    const env = testEnv();
+    const app = createApp({
+      env,
+      store,
+      kycStore: createPrismaKycStore(prisma),
+      healthProbe: createHealthProbe({ prisma, redis, queue }),
+    });
+    const email = `kyc-${randomUUID()}@example.com`;
+    const agent = request.agent(app);
+    await agent.post('/auth/customer/signup').send({ email, password: 'password123' });
+
+    const consent = await prisma.consentVersion.findFirstOrThrow({
+      orderBy: { effectiveFrom: 'desc' },
+    });
+    const created = await agent.post('/kyc/sessions');
+    expect(created.status).toBe(201);
+    const id = created.body.session.id as string;
+
+    // Partial unique index: a second ACTIVE session for the same user is impossible at the DB level.
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    await expect(
+      prisma.kycSession.create({
+        data: { userId: user.id, expiresAt: new Date(Date.now() + 1000) },
+      }),
+    ).rejects.toThrow();
+
+    const sent = await agent
+      .post(`/kyc/sessions/${id}/otp/send`)
+      .send({ mobile: '9876543210', email });
+    const verified = await agent
+      .post(`/kyc/sessions/${id}/otp/verify`)
+      .send({ code: sent.body.devCode });
+    expect(verified.body.session.currentStep).toBe('CONSENT');
+    const accepted = await agent
+      .post(`/kyc/sessions/${id}/consent`)
+      .send({ versionId: consent.id, accepted: true });
+    expect(accepted.body.session.status).toBe('CONSENT_GIVEN');
+
+    const aadhaar = '23412341234' + verhoeffGenerate('23412341234');
+    const patched = await agent.patch(`/kyc/sessions/${id}/personal`).send({
+      fullName: 'Rahul Kumar Sharma',
+      dateOfBirth: '1990-05-15',
+      gender: 'MALE',
+      fatherName: 'Suresh Sharma',
+      address: { line1: '12 MG Road', city: 'Bengaluru', state: 'Karnataka', pincode: '560038' },
+      panNumber: 'ABCDE1234F',
+      aadhaarNumber: aadhaar,
+      occupation: 'SALARIED',
+      annualIncome: '5_TO_10_LAKH',
+    });
+    expect(patched.text).not.toContain(aadhaar);
+    const submitted = await agent.post(`/kyc/sessions/${id}/personal/submit`);
+    expect(submitted.body.session.status).toBe('PERSONAL_SUBMITTED');
+
+    const row = await prisma.kycSession.findUniqueOrThrow({ where: { id } });
+    const raw = JSON.stringify(row.personalDetails);
+    expect(raw).not.toContain(aadhaar);
+    expect(raw).not.toContain('ABCDE1234F');
+    expect(raw).toContain('enc:v1:');
+    expect(row.consentVersionId).toBe(consent.id);
+    expect(row.completedSteps).toEqual(['CONTACT', 'CONSENT', 'PERSONAL']);
+
+    const audits = await prisma.auditLog.findMany({
+      where: { entityId: id },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(audits.map((a) => a.action)).toEqual([
+      'kyc.session.created',
+      'kyc.otp.sent',
+      'kyc.otp.verified',
+      'kyc.session.transitioned',
+      'kyc.consent.accepted',
+      'kyc.personal.patched',
+      'kyc.session.transitioned',
+      'kyc.personal.submitted',
+    ]);
+    const dump = JSON.stringify(audits);
+    for (const secret of [aadhaar, 'ABCDE1234F', 'Rahul', sent.body.devCode])
+      expect(dump).not.toContain(secret);
   });
 
   it('audit_logs is append-only at the DB level', async () => {

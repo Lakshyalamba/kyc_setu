@@ -8,6 +8,7 @@ const valid = {
   S3_ACCESS_KEY: 'a',
   S3_SECRET_KEY: 'b',
   JWT_SECRET: 'x'.repeat(32),
+  PII_ENCRYPTION_KEY: 'ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDEyMzQ=',
   WEB_ORIGIN: 'http://localhost:3000',
   AI_SERVICE_URL: 'http://localhost:8000',
 };

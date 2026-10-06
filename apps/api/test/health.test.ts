@@ -1,10 +1,15 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createFakeStore, testEnv } from './helpers.js';
+import { createFakeKycStore, createFakeStore, testEnv } from './helpers.js';
 
 const app = (probe: Parameters<typeof createApp>[0]['healthProbe']) =>
-  createApp({ env: testEnv(), store: createFakeStore(), healthProbe: probe });
+  createApp({
+    env: testEnv(),
+    store: createFakeStore(),
+    kycStore: createFakeKycStore([]),
+    healthProbe: probe,
+  });
 
 describe('/healthz', () => {
   it('200 with queue status when dependencies are up', async () => {
