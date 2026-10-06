@@ -1,4 +1,5 @@
-export const ROLES = ['CUSTOMER', 'OFFICER', 'OFFICER_LEAD', 'AUDITOR'] as const;
+export const ROLES = ['CUSTOMER', 'OFFICER', 'OFFICER_LEAD', 'AUDITOR', 'AI_SERVICE'] as const;
+export const USER_KINDS = ['HUMAN', 'SERVICE'] as const;
 export const OFFICER_ROLES = ['OFFICER', 'OFFICER_LEAD', 'AUDITOR'] as const;
 
 export const KYC_STATUSES = [
@@ -6,6 +7,7 @@ export const KYC_STATUSES = [
   'CONSENT_GIVEN',
   'PERSONAL_SUBMITTED',
   'DOCS_UPLOADED',
+  'DOCS_EXTRACTED',
   'SELFIE_CAPTURED',
   'SUBMITTED',
   'UNDER_REVIEW',
@@ -24,7 +26,16 @@ export const KYC_STEPS = [
   'REVIEW',
 ] as const;
 export const DOCUMENT_TYPES = ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK', 'SIGNATURE'] as const;
-export const SIGNED_URL_PURPOSES = ['CUSTOMER_PREVIEW', 'OFFICER_REVIEW'] as const;
+export const SIGNED_URL_PURPOSES = ['CUSTOMER_PREVIEW', 'OFFICER_REVIEW', 'AI_INTERNAL'] as const;
+export const EXTRACTION_STATUSES = [
+  'PENDING',
+  'OK',
+  'LOW_QUALITY',
+  'PARSE_FAILED',
+  'WRONG_DOCUMENT',
+  'ERROR',
+  'SKIPPED',
+] as const;
 export const OTP_CHANNELS = ['SMS', 'EMAIL'] as const;
 
 export const ACTOR_TYPES = ['USER', 'SYSTEM', 'AI'] as const;
@@ -62,6 +73,11 @@ export const AUDIT_ACTIONS = {
   DOCUMENT_SIGNED_URL_ISSUED: 'document.signed_url_issued',
   DOCUMENT_VIEWED: 'document.viewed',
   KYC_DOCUMENTS_SUBMITTED: 'kyc.documents.submitted',
+  EXTRACTION_JOB_ENQUEUED: 'extraction.job_enqueued',
+  EXTRACTION_COMPLETED: 'extraction.completed',
+  EXTRACTION_ATTEMPT_FAILED: 'extraction.attempt_failed',
+  EXTRACTION_FAILED: 'extraction.failed',
+  EXTRACTION_SESSION_FLAGGED: 'extraction.session_flagged',
 } as const;
 
 export const KYC_SESSION_TTL_HOURS = 24;
@@ -100,3 +116,27 @@ export const UPLOAD_FAILURE_REASONS = [
  * rule. A later phase sets a value here and applies it as an object-store lifecycle policy.
  */
 export const DOCUMENT_RETENTION_DAYS: number | null = null;
+
+/** Statuses an extraction can end in that mean "the AI service ran" (as opposed to an infrastructure error). */
+export const EXTRACTION_FINISHED_STATUSES = [
+  'OK',
+  'LOW_QUALITY',
+  'PARSE_FAILED',
+  'WRONG_DOCUMENT',
+  'SKIPPED',
+] as const;
+
+/** Session flags set from extraction outcomes, for officers to act on in a later phase. */
+export const EXTRACTION_FLAG_BY_STATUS = {
+  LOW_QUALITY: 'EXTRACTION_LOW_QUALITY',
+  PARSE_FAILED: 'EXTRACTION_PARSE_FAILED',
+  WRONG_DOCUMENT: 'EXTRACTION_WRONG_DOCUMENT',
+  ERROR: 'EXTRACTION_ERROR',
+} as const;
+
+/** Raw OCR text is kept this long before the (not yet scheduled) sweeper may delete it. */
+export const DEFAULT_OCR_RAW_TEXT_RETENTION_DAYS = 90;
+export const AI_INTERNAL_LINK_TTL_SECONDS = 60;
+
+/** The non-human account the verification worker acts as (seeded; it has no usable password). */
+export const AI_SERVICE_EMAIL = 'ai-service@kycsetu.internal';

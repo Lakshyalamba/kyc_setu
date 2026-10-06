@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ACTOR_TYPES,
   DOCUMENT_TYPES,
+  EXTRACTION_STATUSES,
   KYC_STATUSES,
   SIGNED_URL_PURPOSES,
   KYC_STEPS,
@@ -15,6 +16,7 @@ export const kycStepSchema = z.enum(KYC_STEPS);
 export const otpChannelSchema = z.enum(OTP_CHANNELS);
 export const documentTypeSchema = z.enum(DOCUMENT_TYPES);
 export const signedUrlPurposeSchema = z.enum(SIGNED_URL_PURPOSES);
+export const extractionStatusSchema = z.enum(EXTRACTION_STATUSES);
 export const actorTypeSchema = z.enum(ACTOR_TYPES);
 
 export const errorResponseSchema = z.object({
@@ -33,3 +35,4 @@ export type KycStatus = z.infer<typeof kycStatusSchema>;
 export type KycStep = z.infer<typeof kycStepSchema>;
 export type DocumentType = z.infer<typeof documentTypeSchema>;
 export type SignedUrlPurpose = z.infer<typeof signedUrlPurposeSchema>;
+export type ExtractionStatus = z.infer<typeof extractionStatusSchema>;

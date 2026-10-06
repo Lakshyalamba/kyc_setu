@@ -30,7 +30,8 @@ const VALID: [KycStatus, KycStatus][] = [
   ['DRAFT', 'CONSENT_GIVEN'],
   ['CONSENT_GIVEN', 'PERSONAL_SUBMITTED'],
   ['PERSONAL_SUBMITTED', 'DOCS_UPLOADED'],
-  ['DOCS_UPLOADED', 'SELFIE_CAPTURED'],
+  ['DOCS_UPLOADED', 'DOCS_EXTRACTED'],
+  ['DOCS_EXTRACTED', 'SELFIE_CAPTURED'],
   ['SELFIE_CAPTURED', 'SUBMITTED'],
   ['SUBMITTED', 'UNDER_REVIEW'],
   ['UNDER_REVIEW', 'APPROVED'],
@@ -41,6 +42,7 @@ const VALID: [KycStatus, KycStatus][] = [
   ['CONSENT_GIVEN', 'EXPIRED'],
   ['PERSONAL_SUBMITTED', 'EXPIRED'],
   ['DOCS_UPLOADED', 'EXPIRED'],
+  ['DOCS_EXTRACTED', 'EXPIRED'],
   ['SELFIE_CAPTURED', 'EXPIRED'],
 ];
 
@@ -65,6 +67,9 @@ describe('state machine', () => {
     const bad: [KycStatus, KycStatus][] = [
       ['DRAFT', 'PERSONAL_SUBMITTED'], // skipping consent
       ['DRAFT', 'SUBMITTED'],
+      ['DOCS_UPLOADED', 'SELFIE_CAPTURED'], // must wait for extraction
+      ['DOCS_EXTRACTED', 'DOCS_UPLOADED'],
+      ['PERSONAL_SUBMITTED', 'DOCS_EXTRACTED'],
       ['CONSENT_GIVEN', 'DRAFT'], // no going backwards
       ['SUBMITTED', 'DOCS_UPLOADED'],
       ['APPROVED', 'UNDER_REVIEW'], // terminal

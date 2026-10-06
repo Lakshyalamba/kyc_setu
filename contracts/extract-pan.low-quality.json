@@ -1,0 +1,29 @@
+{
+  "documentId": "3f2c9a1e-5b7d-4e8a-9c01-2d4f6a8b0c13",
+  "documentType": "PAN",
+  "status": "low_quality",
+  "quality": {
+    "sharpness": 31.2,
+    "brightness": 150.0,
+    "resolution": {
+      "w": 1280,
+      "h": 806
+    },
+    "deskewAngle": 0.0,
+    "warnings": ["LOW_SHARPNESS (31.2 < 50)"]
+  },
+  "fields": {},
+  "rawText": "",
+  "modelVersions": {
+    "ocr": "paddleocr-3.4.1",
+    "ocrModels": "PP-OCRv5 det+rec (en)",
+    "preprocessor": "opencv-4.10.0"
+  },
+  "timings": {
+    "fetchMs": 40,
+    "preprocessMs": 30,
+    "ocrMs": 0,
+    "parseMs": 0,
+    "totalMs": 75
+  }
+}

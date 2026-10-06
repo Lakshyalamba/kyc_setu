@@ -2,7 +2,7 @@
  * KYC session state machine. Pure functions only (no I/O) so the API, tests and, later, the
  * officer dashboard all share one definition of what is allowed.
  *
- *   DRAFT -> CONSENT_GIVEN -> PERSONAL_SUBMITTED -> DOCS_UPLOADED -> SELFIE_CAPTURED -> SUBMITTED
+ *   DRAFT -> CONSENT_GIVEN -> PERSONAL_SUBMITTED -> DOCS_UPLOADED -> DOCS_EXTRACTED -> SELFIE_CAPTURED -> SUBMITTED
  *     -> UNDER_REVIEW -> APPROVED | REJECTED | RESUBMIT_REQUESTED -> DOCS_UPLOADED (back-edge)
  *   Any state before SUBMITTED -> EXPIRED (only once `expiresAt` has passed).
  */
@@ -40,6 +40,7 @@ const PRE_SUBMITTED: KycStatus[] = [
   'CONSENT_GIVEN',
   'PERSONAL_SUBMITTED',
   'DOCS_UPLOADED',
+  'DOCS_EXTRACTED',
   'SELFIE_CAPTURED',
 ];
 
@@ -56,7 +57,9 @@ export const transitions: Transition[] = [
   { from: 'DRAFT', to: ['CONSENT_GIVEN'], guard: contactVerified },
   { from: 'CONSENT_GIVEN', to: ['PERSONAL_SUBMITTED'], guard: hasConsent },
   { from: 'PERSONAL_SUBMITTED', to: ['DOCS_UPLOADED'], guard: hasAllDocuments },
-  { from: 'DOCS_UPLOADED', to: ['SELFIE_CAPTURED'] },
+  // Fired by the verification worker once every document has a finished extraction.
+  { from: 'DOCS_UPLOADED', to: ['DOCS_EXTRACTED'] },
+  { from: 'DOCS_EXTRACTED', to: ['SELFIE_CAPTURED'] },
   { from: 'SELFIE_CAPTURED', to: ['SUBMITTED'] },
   { from: 'SUBMITTED', to: ['UNDER_REVIEW'] },
   { from: 'UNDER_REVIEW', to: ['APPROVED', 'REJECTED', 'RESUBMIT_REQUESTED'] },

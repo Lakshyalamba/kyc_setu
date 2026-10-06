@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
-import type { Readable } from 'node:stream';
+import { Readable } from 'node:stream';
 import type { KmsClient } from './kms.js';
 
 /** Everything needed (besides the KMS) to decrypt one object. Stored alongside the object's row. */
@@ -79,6 +79,15 @@ export async function decryptToBuffer(
   const chunks: Buffer[] = [];
   for await (const chunk of plain) chunks.push(chunk as Buffer);
   return Buffer.concat(chunks);
+}
+
+/** Encrypts a small in-memory payload (e.g. OCR text) with the same envelope scheme as documents. */
+export async function encryptBuffer(
+  plaintext: Buffer,
+  kms: KmsClient,
+): Promise<{ ciphertext: Buffer; meta: EnvelopeMeta }> {
+  const { ciphertext, meta } = await encryptStream(Readable.from([plaintext]), kms);
+  return { ciphertext: await readAll(ciphertext), meta: await meta };
 }
 
 /** Convenience for tests and small payloads. */

@@ -1,0 +1,50 @@
+{
+  "documentId": "3f2c9a1e-5b7d-4e8a-9c01-2d4f6a8b0c13",
+  "documentType": "AADHAAR_BACK",
+  "status": "ok",
+  "quality": {
+    "sharpness": 312.4,
+    "brightness": 168.2,
+    "resolution": {
+      "w": 1280,
+      "h": 806
+    },
+    "deskewAngle": -1.3,
+    "warnings": []
+  },
+  "fields": {
+    "address": {
+      "value": "S/O Suresh Kumar Sharma, 12 MG Road, Indiranagar, Bengaluru, Karnataka",
+      "confidence": 0.89,
+      "bbox": {
+        "x": 0.1,
+        "y": 0.25,
+        "w": 0.55,
+        "h": 0.3
+      }
+    },
+    "pincode": {
+      "value": "560038",
+      "confidence": 0.97,
+      "bbox": {
+        "x": 0.3,
+        "y": 0.52,
+        "w": 0.14,
+        "h": 0.06
+      }
+    }
+  },
+  "rawText": "Address:\nS/O Suresh Kumar Sharma\n12 MG Road, Indiranagar\nBengaluru, Karnataka - 560038",
+  "modelVersions": {
+    "ocr": "paddleocr-3.4.1",
+    "ocrModels": "PP-OCRv5 det+rec (en)",
+    "preprocessor": "opencv-4.10.0"
+  },
+  "timings": {
+    "fetchMs": 41,
+    "preprocessMs": 38,
+    "ocrMs": 1840,
+    "parseMs": 3,
+    "totalMs": 1930
+  }
+}

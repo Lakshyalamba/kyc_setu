@@ -1,0 +1,29 @@
+{
+  "documentId": "3f2c9a1e-5b7d-4e8a-9c01-2d4f6a8b0c13",
+  "documentType": "AADHAAR_FRONT",
+  "status": "wrong_document",
+  "quality": {
+    "sharpness": 312.4,
+    "brightness": 168.2,
+    "resolution": {
+      "w": 1280,
+      "h": 806
+    },
+    "deskewAngle": -1.3,
+    "warnings": []
+  },
+  "fields": {},
+  "rawText": "INCOME TAX DEPARTMENT\nGOVT. OF INDIA\nABCDE1234F",
+  "modelVersions": {
+    "ocr": "paddleocr-3.4.1",
+    "ocrModels": "PP-OCRv5 det+rec (en)",
+    "preprocessor": "opencv-4.10.0"
+  },
+  "timings": {
+    "fetchMs": 41,
+    "preprocessMs": 38,
+    "ocrMs": 1840,
+    "parseMs": 3,
+    "totalMs": 1930
+  }
+}

@@ -1,7 +1,13 @@
 import { randomBytes } from 'node:crypto';
 import { Readable } from 'node:stream';
 import { describe, expect, it } from 'vitest';
-import { decryptStream, decryptToBuffer, encryptStream, readAll } from './envelope.js';
+import {
+  decryptStream,
+  decryptToBuffer,
+  encryptBuffer,
+  encryptStream,
+  readAll,
+} from './envelope.js';
 import { AwsKmsClient, LocalKmsClient } from './kms.js';
 
 const kms = () => new LocalKmsClient(randomBytes(32));
@@ -97,6 +103,16 @@ describe('envelope encryption', () => {
     });
     const { ciphertext } = await encryptStream(failing, kms());
     await expect(readAll(ciphertext)).rejects.toThrow('socket hang up');
+  });
+});
+
+describe('encryptBuffer', () => {
+  it('round-trips small payloads, including non-ASCII text', async () => {
+    const k = kms();
+    const text = Buffer.from('पता: 12 MG Road\n2341 2341 2346');
+    const { ciphertext, meta } = await encryptBuffer(text, k);
+    expect(ciphertext.includes(Buffer.from('MG Road'))).toBe(false);
+    expect((await decryptToBuffer(Readable.from([ciphertext]), meta, k)).equals(text)).toBe(true);
   });
 });
 
