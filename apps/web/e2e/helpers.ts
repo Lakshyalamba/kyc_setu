@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { expect, type Page } from '@playwright/test';
+import path from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
+import { prisma } from './db';
 import { verhoeffGenerate } from '@kyc-setu/shared';
 
 export const PASSWORD = 'password123';
@@ -62,4 +64,52 @@ export async function fillPersonalAndSubmit(page: Page) {
   await page.getByLabel('Annual income').selectOption('5_TO_10_LAKH');
   await page.getByRole('button', { name: 'Save & Continue' }).click();
   await expect(page).toHaveURL(/\/kyc\/documents$/);
+}
+
+// ---- OCR / AI specs ----------------------------------------------------------------------------------
+
+const SAMPLES = path.resolve(__dirname, '../../../scripts/sample-docs');
+export const sample = (name: string) => path.join(SAMPLES, name);
+
+async function aiIsUp(): Promise<boolean> {
+  try {
+    const res = await fetch('http://localhost:8000/healthz', { signal: AbortSignal.timeout(3000) });
+    return res.ok && ((await res.json()) as { status?: string }).status === 'ok';
+  } catch {
+    return false;
+  }
+}
+
+/** Call from `test.beforeAll`: skips with a clear message when the AI service isn't running (E2E_REQUIRE_AI=1 fails instead). */
+export async function requireAiService() {
+  const up = await aiIsUp();
+  if (!up && process.env['E2E_REQUIRE_AI'] === '1')
+    throw new Error('AI service is not running on :8000 (make ai)');
+  test.skip(
+    !up,
+    'AI service is not running on :8000. Start it with `make ai` to run the OCR specs.',
+  );
+}
+
+/** Phases 1 and 2 up to (and including) "Continue to Selfie", with the given files in the slots. */
+export async function submitDocuments(
+  page: Page,
+  email: string,
+  files: { pan: string; front: string; back: string },
+) {
+  await signUp(page, email);
+  await reachPersonalStep(page, email);
+  await fillPersonalAndSubmit(page);
+  await page.getByTestId('file-input-PAN').setInputFiles(sample(files.pan));
+  await page.getByTestId('file-input-AADHAAR_FRONT').setInputFiles(sample(files.front));
+  await page.getByTestId('file-input-AADHAAR_BACK').setInputFiles(sample(files.back));
+  await page.getByRole('tab', { name: 'upload' }).click();
+  await page.getByTestId('file-input-SIGNATURE').setInputFiles(sample('signature.png'));
+  for (const type of ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK', 'SIGNATURE']) {
+    await expect(page.getByTestId(`slot-${type}`)).toHaveAttribute('data-status', 'uploaded');
+  }
+  await page.getByRole('button', { name: 'Continue to Selfie' }).click();
+  await expect(page).toHaveURL(/\/kyc\/selfie$/);
+  const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+  return prisma.kycSession.findFirstOrThrow({ where: { userId: user.id } });
 }
