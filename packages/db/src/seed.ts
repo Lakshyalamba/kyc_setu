@@ -3,6 +3,7 @@ import { CONSENT_V1_BODY, CONSENT_V1_VERSION } from './consent-v1.js';
 import { prisma, type Role } from './index.js';
 
 const PASSWORD = 'password123'; // local development only
+const AI_SERVICE_EMAIL = 'ai-service@kycsetu.internal'; // keep in sync with @kyc-setu/shared AI_SERVICE_EMAIL
 const USERS: { email: string; role: Role }[] = [
   { email: 'officer@kycsetu.dev', role: 'OFFICER' },
   { email: 'auditor@kycsetu.dev', role: 'AUDITOR' },
@@ -35,6 +36,20 @@ for (const { email, role } of USERS) {
   });
   console.log(`+ ${email} (${role})`);
 }
+
+// Non-human account the verification worker acts as when minting internal document links.
+// It has no usable password hash, so it can never log in through any route.
+const serviceAccount = await prisma.user.upsert({
+  where: { email: AI_SERVICE_EMAIL },
+  update: { role: 'AI_SERVICE', kind: 'SERVICE' },
+  create: {
+    email: AI_SERVICE_EMAIL,
+    role: 'AI_SERVICE',
+    kind: 'SERVICE',
+    passwordHash: '!disabled',
+  },
+});
+console.log(`+ ${serviceAccount.email} (service account)`);
 
 await prisma.consentVersion.upsert({
   where: { version: CONSENT_V1_VERSION },

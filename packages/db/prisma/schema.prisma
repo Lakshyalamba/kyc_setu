@@ -12,6 +12,13 @@ enum Role {
   OFFICER
   OFFICER_LEAD
   AUDITOR
+  /// Non-human account used by the verification worker to mint internal document links.
+  AI_SERVICE
+}
+
+enum UserKind {
+  HUMAN
+  SERVICE
 }
 
 enum KycStatus {
@@ -19,6 +26,7 @@ enum KycStatus {
   CONSENT_GIVEN
   PERSONAL_SUBMITTED
   DOCS_UPLOADED
+  DOCS_EXTRACTED
   SELFIE_CAPTURED
   SUBMITTED
   UNDER_REVIEW
@@ -53,6 +61,19 @@ enum DocumentType {
 enum SignedUrlPurpose {
   CUSTOMER_PREVIEW
   OFFICER_REVIEW
+  /// Short-lived link for the AI service to read a document; only issued to a SERVICE user.
+  AI_INTERNAL
+}
+
+enum ExtractionStatus {
+  PENDING
+  OK
+  LOW_QUALITY
+  PARSE_FAILED
+  WRONG_DOCUMENT
+  ERROR
+  /// Nothing to extract (e.g. a signature). Counts as finished.
+  SKIPPED
 }
 
 enum ActorType {
@@ -66,6 +87,7 @@ model User {
   email        String   @unique
   passwordHash String
   role         Role     @default(CUSTOMER)
+  kind         UserKind @default(HUMAN)
   createdAt    DateTime @default(now())
 
   kycSessions   KycSession[]
@@ -85,6 +107,8 @@ model KycSession {
 
   currentStep    KycStep   @default(CONTACT)
   completedSteps KycStep[] @default([])
+  /// Problems for officers to look at, e.g. EXTRACTION_WRONG_DOCUMENT, EXTRACTION_ERROR.
+  flags          String[]  @default([])
 
   /// Sensitive fields (panNumber, aadhaarNumber) are stored AES-256-GCM encrypted; see packages/shared pii crypto.
   personalDetails Json? @db.JsonB
@@ -162,11 +186,50 @@ model Document {
   replacedBy      Document?        @relation("DocumentReplacement", fields: [replacedById], references: [id], onDelete: Restrict)
   replaces        Document[]       @relation("DocumentReplacement")
   signedUrlIssues SignedUrlIssue[]
+  extraction      Extraction?
 
   // Partial unique index (sessionId, type) WHERE replacedById IS NULL and a DEFERRABLE self-FK
   // live in the migration SQL; Prisma can't express them.
   @@index([sessionId, type])
   @@map("documents")
+}
+
+/// Result of running OCR/parsing on one document. Written only by the Node worker; the AI service
+/// is a stateless function. Sensitive values never sit in plaintext: the PAN number inside `fields`
+/// is field-encrypted, the full OCR text is envelope-encrypted, and the indexed columns hold a keyed
+/// hash (PAN) and the last four digits (Aadhaar).
+model Extraction {
+  id         String           @id @default(uuid()) @db.Uuid
+  documentId String           @unique @db.Uuid
+  status     ExtractionStatus @default(PENDING)
+
+  fields         Json? @db.JsonB
+  qualityMetrics Json? @db.JsonB
+  modelVersions  Json? @db.JsonB
+  timings        Json? @db.JsonB
+
+  /// Full OCR text, AES-256-GCM envelope encrypted (same scheme as documents).
+  rawTextEncrypted Bytes?
+  encryptedDataKey Bytes?
+  kmsKeyId         String?
+  iv               Bytes?
+  authTag          Bytes?
+
+  /// HMAC-SHA256(PAN) for equality checks without storing the PAN in the clear.
+  panNumberHmac      String?
+  aadhaarNumberLast4 String?
+
+  attempt      Int       @default(0)
+  errorMessage String?
+  createdAt    DateTime  @default(now())
+  completedAt  DateTime?
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+
+  @@index([panNumberHmac])
+  @@index([aadhaarNumberLast4])
+  @@index([status])
+  @@map("extractions")
 }
 
 /// One row per signed-URL grant. The row id is the public part of the URL token.
