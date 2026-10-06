@@ -1,0 +1,60 @@
+{
+  "now": "2026-10-10T00:00:00.000Z",
+  "session": {
+    "id": "session-1",
+    "userId": "user-1"
+  },
+  "personal": {
+    "fullName": "Raul Kumr Sarma",
+    "dateOfBirth": "1990-05-15"
+  },
+  "extractions": {
+    "PAN": {
+      "status": "OK",
+      "name": {
+        "value": "RAHUL KUMAR SHARMA",
+        "confidence": 0.97
+      },
+      "dob": {
+        "value": "1990-05-15",
+        "confidence": 0.98
+      },
+      "panNumber": {
+        "confidence": 0.99,
+        "formatValid": true
+      },
+      "warnings": []
+    },
+    "AADHAAR_FRONT": {
+      "status": "OK",
+      "name": {
+        "value": "RAHUL KUMAR SHARMA",
+        "confidence": 0.95
+      },
+      "dob": {
+        "value": "1990-05-15",
+        "confidence": 0.96
+      },
+      "aadhaarNumber": {
+        "confidence": 0.98,
+        "checksumValid": true
+      },
+      "warnings": []
+    },
+    "AADHAAR_BACK": {
+      "status": "OK",
+      "warnings": []
+    }
+  },
+  "comparisons": {
+    "panTypedMatchesExtracted": true,
+    "aadhaarTypedMatchesExtracted": true
+  },
+  "faceMatch": {
+    "score": 0.92
+  },
+  "liveness": {
+    "passed": true
+  },
+  "priorApprovedMatches": []
+}

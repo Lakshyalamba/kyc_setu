@@ -1,0 +1,36 @@
+{
+  "score": 20,
+  "band": "MEDIUM",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "pan-form-mismatch",
+      "category": "identity",
+      "penalty": 20,
+      "reason": "The PAN typed by the customer does not match the PAN on the card"
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}

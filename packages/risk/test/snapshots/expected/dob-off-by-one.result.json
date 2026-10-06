@@ -1,0 +1,47 @@
+{
+  "score": 35,
+  "band": "MEDIUM",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "dob-mismatch-form-docs",
+      "category": "identity",
+      "penalty": 15,
+      "reason": "Date of birth typed by the customer differs from the one on a document",
+      "details": {
+        "documents": [
+          "AADHAAR_FRONT"
+        ]
+      }
+    },
+    {
+      "ruleId": "dob-mismatch-pan-aadhaar",
+      "category": "identity",
+      "penalty": 20,
+      "reason": "Date of birth on the PAN and on the Aadhaar are different days"
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}

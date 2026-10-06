@@ -1,0 +1,40 @@
+{
+  "score": 15,
+  "band": "MEDIUM",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "name-mismatch-form-pan",
+      "category": "identity",
+      "penalty": 15,
+      "reason": "Name typed by the customer and name on the PAN differ (similarity 0.8333, minimum 0.85)",
+      "details": {
+        "similarity": 0.8333,
+        "threshold": 0.85
+      }
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}

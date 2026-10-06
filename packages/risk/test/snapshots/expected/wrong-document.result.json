@@ -1,0 +1,54 @@
+{
+  "score": 30,
+  "band": "MEDIUM",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "extraction-unusable",
+      "category": "data_integrity",
+      "penalty": 30,
+      "reason": "1 document(s) could not be used (wrong document, unreadable, or processing failed)",
+      "details": {
+        "documents": {
+          "AADHAAR_FRONT": "WRONG_DOCUMENT"
+        }
+      }
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [
+    {
+      "ruleId": "aadhaar-checksum-invalid",
+      "reason": "No Aadhaar number was extracted"
+    },
+    {
+      "ruleId": "aadhaar-form-mismatch",
+      "reason": "The typed Aadhaar number could not be compared with the extracted one"
+    },
+    {
+      "ruleId": "dob-mismatch-pan-aadhaar",
+      "reason": "A valid date of birth was not extracted from both the PAN and the Aadhaar"
+    },
+    {
+      "ruleId": "name-mismatch-pan-aadhaar",
+      "reason": "The name was not extracted from both the PAN and the Aadhaar"
+    }
+  ],
+  "engineVersion": "1.0.0"
+}

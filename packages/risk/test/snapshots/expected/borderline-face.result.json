@@ -1,0 +1,43 @@
+{
+  "score": 15,
+  "band": "MEDIUM",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "face-match-borderline",
+      "category": "biometric",
+      "penalty": 15,
+      "reason": "The selfie only borderline matches the photo on the ID (score 0.7); a human look is recommended",
+      "details": {
+        "score": 0.7,
+        "range": [
+          0.65,
+          0.75
+        ]
+      }
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}

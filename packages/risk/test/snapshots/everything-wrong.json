@@ -1,0 +1,68 @@
+{
+  "now": "2026-10-10T00:00:00.000Z",
+  "session": {
+    "id": "session-1",
+    "userId": "user-1"
+  },
+  "personal": {
+    "fullName": "Somebody Else",
+    "dateOfBirth": "1990-05-15"
+  },
+  "extractions": {
+    "PAN": {
+      "status": "OK",
+      "name": {
+        "value": "RAHUL KUMAR SHARMA",
+        "confidence": 0.3
+      },
+      "dob": {
+        "value": "1990-05-15",
+        "confidence": 0.98
+      },
+      "panNumber": {
+        "confidence": 0.99,
+        "formatValid": false
+      },
+      "warnings": []
+    },
+    "AADHAAR_FRONT": {
+      "status": "OK",
+      "name": {
+        "value": "RAHUL KUMAR SHARMA",
+        "confidence": 0.95
+      },
+      "dob": {
+        "value": "1990-05-15",
+        "confidence": 0.96
+      },
+      "aadhaarNumber": {
+        "confidence": 0.98,
+        "checksumValid": false
+      },
+      "warnings": []
+    },
+    "AADHAAR_BACK": {
+      "status": "LOW_QUALITY",
+      "warnings": []
+    }
+  },
+  "comparisons": {
+    "panTypedMatchesExtracted": false,
+    "aadhaarTypedMatchesExtracted": false
+  },
+  "faceMatch": {
+    "score": 0.1
+  },
+  "liveness": {
+    "passed": false
+  },
+  "priorApprovedMatches": [
+    {
+      "userId": "user-2",
+      "sessionId": "session-0",
+      "panMatch": true,
+      "aadhaarLast4Match": true,
+      "aadhaarFullMatch": true
+    }
+  ]
+}

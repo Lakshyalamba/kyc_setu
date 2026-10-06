@@ -1,0 +1,46 @@
+{
+  "score": 40,
+  "band": "HIGH",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "duplicate-pan-approved",
+      "category": "duplicate",
+      "penalty": 40,
+      "reason": "This PAN was already used in an approved KYC by a different customer",
+      "details": {
+        "sessionIds": [
+          "session-0"
+        ]
+      }
+    }
+  ],
+  "bandFloors": [
+    {
+      "ruleId": "duplicate-pan-approved",
+      "band": "HIGH"
+    }
+  ],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}

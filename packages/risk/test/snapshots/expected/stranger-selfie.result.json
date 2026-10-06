@@ -1,0 +1,45 @@
+{
+  "score": 35,
+  "band": "HIGH",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "face-match-below-threshold",
+      "category": "biometric",
+      "penalty": 35,
+      "reason": "The selfie does not match the photo on the ID (score 0.21, minimum 0.65)",
+      "details": {
+        "score": 0.21,
+        "threshold": 0.65
+      }
+    }
+  ],
+  "bandFloors": [
+    {
+      "ruleId": "face-match-below-threshold",
+      "band": "HIGH"
+    }
+  ],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}

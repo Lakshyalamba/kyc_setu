@@ -1,0 +1,46 @@
+{
+  "score": 100,
+  "band": "HIGH",
+  "rawBand": "HIGH",
+  "hardFail": true,
+  "triggeredRules": [
+    {
+      "ruleId": "age-ineligible",
+      "category": "data_integrity",
+      "penalty": 100,
+      "reason": "The date of birth implies an age under 18",
+      "details": {
+        "youngestSource": "typed",
+        "ageYears": 16,
+        "minimum": 18
+      }
+    }
+  ],
+  "bandFloors": [
+    {
+      "ruleId": "age-ineligible",
+      "band": "HIGH"
+    }
+  ],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}

@@ -1,0 +1,138 @@
+{
+  "score": 100,
+  "band": "HIGH",
+  "rawBand": "HIGH",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "aadhaar-checksum-invalid",
+      "category": "data_integrity",
+      "penalty": 20,
+      "reason": "The Aadhaar number read from the card fails its Verhoeff checksum"
+    },
+    {
+      "ruleId": "aadhaar-form-mismatch",
+      "category": "identity",
+      "penalty": 20,
+      "reason": "The Aadhaar number typed by the customer does not match the Aadhaar on the card"
+    },
+    {
+      "ruleId": "document-quality-poor",
+      "category": "quality",
+      "penalty": 10,
+      "reason": "1 document(s) were too blurry or small to read",
+      "details": {
+        "documents": [
+          "AADHAAR_BACK"
+        ]
+      }
+    },
+    {
+      "ruleId": "duplicate-aadhaar-approved",
+      "category": "duplicate",
+      "penalty": 40,
+      "reason": "This Aadhaar number was already used in an approved KYC by a different customer",
+      "details": {
+        "sessionIds": [
+          "session-0"
+        ]
+      }
+    },
+    {
+      "ruleId": "duplicate-pan-approved",
+      "category": "duplicate",
+      "penalty": 40,
+      "reason": "This PAN was already used in an approved KYC by a different customer",
+      "details": {
+        "sessionIds": [
+          "session-0"
+        ]
+      }
+    },
+    {
+      "ruleId": "face-match-below-threshold",
+      "category": "biometric",
+      "penalty": 35,
+      "reason": "The selfie does not match the photo on the ID (score 0.1, minimum 0.65)",
+      "details": {
+        "score": 0.1,
+        "threshold": 0.65
+      }
+    },
+    {
+      "ruleId": "liveness-failed",
+      "category": "biometric",
+      "penalty": 25,
+      "reason": "The liveness (motion) check failed"
+    },
+    {
+      "ruleId": "low-ocr-confidence",
+      "category": "quality",
+      "penalty": 10,
+      "reason": "1 critical field(s) were read with low confidence (below 0.6)",
+      "details": {
+        "fields": [
+          "PAN.name"
+        ],
+        "lowestConfidence": 0.3
+      }
+    },
+    {
+      "ruleId": "name-mismatch-form-pan",
+      "category": "identity",
+      "penalty": 15,
+      "reason": "Name typed by the customer and name on the PAN differ (similarity 0.0556, minimum 0.85)",
+      "details": {
+        "similarity": 0.0556,
+        "threshold": 0.85
+      }
+    },
+    {
+      "ruleId": "pan-form-mismatch",
+      "category": "identity",
+      "penalty": 20,
+      "reason": "The PAN typed by the customer does not match the PAN on the card"
+    },
+    {
+      "ruleId": "pan-format-invalid",
+      "category": "data_integrity",
+      "penalty": 15,
+      "reason": "The PAN number read from the card is not a valid PAN (AAAAA9999A)"
+    }
+  ],
+  "bandFloors": [
+    {
+      "ruleId": "duplicate-aadhaar-approved",
+      "band": "HIGH"
+    },
+    {
+      "ruleId": "duplicate-pan-approved",
+      "band": "HIGH"
+    },
+    {
+      "ruleId": "face-match-below-threshold",
+      "band": "HIGH"
+    }
+  ],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.0.0"
+}
