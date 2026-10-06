@@ -1,20 +1,41 @@
 [project]
 name = "kyc-setu-ai"
-version = "0.0.0"
-description = "KYC Setu AI service (Phase 0: deterministic stubs, no models)"
+version = "0.1.0"
+description = "KYC Setu AI service: OCR and field extraction for Indian identity documents"
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "httpx>=0.27",
+    "pydantic-settings>=2.4",
+    "pillow>=10",
+    "numpy>=1.26",
+    # OCR stack. paddleocr pulls in opencv-contrib-python, which is the only OpenCV we install
+    # (a second OpenCV wheel would shadow `cv2`).
+    "paddlepaddle>=3.0",
+    "paddleocr>=3.0",
+    # PDF page rasterisation (Apache-2.0/BSD; PyMuPDF is AGPL so it is deliberately not used).
+    "pypdfium2>=4",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "httpx>=0.27"]
+dev = ["pytest>=8"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
 filterwarnings = ["ignore::DeprecationWarning"]
+markers = [
+    "ocr: runs the real PaddleOCR models (slow, needs the weights); deselect with -m 'not ocr'",
+]
 
 [tool.uv]
 package = false
+# Resolve a single lockfile that installs on a Mac, and in a Linux container on either CPU
+# (PaddlePaddle ships different versions per platform, so without this uv may pick one that has no
+# wheel for the container).
+required-environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux' and platform_machine == 'aarch64'",
+    "sys_platform == 'linux' and platform_machine == 'x86_64'",
+]
