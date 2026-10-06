@@ -13,6 +13,10 @@
     "./storage": {
       "types": "./dist/storage/index.d.ts",
       "default": "./dist/storage/index.js"
+    },
+    "./pii": {
+      "types": "./dist/server/pii.d.ts",
+      "default": "./dist/server/pii.js"
     }
   },
   "scripts": {
