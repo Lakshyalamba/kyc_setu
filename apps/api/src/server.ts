@@ -1,6 +1,8 @@
 import { prisma } from '@kyc-setu/db';
 import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 import { createApp } from './app.js';
+import { assertBucketPrivate, createS3ObjectStore } from './modules/documents/object-store.js';
+import { createPrismaDocumentStore } from './modules/documents/store.js';
 import { loadEnv } from './config/env.js';
 import { createPrismaKycStore } from './modules/kyc/store.js';
 import { createPrismaAuthStore } from './modules/auth/store.js';
@@ -17,7 +19,8 @@ const s3 = createS3Client({
   secretAccessKey: env.S3_SECRET_KEY,
 });
 const bucketState = await ensureBucket(s3, env.S3_BUCKET);
-console.log(`[api] bucket "${env.S3_BUCKET}" ${bucketState}`);
+await assertBucketPrivate(s3, env.S3_BUCKET); // objects are reachable only through the API
+console.log(`[api] bucket "${env.S3_BUCKET}" ${bucketState}, no public access`);
 
 const redis = createRedis(env.REDIS_URL);
 const queue = createSystemQueue(redis);
@@ -25,6 +28,8 @@ const app = createApp({
   env,
   store: createPrismaAuthStore(prisma),
   kycStore: createPrismaKycStore(prisma),
+  documentStore: createPrismaDocumentStore(prisma),
+  objectStore: createS3ObjectStore(s3, env.S3_BUCKET),
   healthProbe: createHealthProbe({ prisma, redis, queue }),
 });
 

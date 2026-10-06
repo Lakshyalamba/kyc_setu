@@ -46,7 +46,7 @@ export interface KycServiceDeps {
   generateOtp?: () => string;
 }
 
-const toState = (s: SessionRecord): KycSessionState => ({
+export const toState = (s: SessionRecord): KycSessionState => ({
   id: s.id,
   userId: s.userId,
   status: s.status,
@@ -56,7 +56,7 @@ const toState = (s: SessionRecord): KycSessionState => ({
   expiresAt: s.expiresAt,
 });
 
-const patchFrom = (next: KycSessionState): SessionPatch => ({
+export const patchFrom = (next: KycSessionState): SessionPatch => ({
   status: next.status,
   currentStep: next.currentStep,
   completedSteps: next.completedSteps,
@@ -159,6 +159,8 @@ export function createKycService(deps: KycServiceDeps) {
 
   return {
     toDto,
+    loadOwned,
+    requireStatus,
 
     /** POST /kyc/sessions */
     async createOrGet(
