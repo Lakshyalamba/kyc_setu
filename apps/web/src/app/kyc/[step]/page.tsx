@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation';
 import { ComingNext } from '@/components/kyc/coming-next';
 import { ConsentStep } from '@/components/kyc/consent-step';
 import { ContactStep } from '@/components/kyc/contact-step';
+import { UnderReview } from '@/components/kyc/under-review';
 import { PersonalStep } from '@/components/kyc/personal-step';
 import { DocumentsStep } from '@/components/kyc/documents-step';
 import { getCurrentConsent, getSessionDocuments, requireStep } from '@/lib/kyc-server';
@@ -32,6 +33,8 @@ export default async function KycStepPage({ params }: { params: Promise<{ step: 
           initialDocuments={await getSessionDocuments(session.id)}
         />
       );
+    case 'REVIEW':
+      return <UnderReview />;
     default:
       return <ComingNext step={step} />;
   }
