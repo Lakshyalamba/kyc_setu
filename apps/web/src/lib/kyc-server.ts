@@ -3,6 +3,8 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import {
   consentCurrentResponseSchema,
+  documentListResponseSchema,
+  type DocumentDto,
   kycSessionResponseSchema,
   type ConsentVersionDto,
   type KycSessionDto,
@@ -48,4 +50,12 @@ export async function getCurrentConsent(): Promise<ConsentVersionDto> {
   const api = await serverApi();
   const { consent } = await api('/kyc/consent/current', { schema: consentCurrentResponseSchema });
   return consent;
+}
+
+export async function getSessionDocuments(sessionId: string): Promise<DocumentDto[]> {
+  const api = await serverApi();
+  const { documents } = await api(`/kyc/sessions/${sessionId}/documents`, {
+    schema: documentListResponseSchema,
+  });
+  return documents;
 }

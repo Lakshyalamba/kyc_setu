@@ -16,7 +16,7 @@ export class ApiError extends Error {
 }
 
 export interface ApiOptions<S extends z.ZodType> {
-  method?: 'GET' | 'POST' | 'PATCH';
+  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Response schema; the payload is validated before it reaches callers. */
   schema: S;
@@ -34,13 +34,15 @@ export function createApi(opts: { cookie?: string } = {}) {
     { method = 'GET', body, schema }: ApiOptions<S>,
   ): Promise<z.output<S>> {
     const headers: Record<string, string> = { Accept: 'application/json' };
-    if (body !== undefined) headers['Content-Type'] = 'application/json';
+    // FormData sets its own multipart Content-Type (with boundary).
+    const isForm = typeof FormData !== 'undefined' && body instanceof FormData;
+    if (body !== undefined && !isForm) headers['Content-Type'] = 'application/json';
     if (opts.cookie) headers['Cookie'] = opts.cookie;
 
     const res = await fetch(`${env.NEXT_PUBLIC_API_URL}${path}`, {
       method,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
       credentials: 'include',
       cache: 'no-store',
     });
