@@ -64,7 +64,7 @@ def banner(d: ImageDraw.ImageDraw) -> None:
     d.text((W // 2, H - 35), "SAMPLE DOCUMENT - NOT REAL", font=font(LATIN, 36), fill="white", anchor="mm")
 
 
-def make_pan() -> Image.Image:
+def make_pan(dob_display: str | None = None) -> Image.Image:
     img = card((205, 220, 235), 1)
     d = ImageDraw.Draw(img)
     d.rectangle([0, 0, W, 130], fill=(40, 70, 130))
@@ -78,13 +78,13 @@ def make_pan() -> Image.Image:
     d.text((60, 470), "Father's Name", font=label, fill=(50, 50, 50))
     d.text((60, 515), PERSON["fatherName"], font=value, fill=(10, 10, 10))
     d.text((60, 615), "Date of Birth", font=label, fill=(50, 50, 50))
-    d.text((60, 660), PERSON["dobDisplay"], font=value, fill=(10, 10, 10))
+    d.text((60, 660), dob_display or PERSON["dobDisplay"], font=value, fill=(10, 10, 10))
     d.rectangle([1000, 300, 1320, 640], outline=(90, 90, 90), width=3)  # photo placeholder
     banner(d)
     return img
 
 
-def make_aadhaar_front() -> Image.Image:
+def make_aadhaar_front(dob_display: str | None = None) -> Image.Image:
     img = card((250, 250, 245), 2)
     d = ImageDraw.Draw(img)
     d.rectangle([0, 0, W, 120], fill=(230, 120, 30))
@@ -93,7 +93,7 @@ def make_aadhaar_front() -> Image.Image:
     d.rectangle([60, 180, 330, 520], outline=(90, 90, 90), width=3)  # photo placeholder
     n = PERSON["aadhaarNumber"]
     d.text((380, 190), PERSON["name"].title(), font=font(LATIN, 56), fill=(10, 10, 10))
-    d.text((380, 290), "DOB: " + PERSON["dobDisplay"], font=font(LATIN, 48), fill=(10, 10, 10))
+    d.text((380, 290), "DOB: " + (dob_display or PERSON["dobDisplay"]), font=font(LATIN, 48), fill=(10, 10, 10))
     d.text((380, 370), PERSON["gender"], font=font(LATIN, 48), fill=(10, 10, 10))
     d.text((380, 440), "पुरुष", font=font(DEVANAGARI, 44), fill=(10, 10, 10))
     d.text((W // 2, 640), f"{n[:4]} {n[4:8]} {n[8:]}", font=font(LATIN, 92), fill=(10, 10, 10), anchor="mm")
@@ -138,6 +138,10 @@ def main() -> None:
         print("wrote", OUT / f"{name}.png")
     make_signature().save(OUT / "signature.png", optimize=True)
     print("wrote", OUT / "signature.png")
+    # Cards whose printed date of birth makes the holder a minor (born 2012-01-01: under 18 until 2030).
+    make_pan("01/01/2012").filter(ImageFilter.GaussianBlur(0.6)).save(OUT / "pan-underage.png", optimize=True)
+    make_aadhaar_front("01/01/2012").filter(ImageFilter.GaussianBlur(0.6)).save(OUT / "aadhaar-front-underage.png", optimize=True)
+    print("wrote underage PAN and Aadhaar front")
     # A deliberately blurred PAN, for exercising the low-quality gate.
     make_pan().filter(ImageFilter.GaussianBlur(9)).save(OUT / "pan-blurred.png", optimize=True)
     print("wrote", OUT / "pan-blurred.png")
