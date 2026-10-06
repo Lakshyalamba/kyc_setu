@@ -1,0 +1,33 @@
+{
+  "name": "@kyc-setu/db",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "prisma generate && tsc -b",
+    "generate": "dotenv -e ../../.env -- prisma generate",
+    "validate": "dotenv -e ../../.env -- prisma validate",
+    "migrate": "dotenv -e ../../.env -- prisma migrate dev",
+    "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
+    "seed": "tsx --env-file=../../.env src/seed.ts",
+    "test": "echo 'no tests in @kyc-setu/db'"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "argon2": "^0.45.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "dotenv-cli": "^11.0.0",
+    "prisma": "^6.19.3",
+    "tsx": "^4.23.15"
+  }
+}

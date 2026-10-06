@@ -1,0 +1,31 @@
+{
+  "name": "@kyc-setu/shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./storage": {
+      "types": "./dist/storage/index.d.ts",
+      "default": "./dist/storage/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/s3-request-presigner": "^3.1146.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.4",
+    "vitest": "^5.0.3"
+  }
+}

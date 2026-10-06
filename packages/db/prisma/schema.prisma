@@ -1,0 +1,83 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  OFFICER
+  OFFICER_LEAD
+  AUDITOR
+}
+
+enum KycStatus {
+  DRAFT
+  CONSENT_GIVEN
+  DETAILS_SUBMITTED
+  DOCUMENTS_UPLOADED
+  SIGNATURE_CAPTURED
+  SELFIE_CAPTURED
+  SUBMITTED
+  AI_PROCESSING
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  RESUBMIT_REQUESTED
+  EXPIRED
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  AI
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(CUSTOMER)
+  createdAt    DateTime @default(now())
+
+  kycSessions KycSession[]
+
+  @@map("users")
+}
+
+model KycSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  status    KycStatus @default(DRAFT)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([status])
+  @@map("kyc_sessions")
+}
+
+/// Append-only: no updatedAt, never updated or deleted by application code.
+/// actorId is intentionally NOT a foreign key so the log survives user deletion
+/// and can record failed logins for unknown users.
+model AuditLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  actorId    String?   @db.Uuid
+  actorType  ActorType
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json      @default("{}") @db.JsonB
+  createdAt  DateTime  @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
