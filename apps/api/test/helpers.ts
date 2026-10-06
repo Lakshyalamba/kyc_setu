@@ -32,6 +32,10 @@ export const testEnv = (overrides: Partial<Env> = {}): Env => ({
   FILE_URL_SECRET: 'dev-only-file-url-secret-change-me-0123456789',
   WEB_ORIGIN: 'http://localhost:3000',
   AI_SERVICE_URL: 'http://localhost:8000',
+  AI_INTERNAL_KEY: 'test-internal-key-0123456789abcdef',
+  AI_REQUEST_TIMEOUT_MS: 5000,
+  EXTRACTION_BACKOFF_SECONDS: [0, 0, 0],
+  OCR_RAW_TEXT_RETENTION_DAYS: 90,
   ...overrides,
 });
 
@@ -80,6 +84,8 @@ export function createFakeStore(): FakeStore {
 
 // ---- KYC fakes ----
 export interface FakeKycStore extends KycStore {
+  /** Extraction rows requested by updateSession (the fake extraction store reads these). */
+  extractionSeeds: { documentId: string; status: 'PENDING' | 'SKIPPED' }[];
   sessions: SessionRecord[];
   otps: OtpRecord[];
   consent: ConsentRecord;
@@ -88,6 +94,7 @@ export interface FakeKycStore extends KycStore {
 /** In-memory KycStore. Audit rows go to the shared `audits` array (same one the auth fake uses). */
 export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
   const sessions: SessionRecord[] = [];
+  const extractionSeeds: { documentId: string; status: 'PENDING' | 'SKIPPED' }[] = [];
   const otps: OtpRecord[] = [];
   const consent: ConsentRecord = {
     id: randomUUID(),
@@ -101,6 +108,7 @@ export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
   };
   return {
     sessions,
+    extractionSeeds,
     otps,
     consent,
     findActiveSession: async (userId) =>
@@ -116,6 +124,7 @@ export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
         currentStep: 'CONTACT',
         completedSteps: [],
         personalDetails: null,
+        flags: [],
         consentVersionId: null,
         consentAcceptedAt: null,
         createdAt: new Date(),
@@ -125,12 +134,13 @@ export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
       audits.push(audit(s));
       return s;
     },
-    async updateSession(id, expected: KycStatus, patch, newAudits, markOtpVerified) {
+    async updateSession(id, expected: KycStatus, patch, newAudits, markOtpVerified, extractions) {
       const s = sessions.find((x) => x.id === id);
       if (!s || s.status !== expected) return null;
       Object.assign(s, patch);
       if (markOtpVerified)
         need(otps.find((o) => o.id === markOtpVerified.id)).verifiedAt = markOtpVerified.at;
+      for (const e of extractions ?? []) extractionSeeds.push(e);
       audits.push(...newAudits);
       return s;
     },
@@ -252,3 +262,218 @@ export const docDeps = (audits: AuditEntry[]) => ({
   documentStore: createFakeDocumentStore(audits),
   objectStore: createFakeObjectStore(),
 });
+
+// ---- Extraction fakes ----
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import type { ExtractResponse, ExtractionDocumentType } from '@kyc-setu/shared';
+import {
+  AiServiceError,
+  type AiClient,
+  type ExtractRequest,
+} from '../src/modules/extraction/ai-client.js';
+import type {
+  ExtractionRecord,
+  ExtractionStore,
+  ExtractionWithType,
+} from '../src/modules/extraction/store.js';
+import type { VerificationEnqueuer } from '../src/queue/verification.js';
+
+export interface FakeExtractionStore extends ExtractionStore {
+  rows: Map<string, ExtractionRecord>;
+}
+
+export function createFakeExtractionStore(
+  audits: AuditEntry[],
+  kycStore: FakeKycStore,
+  docStore: FakeDocumentStore,
+): FakeExtractionStore {
+  const rows = new Map<string, ExtractionRecord>();
+  /** Rows the fake KycStore was asked to create inside its "transaction". */
+  const sync = () => {
+    for (const seed of kycStore.extractionSeeds) {
+      if (rows.has(seed.documentId)) continue;
+      rows.set(seed.documentId, {
+        id: randomUUID(),
+        documentId: seed.documentId,
+        status: seed.status,
+        fields: null,
+        qualityMetrics: null,
+        modelVersions: null,
+        timings: null,
+        rawTextEncrypted: null,
+        encryptedDataKey: null,
+        kmsKeyId: null,
+        iv: null,
+        authTag: null,
+        panNumberHmac: null,
+        aadhaarNumberLast4: null,
+        attempt: 0,
+        errorMessage: null,
+        createdAt: new Date(Date.now() - 60_000),
+        completedAt: seed.status === 'SKIPPED' ? new Date() : null,
+      });
+    }
+  };
+  const need = (documentId: string) => {
+    sync();
+    const row = rows.get(documentId);
+    if (!row) throw new Error('no extraction row');
+    return row;
+  };
+  return {
+    /** Always in sync with what the fake KycStore "inserted". */
+    get rows() {
+      sync();
+      return rows;
+    },
+    async findByDocumentId(documentId) {
+      sync();
+      return rows.get(documentId) ?? null;
+    },
+    async listForSession(sessionId) {
+      sync();
+      const out: ExtractionWithType[] = [];
+      for (const d of docStore.documents) {
+        const row = rows.get(d.id);
+        if (d.sessionId === sessionId && d.replacedById === null && row)
+          out.push({ ...row, documentType: d.type });
+      }
+      return out;
+    },
+    async recordAttemptFailure(documentId, attempt, message, audit) {
+      Object.assign(need(documentId), { attempt, errorMessage: message });
+      audits.push(audit);
+    },
+    async complete(documentId, input, audit) {
+      const row = need(documentId);
+      if (row.status !== 'PENDING' && row.status !== 'ERROR') return null;
+      Object.assign(row, {
+        status: input.status,
+        fields: input.fields,
+        qualityMetrics: input.qualityMetrics,
+        modelVersions: input.modelVersions,
+        timings: input.timings,
+        rawTextEncrypted: input.raw?.ciphertext ?? null,
+        encryptedDataKey: input.raw?.wrappedKey ?? null,
+        iv: input.raw?.iv ?? null,
+        authTag: input.raw?.authTag ?? null,
+        kmsKeyId: input.raw?.kmsKeyId ?? null,
+        panNumberHmac: input.panNumberHmac,
+        aadhaarNumberLast4: input.aadhaarNumberLast4,
+        attempt: input.attempt,
+        errorMessage: null,
+        completedAt: new Date(),
+      });
+      audits.push(audit);
+      return row;
+    },
+    async fail(documentId, attempt, message, audit) {
+      const row = need(documentId);
+      if (row.status === 'PENDING' || row.status === 'ERROR') {
+        Object.assign(row, {
+          status: 'ERROR',
+          attempt,
+          errorMessage: message,
+          completedAt: new Date(),
+        });
+      }
+      audits.push(audit);
+    },
+    async findStalePending(olderThan) {
+      sync();
+      return [...rows.values()]
+        .filter((r) => r.status === 'PENDING' && r.createdAt < olderThan)
+        .map((r) => r.documentId);
+    },
+    async clearRawTextBefore(before) {
+      sync();
+      let n = 0;
+      for (const r of rows.values()) {
+        if (r.completedAt && r.completedAt < before && r.rawTextEncrypted) {
+          Object.assign(r, {
+            rawTextEncrypted: null,
+            encryptedDataKey: null,
+            iv: null,
+            authTag: null,
+            kmsKeyId: null,
+          });
+          n++;
+        }
+      }
+      return n;
+    },
+    async writeAudit(entry) {
+      audits.push(entry);
+    },
+  };
+}
+
+export interface FakeEnqueuer extends VerificationEnqueuer {
+  queued: string[];
+  failNext: boolean;
+}
+
+export function createFakeEnqueuer(): FakeEnqueuer {
+  const e: FakeEnqueuer = {
+    queued: [],
+    failNext: false,
+    async enqueueExtractions(ids) {
+      if (e.failNext) {
+        e.failNext = false;
+        throw new Error('redis is down');
+      }
+      e.queued.push(...ids);
+    },
+  };
+  return e;
+}
+
+const CONTRACTS = path.resolve(import.meta.dirname, '../../../contracts');
+const SAMPLE_FILE: Record<ExtractionDocumentType, string> = {
+  PAN: 'extract-pan.ok.json',
+  AADHAAR_FRONT: 'extract-aadhaar-front.ok.json',
+  AADHAAR_BACK: 'extract-aadhaar-back.ok.json',
+};
+
+/** A contract-valid AI response for `type`, from the shared /contracts samples. */
+export function aiResponse(
+  type: ExtractionDocumentType,
+  documentId: string,
+  overrides: Partial<ExtractResponse> = {},
+): ExtractResponse {
+  const sample = JSON.parse(
+    readFileSync(path.join(CONTRACTS, SAMPLE_FILE[type]), 'utf8'),
+  ) as ExtractResponse;
+  return { ...sample, documentId, ...overrides };
+}
+
+export interface FakeAiClient extends AiClient {
+  calls: ExtractRequest[];
+  /** Decide each response. Default: a good result for the requested document. */
+  respond: (req: ExtractRequest) => ExtractResponse | Promise<ExtractResponse>;
+}
+
+export function createFakeAiClient(): FakeAiClient {
+  const client: FakeAiClient = {
+    calls: [],
+    respond: (req) => aiResponse(req.type, req.documentId),
+    async extract(req) {
+      client.calls.push(req);
+      return client.respond(req);
+    },
+  };
+  return client;
+}
+
+export const unreachableAi = () => new AiServiceError('AI service unreachable (TypeError)', true);
+
+/** Everything `createApp`/`buildServices` needs beyond env, auth store and kyc store. */
+export function allDeps(audits: AuditEntry[], kycStore: FakeKycStore) {
+  const documentStore = createFakeDocumentStore(audits);
+  const extractionStore = createFakeExtractionStore(audits, kycStore, documentStore);
+  const objectStore = createFakeObjectStore();
+  const enqueuer = createFakeEnqueuer();
+  const aiClient = createFakeAiClient();
+  return { documentStore, extractionStore, objectStore, enqueuer, aiClient };
+}

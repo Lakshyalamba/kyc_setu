@@ -3,7 +3,7 @@ import request from 'supertest';
 import { createApp } from '../src/app.js';
 import {
   createFakeKycStore,
-  docDeps,
+  allDeps,
   createFakeStore,
   testEnv,
   type FakeStore,
@@ -12,14 +12,16 @@ import {
 const healthy = async () => ({ database: 'up' as const, redis: 'up' as const, queue: null });
 
 let store: FakeStore;
-const build = () =>
-  createApp({
+const build = () => {
+  const kycStore = createFakeKycStore(store.audits);
+  return createApp({
     env: testEnv(),
     store,
-    kycStore: createFakeKycStore(store.audits),
-    ...docDeps(store.audits),
+    kycStore,
+    ...allDeps(store.audits, kycStore),
     healthProbe: healthy,
   });
+};
 
 beforeEach(async () => {
   store = createFakeStore();

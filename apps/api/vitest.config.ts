@@ -6,5 +6,7 @@ export default defineConfig({
     exclude: ['dist/**', 'node_modules/**'],
     globalSetup: ['test/globalSetup.ts'],
     testTimeout: 15_000,
+    // The integration suites share one database and TRUNCATE it, so test files must not overlap.
+    fileParallelism: false,
   },
 });

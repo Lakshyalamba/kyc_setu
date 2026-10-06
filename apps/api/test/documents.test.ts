@@ -3,12 +3,18 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../src/app.js';
 import {
+  createFakeAiClient,
   createFakeDocumentStore,
+  createFakeEnqueuer,
+  createFakeExtractionStore,
   createFakeKycStore,
   createFakeObjectStore,
   createFakeStore,
   testEnv,
+  type FakeAiClient,
   type FakeDocumentStore,
+  type FakeEnqueuer,
+  type FakeExtractionStore,
   type FakeKycStore,
   type FakeObjectStore,
   type FakeStore,
@@ -22,6 +28,9 @@ let store: FakeStore;
 let kycStore: FakeKycStore;
 let docStore: FakeDocumentStore;
 let objects: FakeObjectStore;
+let extractionStore: FakeExtractionStore;
+let enqueuer: FakeEnqueuer;
+let aiClient: FakeAiClient;
 let clock: Date;
 
 const build = () =>
@@ -31,6 +40,9 @@ const build = () =>
     kycStore,
     documentStore: docStore,
     objectStore: objects,
+    extractionStore: extractionStore,
+    enqueuer,
+    aiClient,
     healthProbe: healthy,
     kycOverrides: { now: () => clock },
   });
@@ -74,6 +86,9 @@ beforeEach(async () => {
   kycStore = createFakeKycStore(store.audits);
   docStore = createFakeDocumentStore(store.audits);
   objects = createFakeObjectStore();
+  extractionStore = createFakeExtractionStore(store.audits, kycStore, docStore);
+  enqueuer = createFakeEnqueuer();
+  aiClient = createFakeAiClient();
   await store.addUser('a@kycsetu.dev', PASSWORD, 'CUSTOMER');
   await store.addUser('b@kycsetu.dev', PASSWORD, 'CUSTOMER');
   await store.addUser('officer@kycsetu.dev', PASSWORD, 'OFFICER');

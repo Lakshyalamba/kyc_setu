@@ -6,7 +6,7 @@ import { createApp } from '../src/app.js';
 import { createKycService } from '../src/modules/kyc/kyc.service.js';
 import {
   createFakeKycStore,
-  docDeps,
+  allDeps,
   createFakeStore,
   testEnv,
   type FakeKycStore,
@@ -27,7 +27,7 @@ function build() {
     env: testEnv(),
     store,
     kycStore,
-    ...docDeps(store.audits),
+    ...allDeps(store.audits, kycStore),
     healthProbe: healthy,
     kycOverrides: { now: () => clock, generateOtp: () => CODE },
   });
