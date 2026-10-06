@@ -11,6 +11,7 @@ import { createDocumentsRouter, createFilesRouter } from './routes/documents.js'
 import { createDevExtractionRouter, createExtractionRouter } from './routes/extraction.js';
 import { createHealthRouter, type HealthProbe } from './routes/health.js';
 import { createKycRouter } from './routes/kyc.js';
+import { createDevRiskRouter, createRiskRouter } from './routes/risk.js';
 
 export interface AppDeps extends ServiceDeps {
   healthProbe: HealthProbe;
@@ -28,11 +29,25 @@ export function createApp(deps: AppDeps): Express {
   app.use(cookieParser());
 
   const auth = createAuthService({ env, store: deps.store });
-  const { kyc, docs, extraction } = buildServices(deps);
+  const { kyc, docs, extraction, risk } = buildServices(deps);
   const requireCustomer = [createRequireAuth(env, 'customer'), requireRole('CUSTOMER')];
 
   app.use(createHealthRouter(deps.healthProbe));
   app.use('/auth', createAuthRouter({ env, auth, requireAuth: createRequireAuth(env) }));
+  // The risk routes serve officers AND customers, so they must come BEFORE the customer-only routers below:
+  // each of those does `router.use(requireCustomer)`, which would otherwise reject officers on any /kyc path.
+  app.use(
+    '/kyc',
+    createRiskRouter({
+      risk,
+      kycStore: deps.kycStore,
+      env,
+      requireOfficerWrite: [
+        createRequireAuth(env, 'officer'),
+        requireRole('OFFICER', 'OFFICER_LEAD'),
+      ],
+    }),
+  );
   app.use('/kyc', createKycRouter({ kyc, requireCustomer }));
   app.use('/kyc', createDocumentsRouter({ docs, requireCustomer }));
   app.use('/kyc', createExtractionRouter({ extraction, requireCustomer }));
@@ -44,6 +59,16 @@ export function createApp(deps: AppDeps): Express {
       '/dev',
       createDevExtractionRouter({
         extraction,
+        requireOfficer: [
+          createRequireAuth(env, 'officer'),
+          requireRole('OFFICER', 'OFFICER_LEAD', 'AUDITOR'),
+        ],
+      }),
+    );
+    app.use(
+      '/dev',
+      createDevRiskRouter({
+        risk,
         requireOfficer: [
           createRequireAuth(env, 'officer'),
           requireRole('OFFICER', 'OFFICER_LEAD', 'AUDITOR'),
