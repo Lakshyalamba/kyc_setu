@@ -1,0 +1,33 @@
+{
+  "name": "kyc-setu",
+  "private": true,
+  "version": "0.0.0",
+  "packageManager": "pnpm@12.9.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "postinstall": "pnpm db:generate",
+    "dev": "pnpm build:libs && (pnpm --filter @kyc-setu/api --filter @kyc-setu/web --parallel run dev & pnpm dev:ai & wait)",
+    "dev:ai": "cd services/ai && uv run uvicorn app.main:app --reload --port 8000",
+    "build:libs": "tsc -b",
+    "build": "pnpm build:libs && pnpm --filter @kyc-setu/web run build",
+    "lint": "eslint . && prettier --check .",
+    "format": "prettier --write .",
+    "typecheck": "tsc -b && pnpm --filter @kyc-setu/web run typecheck",
+    "test": "pnpm build:libs && pnpm -r --workspace-concurrency=1 --if-present run test && pnpm test:ai",
+    "test:ai": "cd services/ai && uv run pytest -q",
+    "db:generate": "pnpm --filter @kyc-setu/db run generate",
+    "db:migrate": "pnpm --filter @kyc-setu/db run migrate",
+    "db:validate": "pnpm --filter @kyc-setu/db run validate",
+    "seed": "pnpm --filter @kyc-setu/db run seed"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.12.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.9",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.0"
+  }
+}

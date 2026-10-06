@@ -1,0 +1,9 @@
+node_modules
+dist
+.next
+coverage
+pnpm-lock.yaml
+services/ai
+packages/db/prisma/migrations
+*.tsbuildinfo
+next-env.d.ts
