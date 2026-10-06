@@ -2,3 +2,5 @@
 __pycache__
 .pytest_cache
 tests
+scripts/capture_golden.py
+*.md
