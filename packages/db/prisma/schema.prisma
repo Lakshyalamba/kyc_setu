@@ -17,17 +17,30 @@ enum Role {
 enum KycStatus {
   DRAFT
   CONSENT_GIVEN
-  DETAILS_SUBMITTED
-  DOCUMENTS_UPLOADED
-  SIGNATURE_CAPTURED
+  PERSONAL_SUBMITTED
+  DOCS_UPLOADED
   SELFIE_CAPTURED
   SUBMITTED
-  AI_PROCESSING
   UNDER_REVIEW
   APPROVED
   REJECTED
   RESUBMIT_REQUESTED
   EXPIRED
+}
+
+/// UI/progress step, tracked separately from the status state machine.
+enum KycStep {
+  CONTACT
+  CONSENT
+  PERSONAL
+  DOCUMENTS
+  SELFIE
+  REVIEW
+}
+
+enum OtpChannel {
+  SMS
+  EMAIL
 }
 
 enum ActorType {
@@ -43,7 +56,8 @@ model User {
   role         Role     @default(CUSTOMER)
   createdAt    DateTime @default(now())
 
-  kycSessions KycSession[]
+  kycSessions   KycSession[]
+  otpChallenges OtpChallenge[]
 
   @@map("users")
 }
@@ -56,11 +70,57 @@ model KycSession {
   updatedAt DateTime  @updatedAt
   expiresAt DateTime
 
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  currentStep    KycStep   @default(CONTACT)
+  completedSteps KycStep[] @default([])
 
+  /// Sensitive fields (panNumber, aadhaarNumber) are stored AES-256-GCM encrypted; see packages/shared pii crypto.
+  personalDetails Json? @db.JsonB
+
+  consentVersionId  String?   @db.Uuid
+  consentAcceptedAt DateTime?
+
+  user           User            @relation(fields: [userId], references: [id], onDelete: Restrict)
+  consentVersion ConsentVersion? @relation(fields: [consentVersionId], references: [id], onDelete: Restrict)
+  otpChallenges  OtpChallenge[]
+
+  // Note: a partial unique index on (userId) WHERE status NOT IN (APPROVED, REJECTED, EXPIRED)
+  // enforces "one active session per user". Prisma can't express it; it lives in the migration SQL.
   @@index([userId])
   @@index([status])
   @@map("kyc_sessions")
+}
+
+model ConsentVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  /// semver, e.g. 1.0.0
+  version       String   @unique
+  bodyMarkdown  String   @db.Text
+  effectiveFrom DateTime
+  createdAt     DateTime @default(now())
+
+  sessions KycSession[]
+
+  @@map("consent_versions")
+}
+
+model OtpChallenge {
+  id          String     @id @default(uuid()) @db.Uuid
+  userId      String     @db.Uuid
+  sessionId   String     @db.Uuid
+  channel     OtpChannel
+  destination String
+  codeHash    String
+  expiresAt   DateTime
+  attempts    Int        @default(0)
+  verifiedAt  DateTime?
+  createdAt   DateTime   @default(now())
+
+  user    User       @relation(fields: [userId], references: [id], onDelete: Restrict)
+  session KycSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@index([userId, createdAt])
+  @@index([sessionId])
+  @@map("otp_challenges")
 }
 
 /// Append-only: no updatedAt, never updated or deleted by application code.

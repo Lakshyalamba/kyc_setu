@@ -1,4 +1,5 @@
 import argon2 from 'argon2';
+import { CONSENT_V1_BODY, CONSENT_V1_VERSION } from './consent-v1.js';
 import { prisma, type Role } from './index.js';
 
 const PASSWORD = 'password123'; // local development only
@@ -34,6 +35,17 @@ for (const { email, role } of USERS) {
   });
   console.log(`+ ${email} (${role})`);
 }
+
+await prisma.consentVersion.upsert({
+  where: { version: CONSENT_V1_VERSION },
+  update: {},
+  create: {
+    version: CONSENT_V1_VERSION,
+    bodyMarkdown: CONSENT_V1_BODY,
+    effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+  },
+});
+console.log(`+ consent version ${CONSENT_V1_VERSION} (upserted)`);
 
 console.log(`Seeded. All seed users share the dev password "${PASSWORD}".`);
 await prisma.$disconnect();
