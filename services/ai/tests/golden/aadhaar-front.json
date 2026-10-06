@@ -1,0 +1,82 @@
+[
+  {
+    "text": "Government of India HRA HROR",
+    "box": [
+      60,
+      28,
+      1344,
+      84
+    ],
+    "confidence": 0.9121
+  },
+  {
+    "text": "Rahul Kumar Sharma",
+    "box": [
+      374,
+      181,
+      925,
+      246
+    ],
+    "confidence": 0.9991
+  },
+  {
+    "text": "DOB: 15/05/1990",
+    "box": [
+      377,
+      282,
+      755,
+      335
+    ],
+    "confidence": 0.9999
+  },
+  {
+    "text": "MALE",
+    "box": [
+      375,
+      362,
+      515,
+      415
+    ],
+    "confidence": 0.9999
+  },
+  {
+    "text": "454",
+    "box": [
+      370,
+      445,
+      458,
+      510
+    ],
+    "confidence": 0.5121
+  },
+  {
+    "text": "2341 2341 2346",
+    "box": [
+      362,
+      587,
+      1038,
+      680
+    ],
+    "confidence": 0.9998
+  },
+  {
+    "text": "3TR - 3T 311GH CT3TFR",
+    "box": [
+      451,
+      734,
+      952,
+      786
+    ],
+    "confidence": 0.6915
+  },
+  {
+    "text": "SAMPLE DOCUMENT - NOT REAL",
+    "box": [
+      409,
+      821,
+      991,
+      860
+    ],
+    "confidence": 0.9844
+  }
+]

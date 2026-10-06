@@ -1,0 +1,18 @@
+{
+  "pan": {
+    "name": "RAHUL KUMAR SHARMA",
+    "fatherName": "SURESH KUMAR SHARMA",
+    "dob": "1990-05-15",
+    "panNumber": "ABCDE1234F"
+  },
+  "aadhaar-front": {
+    "name": "RAHUL KUMAR SHARMA",
+    "dob": "1990-05-15",
+    "gender": "MALE",
+    "aadhaarNumber": "XXXX-XXXX-2346"
+  },
+  "aadhaar-back": {
+    "pincode": "560038",
+    "addressContains": ["12 MG Road", "Bengaluru", "Karnataka"]
+  }
+}

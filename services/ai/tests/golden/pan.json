@@ -1,0 +1,102 @@
+[
+  {
+    "text": "INCOME TAX DEPARTMENT GOVT. OF INDIA",
+    "box": [
+      60,
+      34,
+      1342,
+      85
+    ],
+    "confidence": 0.9934
+  },
+  {
+    "text": "Permanent Account Number",
+    "box": [
+      60,
+      173,
+      489,
+      206
+    ],
+    "confidence": 0.9998
+  },
+  {
+    "text": "ABCDE1234F",
+    "box": [
+      59,
+      221,
+      478,
+      282
+    ],
+    "confidence": 0.9999
+  },
+  {
+    "text": "Name",
+    "box": [
+      55,
+      320,
+      154,
+      358
+    ],
+    "confidence": 0.9999
+  },
+  {
+    "text": "RAHUL KUMAR SHARMA",
+    "box": [
+      60,
+      368,
+      651,
+      412
+    ],
+    "confidence": 0.9985
+  },
+  {
+    "text": "Father's Name",
+    "box": [
+      56,
+      463,
+      284,
+      503
+    ],
+    "confidence": 0.9865
+  },
+  {
+    "text": "SURESH KUMAR SHARMA",
+    "box": [
+      59,
+      513,
+      689,
+      557
+    ],
+    "confidence": 0.9998
+  },
+  {
+    "text": "Date of Birth",
+    "box": [
+      56,
+      609,
+      251,
+      648
+    ],
+    "confidence": 0.9843
+  },
+  {
+    "text": "15/05/1990",
+    "box": [
+      60,
+      656,
+      314,
+      705
+    ],
+    "confidence": 1.0
+  },
+  {
+    "text": "SAMPLE DOCUMENT - NOT REAL",
+    "box": [
+      410,
+      823,
+      989,
+      859
+    ],
+    "confidence": 0.9819
+  }
+]

@@ -1,0 +1,92 @@
+[
+  {
+    "text": "Unique Identification Authority of India",
+    "box": [
+      58,
+      31,
+      847,
+      84
+    ],
+    "confidence": 0.9903
+  },
+  {
+    "text": "Address:",
+    "box": [
+      55,
+      168,
+      258,
+      221
+    ],
+    "confidence": 0.9999
+  },
+  {
+    "text": "S/O Suresh Kumar Sharma",
+    "box": [
+      54,
+      235,
+      676,
+      296
+    ],
+    "confidence": 0.9987
+  },
+  {
+    "text": "12 MG Road, Indiranagar",
+    "box": [
+      55,
+      310,
+      634,
+      374
+    ],
+    "confidence": 0.9994
+  },
+  {
+    "text": "Bengaluru, Karnataka - 560038",
+    "box": [
+      57,
+      386,
+      764,
+      449
+    ],
+    "confidence": 0.9999
+  },
+  {
+    "text": "पताः",
+    "box": [
+      50,
+      494,
+      138,
+      549
+    ],
+    "confidence": 0.9999
+  },
+  {
+    "text": "श२एमजीरोड,इंदिरानगर,बेंगलुरु",
+    "box": [
+      50,
+      545,
+      600,
+      624
+    ],
+    "confidence": 0.9348
+  },
+  {
+    "text": "2341 2341 2346",
+    "box": [
+      399,
+      649,
+      999,
+      737
+    ],
+    "confidence": 0.9964
+  },
+  {
+    "text": "SAMPLE DOCUMENT - NOT REAL",
+    "box": [
+      410,
+      823,
+      989,
+      859
+    ],
+    "confidence": 0.9819
+  }
+]
