@@ -28,6 +28,8 @@ jobs:
       REQUIRE_INFRA: '1'
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: ci-only-secret-ci-only-secret-ci-only
+      KMS_LOCAL_MASTER_KEY: ZGV2LW9ubHkta21zLW1hc3Rlci1rZXktMDEyMzQ1Njc=
+      FILE_URL_SECRET: dev-only-file-url-secret-change-me-0123456789
       PII_ENCRYPTION_KEY: ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDEyMzQ=
     steps:
       - uses: actions/checkout@v4
@@ -37,6 +39,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - uses: astral-sh/setup-uv@v5
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin cgr.dev/chainguard/minio:latest server /data
+          for i in $(seq 1 30); do curl -sf http://localhost:9000/minio/health/live && break; sleep 1; done
       - run: pnpm install --frozen-lockfile
       - run: pnpm db:generate
       - run: pnpm db:validate
@@ -68,6 +74,8 @@ jobs:
       DATABASE_URL: postgresql://kyc:kyc@localhost:5432/kyc_setu
       REDIS_URL: redis://localhost:6379
       JWT_SECRET: ci-only-secret-ci-only-secret-ci-only
+      KMS_LOCAL_MASTER_KEY: ZGV2LW9ubHkta21zLW1hc3Rlci1rZXktMDEyMzQ1Njc=
+      FILE_URL_SECRET: dev-only-file-url-secret-change-me-0123456789
       PII_ENCRYPTION_KEY: ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDEyMzQ=
     steps:
       - uses: actions/checkout@v4
@@ -77,7 +85,9 @@ jobs:
           node-version: 22
           cache: pnpm
       - name: Start MinIO
-        run: docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin cgr.dev/chainguard/minio:latest server /data
+        run: |
+          docker run -d --name minio -p 9000:9000 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin cgr.dev/chainguard/minio:latest server /data
+          for i in $(seq 1 30); do curl -sf http://localhost:9000/minio/health/live && break; sleep 1; done
       - run: cp .env.example .env # real env vars above take precedence over this file
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:libs

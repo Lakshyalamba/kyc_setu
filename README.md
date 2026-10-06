@@ -5,10 +5,10 @@ and fintechs: customers complete KYC on their phone (consent, details, PAN + Aad
 selfie), the backend orchestrates AI verification (OCR, cross-document validation, face match, risk
 scoring), and bank officers review submissions before approving or rejecting.
 
-**Status: Phase 1 (KYC session + personal details)** on top of the Phase 0 foundations (monorepo, infra,
-database, auth, job queue, object storage, AI service stub). A customer can verify their mobile, give
-consent and fill in personal details in a resumable multi-step form. Documents, selfie, AI checks and the
-officer dashboard come later; see [What's not built yet](#whats-not-built-yet).
+**Status: Phase 2 (document upload + encrypted storage)** on top of Phase 1 (KYC session + personal details) and
+the Phase 0 foundations. A customer can verify their mobile, give consent, fill in personal details, and upload
+PAN, Aadhaar (front/back) and a signature, all in a resumable multi-step form. Selfie, AI checks and the officer
+dashboard come later; see [What's not built yet](#whats-not-built-yet).
 
 ## Architecture
 
@@ -144,6 +144,40 @@ APPROVED | REJECTED | RESUBMIT_REQUESTED → DOCS_UPLOADED`. Any pre-`SUBMITTED`
   `kyc.otp.verified`, `kyc.otp.failed`, `kyc.consent.accepted`, `kyc.personal.patched`, `kyc.personal.submitted`.
 - **Email** is collected at the Contact step but not verified in Phase 1 (only the mobile is).
 
+## Documents (Phase 2)
+
+Customers upload **PAN, Aadhaar front, Aadhaar back and a signature** at `/kyc/documents`. Files are encrypted
+by the API before they reach MinIO, and read back only through a short-lived, per-user, audited proxy.
+
+| Route (customer auth)                       | Purpose                                                                                              |
+| ------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `POST /kyc/sessions/:id/documents`          | Multipart upload: field `type`, then one `file` (≤ 5 MB). Replaces an existing document of that type |
+| `GET /kyc/sessions/:id/documents`           | Active documents (metadata only)                                                                     |
+| `DELETE /kyc/sessions/:id/documents/:docId` | Soft delete (row and ciphertext are kept)                                                            |
+| `POST /kyc/sessions/:id/documents/submit`   | All four present → `PERSONAL_SUBMITTED → DOCS_UPLOADED`                                              |
+| `GET /kyc/documents/:docId/signed-url`      | 5-minute URL for `CUSTOMER_PREVIEW` (owner only; others get 403)                                     |
+| `GET /files/:token`                         | Decrypting proxy. No listing, no range requests                                                      |
+
+- **The browser never talks to MinIO.** Uploads go browser → API → encrypt → MinIO; previews go MinIO → API → decrypt → browser.
+  The bucket has no public policy (the API refuses to boot if one appears) and anonymous reads return 403.
+- **Envelope encryption** (`packages/shared/src/crypto`): every file gets a fresh AES-256-GCM data key; the KMS wraps
+  that key and the wrapped key, IV and auth tag are stored on the `documents` row. `LocalKmsClient` (dev) reads
+  `KMS_LOCAL_MASTER_KEY`; `AwsKmsClient` is a stub. The proxy decrypts **and verifies the tag and the stored SHA-256
+  before sending any byte**, because streaming GCM would otherwise release tampered data before detecting it.
+- **Upload pipeline:** `busboy` streaming with a hard 5 MB cap (early reject on `Content-Length`), content sniffing with
+  `file-type` (PAN/Aadhaar: JPEG, PNG or PDF; signature: PNG; never SVG), SHA-256 of the plaintext computed in the stream,
+  bytes never written to disk. Authorisation and session state are checked before any of the body is read.
+- **Signed URL token:** `base64url(issueId | expiresAt | HMAC-SHA256)`. It contains no document id; the MAC covers the
+  issue row's document, purpose, recipient and expiry. The proxy also requires the signed-in cookie of the user it was
+  issued to, so a leaked URL is useless to anyone else.
+- **History:** a replaced document points at its replacement (`replacedById`), a deleted one at itself; only one row per
+  type per session is active (partial unique index). Nothing is ever removed. Edits are allowed only while the session is
+  `PERSONAL_SUBMITTED` (or `RESUBMIT_REQUESTED`).
+- **Audit actions:** `document.uploaded`, `document.replaced`, `document.deleted`, `document.upload_failed` (reason enum only),
+  `document.signed_url_issued`, `document.viewed` (`bytesStreamed`), `document.integrity_failed`, `kyc.documents.submitted`.
+  Metadata never contains bytes, file names or PII.
+- **Retention:** none yet. `DOCUMENT_RETENTION_DAYS` is a `null` placeholder and the bucket has no lifecycle rule.
+
 ## Design notes
 
 - **Auth.** argon2id password hashes; HS256 JWT (`sub`, `role`) in an `httpOnly`, `SameSite=Lax`
@@ -167,13 +201,12 @@ APPROVED | REJECTED | RESUBMIT_REQUESTED → DOCS_UPLOADED`. Any pre-`SUBMITTED`
 
 ## What's not built yet
 
-| Phase | Scope                                                                                                                                                      |
-| ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 2     | Document upload: PAN + Aadhaar images (presigned MinIO uploads), signature, selfie capture UI; `DOCS_UPLOADED`, `SELFIE_CAPTURED`, `SUBMITTED` transitions |
-| 3     | AI verification: real OCR for PAN/Aadhaar, cross-document validation, wired API ↔ AI jobs                                                                  |
-| 4     | Face match + liveness, risk scoring engine                                                                                                                 |
-| 5     | Officer dashboard: review queue, approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                              |
-| 6     | Hardening & deploy: rate limiting, email verification / password reset, observability, PII key rotation & retention, real SMS provider, hosting config     |
+| Phase | Scope                                                                                                                                                                                             |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 3     | Selfie capture UI (`SELFIE_CAPTURED`, `SUBMITTED`) and AI verification: real OCR for PAN/Aadhaar, cross-document validation, wired API ↔ AI jobs                                                  |
+| 4     | Face match + liveness, risk scoring engine                                                                                                                                                        |
+| 5     | Officer dashboard: review queue (`OFFICER_REVIEW` signed URLs), approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                                      |
+| 6     | Hardening & deploy: rate limiting, email verification / password reset, observability, a real KMS (AWS) and key rotation, document retention + lifecycle rules, real SMS provider, hosting config |
 
-Also deliberately omitted so far: CSRF tokens (SameSite=Lax + JSON-only + strict CORS for now), a job to expire
-idle sessions, and any deployment config.
+Also deliberately omitted so far: CSRF tokens (SameSite=Lax + JSON/multipart-only + strict CORS for now), a job to expire
+idle sessions, virus scanning of uploads, and any deployment config.

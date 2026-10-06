@@ -1,50 +1,5 @@
-import { randomUUID } from 'node:crypto';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { verhoeffGenerate } from '@kyc-setu/shared';
-
-const PASSWORD = 'password123';
-const MOBILE = '9876543210';
-const AADHAAR = '23412341234' + verhoeffGenerate('23412341234');
-const newEmail = () => `e2e-${randomUUID()}@example.com`;
-
-async function signUp(page: Page, email: string) {
-  await page.goto('/signup');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Sign up' }).click();
-  await expect(page).toHaveURL(/\/kyc$|\/kyc\/contact$/);
-}
-
-async function logIn(page: Page, email: string) {
-  await page.goto('/login');
-  await page.getByLabel('Email').fill(email);
-  await page.getByLabel('Password').fill(PASSWORD);
-  await page.getByRole('button', { name: 'Log in' }).click();
-}
-
-/** Start KYC -> contact (OTP from the dev banner) -> consent. Ends on the personal step. */
-async function reachPersonalStep(page: Page, email: string) {
-  await page.getByRole('button', { name: 'Start KYC' }).click();
-  await expect(page).toHaveURL(/\/kyc\/contact$/);
-
-  await page.getByLabel('Mobile number').fill(MOBILE);
-  await page.getByLabel('Email address').fill(email);
-  await page.getByRole('button', { name: 'Send OTP' }).click();
-
-  const code = (await page.getByTestId('dev-otp-code').textContent())?.trim() ?? '';
-  expect(code).toMatch(/^\d{6}$/);
-  await page.getByLabel(/Enter the code sent to/).fill(code);
-  await page.getByRole('button', { name: 'Verify' }).click();
-
-  await expect(page).toHaveURL(/\/kyc\/consent$/);
-  await expect(page.getByTestId('consent-body')).toContainText('Grievance Officer');
-  const accept = page.getByRole('button', { name: 'I accept' });
-  await expect(accept).toBeDisabled(); // requires the explicit checkbox
-  await page.getByRole('checkbox').check();
-  await accept.click();
-
-  await expect(page).toHaveURL(/\/kyc\/personal$/);
-}
+import { AADHAAR, MOBILE, logIn, newEmail, reachPersonalStep, signUp } from './helpers';
 
 /** Resolves once the debounced autosave PATCH has been accepted by the API. */
 const autosaved = (page: Page) =>
@@ -116,7 +71,7 @@ test('resume: half-filled personal form survives closing the browser and logging
   await second.context.close();
 });
 
-test('full flow: finish and submit personal details -> "Coming next"', async ({ page }) => {
+test('full flow: finish and submit personal details -> documents step', async ({ page }) => {
   const email = newEmail();
   await signUp(page, email);
   await reachPersonalStep(page, email);
@@ -136,8 +91,9 @@ test('full flow: finish and submit personal details -> "Coming next"', async ({ 
 
   await page.getByRole('button', { name: 'Save & Continue' }).click();
 
+  // Documents is a real step now (Phase 2); the next stub is Selfie.
   await expect(page).toHaveURL(/\/kyc\/documents$/);
-  await expect(page.getByText('Coming next')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Upload your documents' })).toBeVisible();
 });
 
 test('validation: bad Aadhaar checksum is rejected client-side', async ({ page }) => {
