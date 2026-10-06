@@ -26,6 +26,10 @@ export const testEnv = (overrides: Partial<Env> = {}): Env => ({
   JWT_SECRET: 'unit-test-secret-unit-test-secret-1234',
   JWT_EXPIRES_IN_SECONDS: 3600,
   PII_ENCRYPTION_KEY: 'ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDEyMzQ=',
+  API_PUBLIC_URL: 'http://localhost:4000',
+  KMS_PROVIDER: 'local',
+  KMS_LOCAL_MASTER_KEY: 'ZGV2LW9ubHkta21zLW1hc3Rlci1rZXktMDEyMzQ1Njc=',
+  FILE_URL_SECRET: 'dev-only-file-url-secret-change-me-0123456789',
   WEB_ORIGIN: 'http://localhost:3000',
   AI_SERVICE_URL: 'http://localhost:8000',
   ...overrides,
@@ -165,3 +169,86 @@ export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
     },
   };
 }
+
+// ---- Document fakes ----
+import { Readable } from 'node:stream';
+import type { ObjectStore } from '../src/modules/documents/object-store.js';
+import type {
+  DocumentRecord,
+  DocumentStore,
+  SignedUrlIssueRecord,
+} from '../src/modules/documents/store.js';
+
+export interface FakeObjectStore extends ObjectStore {
+  objects: Map<string, Buffer>;
+}
+
+export function createFakeObjectStore(): FakeObjectStore {
+  const objects = new Map<string, Buffer>();
+  return {
+    objects,
+    async put(key, body) {
+      const chunks: Buffer[] = [];
+      for await (const c of body) chunks.push(c as Buffer);
+      objects.set(key, Buffer.concat(chunks));
+    },
+    async get(key) {
+      const o = objects.get(key);
+      if (!o) throw new Error('NoSuchKey');
+      return Readable.from([o]);
+    },
+    async remove(key) {
+      objects.delete(key);
+    },
+  };
+}
+
+export interface FakeDocumentStore extends DocumentStore {
+  documents: DocumentRecord[];
+  issues: SignedUrlIssueRecord[];
+}
+
+export function createFakeDocumentStore(audits: AuditEntry[]): FakeDocumentStore {
+  const documents: DocumentRecord[] = [];
+  const issues: SignedUrlIssueRecord[] = [];
+  return {
+    documents,
+    issues,
+    listActive: async (sessionId) =>
+      documents.filter((d) => d.sessionId === sessionId && d.replacedById === null),
+    findById: async (id) => documents.find((d) => d.id === id) ?? null,
+    async insertReplacing(doc, buildAudits) {
+      const existing = documents.find(
+        (d) => d.sessionId === doc.sessionId && d.type === doc.type && d.replacedById === null,
+      );
+      if (existing) existing.replacedById = doc.id;
+      const document: DocumentRecord = { ...doc, uploadedAt: new Date(), replacedById: null };
+      documents.push(document);
+      audits.push(...buildAudits(existing ?? null));
+      return { document, replaced: existing ?? null };
+    },
+    async softDelete(id, audit) {
+      const d = documents.find((x) => x.id === id);
+      if (!d || d.replacedById !== null) return false;
+      d.replacedById = id;
+      audits.push(audit);
+      return true;
+    },
+    async createSignedUrlIssue(input, audit) {
+      const issue: SignedUrlIssueRecord = { ...input, id: randomUUID(), issuedAt: new Date() };
+      issues.push(issue);
+      audits.push(audit(issue));
+      return issue;
+    },
+    findIssue: async (id) => issues.find((i) => i.id === id) ?? null,
+    async writeAudit(entry) {
+      audits.push(entry);
+    },
+  };
+}
+
+/** The document-related deps every `createApp` call needs. */
+export const docDeps = (audits: AuditEntry[]) => ({
+  documentStore: createFakeDocumentStore(audits),
+  objectStore: createFakeObjectStore(),
+});

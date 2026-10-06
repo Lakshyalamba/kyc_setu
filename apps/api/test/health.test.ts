@@ -1,13 +1,14 @@
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 import { createApp } from '../src/app.js';
-import { createFakeKycStore, createFakeStore, testEnv } from './helpers.js';
+import { createFakeKycStore, docDeps, createFakeStore, testEnv } from './helpers.js';
 
 const app = (probe: Parameters<typeof createApp>[0]['healthProbe']) =>
   createApp({
     env: testEnv(),
     store: createFakeStore(),
     kycStore: createFakeKycStore([]),
+    ...docDeps([]),
     healthProbe: probe,
   });
 

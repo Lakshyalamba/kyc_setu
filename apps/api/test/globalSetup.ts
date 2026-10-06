@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { PrismaClient } from '@kyc-setu/db';
 import { Redis } from 'ioredis';
+import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 
@@ -17,6 +18,16 @@ async function probeInfra(dbUrl: string, redisUrl: string): Promise<string | nul
     await prisma.$queryRaw`SELECT 1`;
     await redis.connect();
     await redis.ping();
+    // MinIO too: the document tests store real (encrypted) objects.
+    await ensureBucket(
+      createS3Client({
+        endpoint: process.env['S3_ENDPOINT'] ?? 'http://localhost:9000',
+        region: process.env['S3_REGION'] ?? 'us-east-1',
+        accessKeyId: process.env['S3_ACCESS_KEY'] ?? 'minioadmin',
+        secretAccessKey: process.env['S3_SECRET_KEY'] ?? 'minioadmin',
+      }),
+      process.env['S3_BUCKET'] ?? 'kyc-documents',
+    );
     return null;
   } catch (err) {
     return (err as Error).message.split('\n').pop() ?? 'unknown error';
@@ -27,7 +38,7 @@ async function probeInfra(dbUrl: string, redisUrl: string): Promise<string | nul
 }
 
 /**
- * Integration tests need Postgres + Redis (`make up`). If they're unreachable the integration
+ * Integration tests need Postgres + Redis + MinIO (`make up`). If they're unreachable the integration
  * suites are skipped, unless REQUIRE_INFRA=1 (set by `make test` and CI), which makes it a failure.
  */
 export default async function setup(): Promise<void> {
@@ -45,7 +56,7 @@ export default async function setup(): Promise<void> {
       throw new Error(`Integration infra unavailable (run \`make up\`): ${problem}`);
     }
     console.warn(
-      `\n[tests] Postgres/Redis unavailable, integration tests will be skipped: ${problem}\n`,
+      `\n[tests] Postgres/Redis/MinIO unavailable, integration tests will be skipped: ${problem}\n`,
     );
     process.env['INFRA_UP'] = '0';
     return;
