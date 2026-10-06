@@ -5,10 +5,12 @@ and fintechs: customers complete KYC on their phone (consent, details, PAN + Aad
 selfie), the backend orchestrates AI verification (OCR, cross-document validation, face match, risk
 scoring), and bank officers review submissions before approving or rejecting.
 
-**Status: Phase 3 (OCR + field extraction)** on top of Phase 2 (encrypted document upload), Phase 1 (KYC session +
-personal details) and the Phase 0 foundations. A customer can verify their mobile, give consent, fill in personal
-details and upload PAN, Aadhaar (front/back) and a signature; a background worker then reads each document with
-OCR and stores the extracted fields. Selfie, face match, risk scoring and the officer dashboard come later; see
+**Status: Phase 5 (cross-document validation + a rule-based risk engine)** on top of Phase 3 (OCR extraction), Phase 2
+(encrypted document upload), Phase 1 (KYC session + personal details) and the Phase 0 foundations. A customer can verify
+their mobile, give consent, fill in personal details and upload PAN, Aadhaar and a signature; a worker reads the
+documents with OCR; and a deterministic, explainable risk engine scores the case. **The selfie step, face matching and
+liveness (Phase 4) do not exist in this repository yet**: the engine consumes their results through a defined
+interface, and a dev-only injector stands in for them. The officer dashboard comes later; see
 [What's not built yet](#whats-not-built-yet).
 
 ## Architecture
@@ -237,6 +239,53 @@ worker ──(5) validate, encrypt, write `extractions`, audit, maybe advance th
   exercise the failure statuses). The samples are generated, clearly fake ("SAMPLE DOCUMENT - NOT REAL") and must
   never be replaced with real documents.
 
+## Risk engine (Phase 5)
+
+[`packages/risk`](packages/risk/README.md) is a pure function from a case's signals to a score (0-100), a band
+(`LOW` / `MEDIUM` / `HIGH`) and a **per-rule breakdown** an officer can read: which rules fired, why, how many points each
+added, which didn't apply and why. It has no database, network, clock or randomness, so the same inputs always give
+byte-identical output, and there is no machine learning. All weights, thresholds and bands live in one file,
+`packages/risk/src/config.ts`; the rule table and the tuning guide are in the package README.
+
+```
+extraction + typed details + face match + liveness + prior approvals
+        │  (worker: decrypts, compares full PAN/Aadhaar, hashes → booleans)
+        ▼
+ runRiskEngine  ──▶  RiskAssessment (append-only row)  ──▶  SELFIE_CAPTURED → SUBMITTED → UNDER_REVIEW
+```
+
+| Route                                   | Who                            | Purpose                                                                                                             |
+| --------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `GET /kyc/sessions/:id/risk`            | officers / the owning customer | Officers: the whole assessment. The customer: `{ band }` and nothing else                                           |
+| `POST /kyc/sessions/:id/risk/recompute` | `OFFICER`, `OFFICER_LEAD`      | Re-run on current data; appends a new row, leaves the session's state alone                                         |
+| `GET /dev/risk/preview?sessionId=`      | dev only, officer              | Run the engine without saving anything (for tuning)                                                                 |
+| `POST /dev/sessions/:id/biometrics`     | dev only, officer              | **Stand-in for Phase 4**: records a face-match score and liveness result and moves the session to `SELFIE_CAPTURED` |
+
+- **Triggering.** When a session is at `SELFIE_CAPTURED` and both a face-match score and a liveness result exist, a
+  `risk` job goes on the verification queue. The worker evaluates, stores the assessment, then performs
+  `SELFIE_CAPTURED → SUBMITTED → UNDER_REVIEW` as two separate persisted (and audited) transitions. A retry after a crash
+  between them only finishes the second. Extraction completing does not need to trigger it, because a session cannot
+  reach `SELFIE_CAPTURED` before its documents are extracted.
+- **History.** `risk_assessments` is append-only (a database trigger rejects `UPDATE` and `DELETE`); a recompute or a
+  re-run after a resubmission is a new row and "current" means newest. Every row stores the `engineVersion`, so an old
+  score stays explainable by the rules that made it.
+- **No PII.** The engine sees names and dates of birth but never a full PAN or Aadhaar number: the worker does those
+  comparisons (typed vs extracted, and against prior APPROVED sessions via the PAN blind index and Aadhaar last-4 plus a
+  full-number check) and passes booleans. The stored input summary and the audit rows contain scores, booleans and rule
+  ids only.
+- **Audit:** `risk.job_enqueued`; `risk.evaluated` (`score`, `band`, `engineVersion`, `ruleCount`, `hardFail`);
+  `risk.recomputed` (actor, previous and new band and score, rules added and removed); `risk.failed`;
+  `dev.biometrics_injected`.
+- **The customer** ends on an "under review" screen that says nothing about the outcome. The band is available to the
+  owning customer by API because the brief asked for it; consider removing it, since telling a customer their risk
+  rating is generally discouraged in AML practice.
+- **Dev signals are never trusted in production.** The injector refuses to run there, and the risk worker ignores
+  `DEV_INJECTED` biometric rows when `NODE_ENV=production`.
+- **Try it:** with everything running (`make ai`, `pnpm dev`), `pnpm demo:risk` runs a fresh customer all the way to an
+  assessment. Scenarios: `--scenario clean | stranger | borderline | liveness | typo-pan | duplicate-pan | underage`,
+  plus `--recompute` / `--recompute-worse-face`. (`duplicate-pan` marks a first session APPROVED directly in the dev
+  database, because officer approval does not exist yet, and restores it afterwards.)
+
 ## Design notes
 
 - **Auth.** argon2id password hashes; HS256 JWT (`sub`, `role`) in an `httpOnly`, `SameSite=Lax`
@@ -260,11 +309,11 @@ worker ──(5) validate, encrypt, write `extractions`, audit, maybe advance th
 
 ## What's not built yet
 
-| Phase | Scope                                                                                                                                                                                                                                                                                 |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 4     | Selfie capture UI (`SELFIE_CAPTURED`, `SUBMITTED`; must wait for `DOCS_EXTRACTED`), face match + liveness, cross-document validation (extracted vs typed details, name and DOB), risk scoring engine                                                                                  |
-| 5     | Officer dashboard: review queue (`OFFICER_REVIEW` signed URLs, extracted values, flags), approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                                                                                                 |
-| 6     | Hardening & deploy: rate limiting, email verification / password reset, observability, a real KMS (AWS) and key rotation, document and raw-OCR-text retention (the sweeper exists but is unscheduled), real SMS provider, OCR accuracy work on real (consented) scans, hosting config |
+| Phase | Scope                                                                                                                                                                                                                                                                                                       |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 4     | **Not in this repository.** Selfie capture UI, face matching against the ID photo, and the liveness / motion check. The risk engine already consumes their outputs (`FaceMatchResult`, `LivenessResult` in `@kyc-setu/shared`, stored in `biometric_signals`); the dev injector stands in until this exists |
+| 6     | Officer dashboard: review queue (`OFFICER_REVIEW` signed URLs, extracted values, risk breakdown, flags), approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                                                                                                       |
+| 7     | Hardening & deploy: rate limiting, email verification / password reset, observability, a real KMS (AWS) and key rotation, document and raw-OCR-text retention (the sweeper exists but is unscheduled), real SMS provider, OCR accuracy work on real (consented) scans, hosting config                       |
 
 Also deliberately omitted so far: CSRF tokens (SameSite=Lax + JSON/multipart-only + strict CORS for now), a job to expire
 idle sessions, virus scanning of uploads, a way to re-run extraction for a document that ended in `ERROR`, and any
