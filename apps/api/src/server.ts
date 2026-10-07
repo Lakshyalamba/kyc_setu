@@ -5,6 +5,10 @@ import { createApp } from './app.js';
 import { createHttpAiClient } from './modules/extraction/ai-client.js';
 import { createPrismaExtractionStore } from './modules/extraction/store.js';
 import { createPrismaAuditChainStore } from './modules/audit/chain.store.js';
+import { createS3ExportBucket } from './modules/audit/export.bucket.js';
+import { createPrismaAuditExportStore } from './modules/audit/export.store.js';
+import { loadSigner } from './modules/audit/signing.js';
+import { createAuditEnqueuer, createAuditQueue } from './queue/audit.js';
 import { createPrismaOfficerStore } from './modules/officer/store.js';
 import { createPrismaRiskStore } from './modules/risk/store.js';
 import { createBullEnqueuer, createVerificationQueue } from './queue/verification.js';
@@ -33,12 +37,21 @@ const bucketState = await ensureBucket(s3, env.S3_BUCKET);
 await assertBucketPrivate(s3, env.S3_BUCKET); // objects are reachable only through the API
 console.log(`[api] bucket "${env.S3_BUCKET}" ${bucketState}, no public access`);
 
+const exportsBucketState = await ensureBucket(s3, env.AUDIT_EXPORT_BUCKET);
+await assertBucketPrivate(s3, env.AUDIT_EXPORT_BUCKET);
+console.log(`[api] bucket "${env.AUDIT_EXPORT_BUCKET}" ${exportsBucketState}, no public access`);
+const signer = loadSigner({
+  keyFile: env.AUDIT_SIGNING_KEY_FILE,
+  production: env.NODE_ENV === 'production',
+});
+
 const redis = createRedis(env.REDIS_URL);
 const rateLimitsOn = env.RATE_LIMIT_ENABLED
   ? env.RATE_LIMIT_ENABLED === 'true'
   : env.NODE_ENV === 'production';
 const queue = createSystemQueue(redis);
 const verificationQueue = createVerificationQueue(redis, env.EXTRACTION_BACKOFF_SECONDS);
+const auditQueue = createAuditQueue(redis);
 const app = createApp({
   env,
   store: createPrismaAuthStore(prisma),
@@ -49,6 +62,12 @@ const app = createApp({
   riskStore: createPrismaRiskStore(prisma),
   officerStore: createPrismaOfficerStore(prisma),
   auditChainStore: createPrismaAuditChainStore(prisma),
+  exports: {
+    store: createPrismaAuditExportStore(prisma),
+    bucket: createS3ExportBucket(s3, env.AUDIT_EXPORT_BUCKET),
+    enqueuer: createAuditEnqueuer(auditQueue),
+    signer,
+  },
   enqueuer: createBullEnqueuer(verificationQueue),
   aiClient: createHttpAiClient(env),
   healthProbe: createHealthProbe({ prisma, redis, queue }),
@@ -71,6 +90,7 @@ async function shutdown(signal: string): Promise<void> {
   server.close();
   await queue.close();
   await verificationQueue.close();
+  await auditQueue.close();
   redis.disconnect();
   await prisma.$disconnect();
   process.exit(0);

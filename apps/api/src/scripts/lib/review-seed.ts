@@ -29,6 +29,8 @@ import { createPrismaExtractionStore } from '../../modules/extraction/store.js';
 import { encryptForStorage } from '../../modules/kyc/personal-codec.js';
 import { createPrismaKycStore } from '../../modules/kyc/store.js';
 import { createPrismaAuditChainStore } from '../../modules/audit/chain.store.js';
+import { createPrismaAuditExportStore } from '../../modules/audit/export.store.js';
+import { createEphemeralSigner } from '../../modules/audit/signing.js';
 import { createPrismaOfficerStore } from '../../modules/officer/store.js';
 import { createPrismaRiskStore } from '../../modules/risk/store.js';
 import type { VerificationEnqueuer } from '../../queue/verification.js';
@@ -257,6 +259,13 @@ export async function createSeeder() {
     riskStore: createPrismaRiskStore(prisma),
     officerStore: createPrismaOfficerStore(prisma),
     auditChainStore: createPrismaAuditChainStore(prisma),
+    // Seeding never builds a packet: the export plumbing is present but unused.
+    exports: {
+      store: createPrismaAuditExportStore(prisma),
+      bucket: { put: async () => undefined, signedGetUrl: async () => 'about:blank' },
+      enqueuer: { enqueueExport: async () => undefined },
+      signer: createEphemeralSigner(),
+    },
     enqueuer: nothingToQueue,
     aiClient: cannedAi((id) => bySession.get(id)),
   });

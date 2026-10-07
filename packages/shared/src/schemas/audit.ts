@@ -102,3 +102,28 @@ export const auditSessionsResponseSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 export type AuditSessionsResponse = z.infer<typeof auditSessionsResponseSchema>;
+
+// ---- Session packet export -----------------------------------------------------------------------------------------
+
+export const AUDIT_EXPORT_STATUSES = ['QUEUED', 'RUNNING', 'READY', 'FAILED'] as const;
+
+export const exportRequestResponseSchema = z.object({
+  exportId: z.string().uuid(),
+  status: z.enum(AUDIT_EXPORT_STATUSES),
+});
+
+export const exportStatusResponseSchema = z.object({
+  exportId: z.string().uuid(),
+  sessionId: z.string().uuid(),
+  status: z.enum(AUDIT_EXPORT_STATUSES),
+  createdAt: z.string().datetime(),
+  completedAt: z.string().datetime().nullable(),
+  /** SHA-256 of the finished ZIP, also recorded in the audit log. */
+  sha256: z.string().nullable(),
+  bytes: z.number().int().nullable(),
+  /** A link that works for an hour; only while READY. */
+  downloadUrl: z.string().url().nullable(),
+  downloadExpiresAt: z.string().datetime().nullable(),
+  error: z.string().nullable(),
+});
+export type ExportStatusResponse = z.infer<typeof exportStatusResponseSchema>;

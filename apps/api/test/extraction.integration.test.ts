@@ -29,7 +29,7 @@ import { createBullEnqueuer, createVerificationQueue } from '../src/queue/verifi
 import { buildServices } from '../src/services.js';
 import { createVerificationWorker } from '../src/workers/verification.js';
 import { makeJpeg, makePng } from './fixtures.js';
-import { aiResponse, testEnv } from './helpers.js';
+import { aiResponse, createFakeExportDeps, testEnv } from './helpers.js';
 
 const up = process.env['INFRA_UP'] === '1';
 const dbUrl = process.env['TEST_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '';
@@ -137,6 +137,7 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
+      exports: createFakeExportDeps([]),
       enqueuer: createBullEnqueuer(queue),
       aiClient: createHttpAiClient(env),
     };

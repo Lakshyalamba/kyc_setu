@@ -115,6 +115,13 @@ enum ReasonCode {
   OTHER
 }
 
+enum AuditExportStatus {
+  QUEUED
+  RUNNING
+  READY
+  FAILED
+}
+
 enum ActorType {
   USER
   SYSTEM
@@ -135,6 +142,7 @@ model User {
   decisions     Decision[]
   assignments   OfficerAssignment[]
   lockouts      AuthLockout[]
+  auditExports  AuditExport[]
 
   @@map("users")
 }
@@ -449,4 +457,27 @@ model AuthLockout {
 
   @@index([userId, lockedUntil])
   @@map("auth_lockouts")
+}
+
+/// A request for a signed session packet (a ZIP). The packet itself is in the `kyc-audit-exports` bucket; this row says who
+/// asked, what state it is in and the SHA-256 of the finished ZIP. Status moves forward only (QUEUED, RUNNING, READY or
+/// FAILED); the audit log keeps the requested and completed events.
+model AuditExport {
+  id            String            @id @default(uuid()) @db.Uuid
+  sessionId     String            @db.Uuid
+  requestedById String            @db.Uuid
+  status        AuditExportStatus @default(QUEUED)
+  objectKey     String?
+  sha256        String?
+  bytes         Int?
+  error         String?
+  createdAt     DateTime          @default(now())
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  requestedBy User @relation(fields: [requestedById], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, createdAt])
+  @@index([requestedById])
+  @@map("audit_exports")
 }

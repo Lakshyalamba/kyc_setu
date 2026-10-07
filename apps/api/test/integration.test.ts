@@ -27,7 +27,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { assertBucketPrivate } from '../src/modules/documents/object-store.js';
 import { makeJpeg, makePng, sha256 } from './fixtures.js';
-import { testEnv } from './helpers.js';
+import { createFakeExportDeps, testEnv } from './helpers.js';
 
 const noopEnqueuer = {
   enqueueExtractions: async () => undefined,
@@ -85,6 +85,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
+      exports: createFakeExportDeps([]),
       enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
@@ -126,6 +127,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
+      exports: createFakeExportDeps([]),
       enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
@@ -216,6 +218,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
+      exports: createFakeExportDeps([]),
       enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),

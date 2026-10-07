@@ -45,6 +45,8 @@ export interface PriorCandidate {
 /** Persistence seam for the risk engine; Prisma in prod, an in-memory fake in unit tests. */
 export interface RiskStore {
   latestAssessment(sessionId: string): Promise<AssessmentRecord | null>;
+  /** Every assessment of the session, oldest first (the history a packet or an audit wants). */
+  listAssessments(sessionId: string): Promise<AssessmentRecord[]>;
   countAssessments(sessionId: string, trigger: 'AUTO' | 'RECOMPUTE'): Promise<number>;
   /** Append-only: inserts the row and its audit entries in one transaction. */
   insertAssessment(
@@ -79,6 +81,9 @@ const json = (v: unknown) => v as Prisma.InputJsonValue;
 
 export function createPrismaRiskStore(prisma: SafeClient): RiskStore {
   return {
+    listAssessments: (sessionId) =>
+      prisma.riskAssessment.findMany({ where: { sessionId }, orderBy: { createdAt: 'asc' } }),
+
     latestAssessment: (sessionId) =>
       prisma.riskAssessment.findFirst({ where: { sessionId }, orderBy: { createdAt: 'desc' } }),
 

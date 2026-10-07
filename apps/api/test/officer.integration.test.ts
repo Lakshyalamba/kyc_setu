@@ -26,7 +26,7 @@ import { createBullEnqueuer, createVerificationQueue } from '../src/queue/verifi
 import { buildServices } from '../src/services.js';
 import { createVerificationWorker } from '../src/workers/verification.js';
 import { makeJpeg, makePng } from './fixtures.js';
-import { createFakeAiClient, testEnv } from './helpers.js';
+import { createFakeAiClient, createFakeExportDeps, testEnv } from './helpers.js';
 
 const up = process.env['INFRA_UP'] === '1';
 const dbUrl = process.env['TEST_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '';
@@ -92,6 +92,7 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
+      exports: createFakeExportDeps([]),
       enqueuer: createBullEnqueuer(queue),
       aiClient: createFakeAiClient(),
     };

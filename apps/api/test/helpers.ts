@@ -35,6 +35,7 @@ export const testEnv = (overrides: Partial<Env> = {}): Env => ({
   KMS_PROVIDER: 'local',
   KMS_LOCAL_MASTER_KEY: 'ZGV2LW9ubHkta21zLW1hc3Rlci1rZXktMDEyMzQ1Njc=',
   FILE_URL_SECRET: 'dev-only-file-url-secret-change-me-0123456789',
+  AUDIT_EXPORT_BUCKET: 'kyc-audit-exports',
   WEB_ORIGIN: 'http://localhost:3000',
   AI_SERVICE_URL: 'http://localhost:8000',
   AI_INTERNAL_KEY: 'test-internal-key-0123456789abcdef',
@@ -564,7 +565,9 @@ export function allDeps(
   const riskStore = createFakeRiskStore(audits);
   const officerStore = createFakeOfficerStore(audits, kycStore, documentStore, riskStore, users);
   const auditChainStore = createFakeAuditChainStore();
+  const exports = createFakeExportDeps(audits);
   return {
+    exports,
     auditChainStore,
     documentStore,
     extractionStore,
@@ -601,6 +604,10 @@ export function createFakeRiskStore(audits: AuditEntry[]): FakeRiskStore {
     assessments,
     biometrics,
     priors,
+    listAssessments: async (sessionId) =>
+      assessments
+        .filter((a) => a.sessionId === sessionId)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()),
     latestAssessment: async (sessionId) =>
       assessments
         .filter((a) => a.sessionId === sessionId)
@@ -930,5 +937,95 @@ export function createFakeAuditChainStore(): AuditChainStore & { checkpoints: Ch
       return rec;
     },
     daysWithRows: async () => [],
+  };
+}
+
+// ---- Audit export fakes ----
+import type { ExportBucket } from '../src/modules/audit/export.bucket.js';
+import type { AuditEnqueuer, ExportDeps } from '../src/modules/audit/export.service.js';
+import type { AuditExportStore, ExportRecord } from '../src/modules/audit/export.store.js';
+import { createEphemeralSigner } from '../src/modules/audit/signing.js';
+
+export interface FakeExportDeps extends ExportDeps {
+  store: AuditExportStore & { rows: ExportRecord[] };
+  bucket: ExportBucket & { objects: Map<string, Uint8Array> };
+  enqueuer: AuditEnqueuer & { queued: string[]; failNext: boolean };
+}
+
+/** The export plumbing with nothing behind it: rows in an array, a bucket that is a Map, a queue that is a list. */
+export function createFakeExportDeps(audits: AuditEntry[]): FakeExportDeps {
+  const rows: ExportRecord[] = [];
+  const objects = new Map<string, Uint8Array>();
+  const need = (id: string) => {
+    const r = rows.find((x) => x.id === id);
+    if (!r) throw new Error('no such export');
+    return r;
+  };
+  const enqueuer = {
+    queued: [] as string[],
+    failNext: false,
+    async enqueueExport(id: string) {
+      if (enqueuer.failNext) {
+        enqueuer.failNext = false;
+        throw new Error('redis is down');
+      }
+      enqueuer.queued.push(id);
+    },
+  };
+  return {
+    signer: createEphemeralSigner(),
+    enqueuer,
+    bucket: {
+      objects,
+      async put(key, data) {
+        objects.set(key, data);
+      },
+      signedGetUrl: async (key, seconds) => `https://exports.test/${key}?expires=${seconds}`,
+    },
+    store: {
+      rows,
+      async create(input, audit) {
+        const row: ExportRecord = {
+          id: randomUUID(),
+          status: 'QUEUED',
+          objectKey: null,
+          sha256: null,
+          bytes: null,
+          error: null,
+          createdAt: new Date(),
+          startedAt: null,
+          completedAt: null,
+          ...input,
+        };
+        rows.push(row);
+        audits.push(audit(row));
+        return row;
+      },
+      find: async (id) => rows.find((r) => r.id === id) ?? null,
+      async markRunning(id, at) {
+        Object.assign(need(id), { status: 'RUNNING', startedAt: at, error: null });
+      },
+      async markReady(id, done, audit) {
+        const r = need(id);
+        Object.assign(r, {
+          status: 'READY',
+          objectKey: done.objectKey,
+          sha256: done.sha256,
+          bytes: done.bytes,
+          completedAt: done.at,
+          error: null,
+        });
+        audits.push(audit(r));
+        return r;
+      },
+      async markFailed(id, error, at, audit) {
+        const r = need(id);
+        Object.assign(r, { status: 'FAILED', error, completedAt: at });
+        audits.push(audit(r));
+      },
+      async writeAudit(entry) {
+        audits.push(entry);
+      },
+    },
   };
 }

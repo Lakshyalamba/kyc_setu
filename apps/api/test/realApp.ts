@@ -10,7 +10,12 @@ import { createPrismaExtractionStore } from '../src/modules/extraction/store.js'
 import { createPrismaKycStore } from '../src/modules/kyc/store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
-import { createFakeAiClient, createFakeEnqueuer, testEnv } from './helpers.js';
+import {
+  createFakeAiClient,
+  createFakeEnqueuer,
+  createFakeExportDeps,
+  testEnv,
+} from './helpers.js';
 
 /**
  * The whole API on the real database, with fakes only for the things that need a network (the AI service, the queue)
@@ -37,6 +42,7 @@ export function createRealApp(prisma: PrismaClient, overrides: Partial<AppDeps> 
     riskStore: createPrismaRiskStore(safe),
     officerStore: createPrismaOfficerStore(safe),
     auditChainStore: createPrismaAuditChainStore(safe),
+    exports: createFakeExportDeps([]),
     enqueuer: createFakeEnqueuer(),
     aiClient: createFakeAiClient(),
     healthProbe: async () => ({ database: 'up', redis: 'up', queue: null }),

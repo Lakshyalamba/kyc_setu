@@ -100,7 +100,15 @@ export const AUDIT_ACTIONS = {
   AUTH_LOGIN_BLOCKED: 'auth.login_blocked',
   AUTH_ACCOUNT_LOCKED: 'auth.account_locked',
   AUTH_ACCOUNT_UNLOCKED: 'auth.account_unlocked',
+  AUDIT_EXPORT_REQUESTED: 'audit.export.requested',
+  AUDIT_EXPORT_COMPLETED: 'audit.export.completed',
+  AUDIT_EXPORT_FAILED: 'audit.export.failed',
+  AUDIT_EXPORT_LINK_ISSUED: 'audit.export.link_issued',
 } as const;
+
+/** A signed session packet may be downloaded for an hour after it is built. */
+export const AUDIT_EXPORT_URL_TTL_SECONDS = 3600;
+export const AUDIT_EXPORT_BUCKET = 'kyc-audit-exports';
 
 export const KYC_SESSION_TTL_HOURS = 24;
 export const OTP_LENGTH = 6;

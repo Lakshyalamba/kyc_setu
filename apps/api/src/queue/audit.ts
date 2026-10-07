@@ -1,14 +1,20 @@
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
+import type { AuditEnqueuer } from '../modules/audit/export.service.js';
 
 export const AUDIT_QUEUE = 'audit';
 export const CHAIN_BUILD_JOB = 'audit-chain-build';
+export const EXPORT_JOB = 'audit-export';
 
 export interface ChainBuildJobData {
   kind: 'audit-chain-build';
 }
+export interface ExportJobData {
+  kind: 'audit-export';
+  exportId: string;
+}
 /** Everything the audit queue carries. */
-export type AuditJobData = ChainBuildJobData;
+export type AuditJobData = ChainBuildJobData | ExportJobData;
 
 export function createAuditQueue(
   connection: Redis,
@@ -36,4 +42,19 @@ export async function registerAuditSchedules(queue: Queue<AuditJobData>): Promis
     { pattern: '5 0 * * *', tz: 'Asia/Kolkata' },
     { name: CHAIN_BUILD_JOB, data: { kind: 'audit-chain-build' } },
   );
+}
+
+/** One job per export id, so asking twice (or a retry of the request) never builds a packet twice at once. */
+export const exportJobId = (exportId: string) => `export-${exportId}`;
+
+export function createAuditEnqueuer(queue: Queue<AuditJobData>): AuditEnqueuer {
+  return {
+    async enqueueExport(exportId) {
+      await queue.add(
+        EXPORT_JOB,
+        { kind: 'audit-export', exportId },
+        { jobId: exportJobId(exportId) },
+      );
+    },
+  };
 }

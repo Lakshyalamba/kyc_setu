@@ -1,19 +1,31 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import {
   chainVerifyQuerySchema,
   chainVerifyResponseSchema,
   checkpointsResponseSchema,
+  exportRequestResponseSchema,
+  exportStatusResponseSchema,
+  sessionIdParamsSchema,
 } from '@kyc-setu/shared';
+import { z } from 'zod';
+import { unauthorized } from '../lib/errors.js';
 import { route } from '../lib/route.js';
 import type { PermissionGuards } from '../middleware/permission.js';
 import type { AuditChainService } from '../modules/audit/chain.service.js';
+import type { ExportService } from '../modules/audit/export.service.js';
 
 /** The auditor's routes. Everything here reads; nothing here writes to the audit log. */
+const requesterOf = (req: Request) => {
+  if (!req.auth) throw unauthorized();
+  return { userId: req.auth.userId, role: req.auth.role };
+};
+
 export function createAuditRouter(deps: {
   chain: AuditChainService;
+  exporter: ExportService;
   guard: PermissionGuards;
 }): Router {
-  const { chain, guard } = deps;
+  const { chain, exporter, guard } = deps;
   const router = Router();
   router.use((_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -32,6 +44,25 @@ export function createAuditRouter(deps: {
     '/chain/checkpoints',
     guard.require('audit.read'),
     route({ response: checkpointsResponseSchema }, () => chain.checkpoints()),
+  );
+
+  // A signed packet of everything about one session. Building it takes a moment, so this answers 202 and the page polls.
+  router.post(
+    '/sessions/:id/export',
+    guard.require('audit.export'),
+    route(
+      { params: sessionIdParamsSchema, response: exportRequestResponseSchema, status: 202 },
+      (ctx) => exporter.request(requesterOf(ctx.req), ctx.params.id),
+    ),
+  );
+
+  router.get(
+    '/exports/:exportId',
+    guard.require('audit.export'),
+    route(
+      { params: z.object({ exportId: z.string().uuid() }), response: exportStatusResponseSchema },
+      (ctx) => exporter.status(requesterOf(ctx.req), ctx.params.exportId),
+    ),
   );
 
   return router;

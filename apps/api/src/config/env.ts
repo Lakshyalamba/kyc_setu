@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AUDIT_EXPORT_BUCKET } from '@kyc-setu/shared';
 import { parsePiiKey } from '@kyc-setu/shared/pii';
 import { LocalKmsClient } from '@kyc-setu/shared/crypto';
 
@@ -58,6 +59,13 @@ export const envSchema = z
      * Account lockout after repeated wrong passwords is separate and always on.
      */
     RATE_LIMIT_ENABLED: z.enum(['true', 'false']).optional(),
+    /** Where finished session packets are kept (private, apart from customer documents). */
+    AUDIT_EXPORT_BUCKET: z.string().min(3).default(AUDIT_EXPORT_BUCKET),
+    /**
+     * PEM file with the Ed25519 key that signs session packets. Unset outside production, a development key is generated
+     * into infra/dev-keys/ on first use. In production it is required, and belongs in an HSM or behind a KMS.
+     */
+    AUDIT_SIGNING_KEY_FILE: z.string().min(1).optional(),
     /** Signs the short-lived /files/<token> URLs. */
     FILE_URL_SECRET: z.string().min(32, 'FILE_URL_SECRET must be at least 32 characters'),
   })

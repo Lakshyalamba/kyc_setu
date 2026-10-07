@@ -553,6 +553,31 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
     },
 
     /**
+     * The plaintext of one document, for a signed session packet. Decrypts and checks the stored SHA-256 before
+     * returning a byte. The caller (the export service) is responsible for the audit row that says what was exported.
+     */
+    async decryptForExport(doc: DocumentRecord): Promise<Buffer> {
+      const bytes = await decryptToBuffer(
+        await objects.get(doc.storageKey),
+        {
+          wrappedKey: doc.encryptedDataKey,
+          iv: doc.iv,
+          authTag: doc.authTag,
+          kmsKeyId: doc.kmsKeyId,
+        },
+        kms,
+      );
+      if (createHash('sha256').update(bytes).digest('hex') !== doc.sha256) {
+        throw new AppError(
+          500,
+          'DOCUMENT_INTEGRITY_ERROR',
+          `Document ${doc.id} failed its integrity check`,
+        );
+      }
+      return bytes;
+    },
+
+    /**
      * Step 2 of the proxy. Decrypts fully and verifies the GCM tag and the stored SHA-256 BEFORE a
      * single byte is released, and writes the `document.viewed` audit row before returning bytes.
      */

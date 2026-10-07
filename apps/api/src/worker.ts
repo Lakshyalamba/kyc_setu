@@ -9,6 +9,9 @@ import { createPrismaDocumentStore } from './modules/documents/store.js';
 import { createHttpAiClient } from './modules/extraction/ai-client.js';
 import { createPrismaExtractionStore } from './modules/extraction/store.js';
 import { createPrismaAuditChainStore } from './modules/audit/chain.store.js';
+import { createS3ExportBucket } from './modules/audit/export.bucket.js';
+import { createPrismaAuditExportStore } from './modules/audit/export.store.js';
+import { loadSigner } from './modules/audit/signing.js';
 import { createPrismaOfficerStore } from './modules/officer/store.js';
 import { createPrismaRiskStore } from './modules/risk/store.js';
 import { createPrismaKycStore } from './modules/kyc/store.js';
@@ -20,7 +23,7 @@ import {
   createVerificationQueue,
   requeueStalePending,
 } from './queue/verification.js';
-import { createAuditQueue, registerAuditSchedules } from './queue/audit.js';
+import { createAuditEnqueuer, createAuditQueue, registerAuditSchedules } from './queue/audit.js';
 import { buildServices } from './services.js';
 import { createAuditWorker } from './workers/audit.js';
 import { createVerificationWorker } from './workers/verification.js';
@@ -56,24 +59,32 @@ const verificationQueue = createVerificationQueue(
 );
 const enqueuer = createBullEnqueuer(verificationQueue);
 const extractionStore = createPrismaExtractionStore(prisma);
-const { extraction, risk, notifier, auditChain } = buildServices({
+const s3 = createS3Client({
+  endpoint: env.S3_ENDPOINT,
+  region: env.S3_REGION,
+  accessKeyId: env.S3_ACCESS_KEY,
+  secretAccessKey: env.S3_SECRET_KEY,
+});
+const auditQueue = createAuditQueue(createRedis(env.REDIS_URL));
+const { extraction, risk, notifier, auditChain, auditExport } = buildServices({
   env,
   store,
   kycStore: createPrismaKycStore(prisma),
   documentStore: createPrismaDocumentStore(prisma),
-  objectStore: createS3ObjectStore(
-    createS3Client({
-      endpoint: env.S3_ENDPOINT,
-      region: env.S3_REGION,
-      accessKeyId: env.S3_ACCESS_KEY,
-      secretAccessKey: env.S3_SECRET_KEY,
-    }),
-    env.S3_BUCKET,
-  ),
+  objectStore: createS3ObjectStore(s3, env.S3_BUCKET),
   extractionStore,
   riskStore: createPrismaRiskStore(prisma),
   officerStore: createPrismaOfficerStore(prisma),
   auditChainStore: createPrismaAuditChainStore(prisma),
+  exports: {
+    store: createPrismaAuditExportStore(prisma),
+    bucket: createS3ExportBucket(s3, env.AUDIT_EXPORT_BUCKET),
+    enqueuer: createAuditEnqueuer(auditQueue),
+    signer: loadSigner({
+      keyFile: env.AUDIT_SIGNING_KEY_FILE,
+      production: env.NODE_ENV === 'production',
+    }),
+  },
   enqueuer,
   aiClient: createHttpAiClient(env),
 });
@@ -89,14 +100,14 @@ console.log(
   `[worker] listening on queue "verification" (concurrency 2, retries after ${env.EXTRACTION_BACKOFF_SECONDS.join('s, ')}s)`,
 );
 
-// --- audit queue: the nightly hash chain (00:05 IST) -------------------------------------------------------
-const auditQueue = createAuditQueue(createRedis(env.REDIS_URL));
+// --- audit queue: the nightly hash chain (00:05 IST) and signed session packets -------------------------
 await registerAuditSchedules(auditQueue);
 const auditWorker = createAuditWorker({
   connection: createRedis(env.REDIS_URL),
   chain: auditChain,
+  exporter: auditExport,
 });
-console.log('[worker] listening on queue "audit" (chain build at 00:05 IST)');
+console.log('[worker] listening on queue "audit" (chain build at 00:05 IST, session packets)');
 
 // Re-queue anything committed as PENDING whose job never reached Redis.
 const requeued = await requeueStalePending(extractionStore, enqueuer);

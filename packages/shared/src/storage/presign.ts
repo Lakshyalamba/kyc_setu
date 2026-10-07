@@ -21,14 +21,19 @@ export function getPresignedPutUrl(client: S3Client, opts: PresignedPutOptions):
 export interface PresignedGetOptions {
   bucket: string;
   key: string;
-  /** Seconds; defaults to (and is capped at) 5 minutes. */
+  /** Seconds; defaults to 5 minutes. */
   expiresIn?: number;
+  /**
+   * The longest a link may last (default 5 minutes). Customer documents never go above that; the audit-export bucket,
+   * whose files are for a person to download once, raises it to an hour.
+   */
+  maxExpiresIn?: number;
 }
 
 export function getPresignedGetUrl(client: S3Client, opts: PresignedGetOptions): Promise<string> {
   const expiresIn = Math.min(
     opts.expiresIn ?? PRESIGNED_GET_EXPIRY_SECONDS,
-    PRESIGNED_GET_EXPIRY_SECONDS,
+    opts.maxExpiresIn ?? PRESIGNED_GET_EXPIRY_SECONDS,
   );
   return getSignedUrl(client, new GetObjectCommand({ Bucket: opts.bucket, Key: opts.key }), {
     expiresIn,

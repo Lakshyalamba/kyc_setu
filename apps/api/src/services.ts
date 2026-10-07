@@ -3,6 +3,11 @@ import { parsePiiKey } from '@kyc-setu/shared/pii';
 import type { Env } from './config/env.js';
 import { createAuditChainService, type AuditChainService } from './modules/audit/chain.service.js';
 import type { AuditChainStore } from './modules/audit/chain.store.js';
+import {
+  createExportService,
+  type ExportDeps,
+  type ExportService,
+} from './modules/audit/export.service.js';
 import type { AuthStore } from './modules/auth/store.js';
 import {
   createDocumentsService,
@@ -44,6 +49,8 @@ export interface ServiceDeps {
   riskStore: RiskStore;
   officerStore: OfficerStore;
   auditChainStore: AuditChainStore;
+  /** Signed session packets: the request table, the private bucket, the queue and the signing key. */
+  exports: ExportDeps;
   /** Queues extraction jobs when documents are submitted. */
   enqueuer: VerificationEnqueuer;
   aiClient: AiClient;
@@ -62,6 +69,7 @@ export interface Services {
   notifier: NotificationService;
   customerStatus: CustomerStatusService;
   auditChain: AuditChainService;
+  auditExport: ExportService;
   kms: KmsClient;
 }
 
@@ -142,5 +150,30 @@ export function buildServices(deps: ServiceDeps): Services {
     auth: deps.store,
   });
   const auditChain = createAuditChainService({ store: deps.auditChainStore, ...deps.kycOverrides });
-  return { kyc, docs, extraction, risk, officer, notifier, customerStatus, auditChain, kms };
+  const auditExport = createExportService({
+    exports: deps.exports,
+    kycStore: deps.kycStore,
+    documentStore: deps.documentStore,
+    docs,
+    extractionStore: deps.extractionStore,
+    riskStore: deps.riskStore,
+    officerStore: deps.officerStore,
+    chainStore: deps.auditChainStore,
+    kms,
+    piiKey,
+    includeDevInjected: env.NODE_ENV !== 'production',
+    ...deps.kycOverrides,
+  });
+  return {
+    kyc,
+    docs,
+    extraction,
+    risk,
+    officer,
+    notifier,
+    customerStatus,
+    auditChain,
+    auditExport,
+    kms,
+  };
 }
