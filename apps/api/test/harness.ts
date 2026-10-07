@@ -16,7 +16,7 @@ const healthy = async () => ({ database: 'up' as const, redis: 'up' as const, qu
 export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] = {}) {
   const store = createFakeStore();
   const kycStore = createFakeKycStore(store.audits);
-  const fakes = allDeps(store.audits, kycStore);
+  const fakes = allDeps(store.audits, kycStore, store.users);
   let clock = new Date('2026-10-09T10:00:00Z');
   const deps = {
     env: testEnv(envOverrides),
@@ -30,7 +30,11 @@ export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] 
 
   await store.addUser('a@kycsetu.dev', PASSWORD, 'CUSTOMER');
   await store.addUser('b@kycsetu.dev', PASSWORD, 'CUSTOMER');
-  await store.addUser('officer@kycsetu.dev', PASSWORD, 'OFFICER');
+  const officers = {
+    one: await store.addUser('officer@kycsetu.dev', PASSWORD, 'OFFICER'),
+    two: await store.addUser('officer2@kycsetu.dev', PASSWORD, 'OFFICER'),
+    lead: await store.addUser('lead@kycsetu.dev', PASSWORD, 'OFFICER_LEAD'),
+  };
   await store.addUser('auditor@kycsetu.dev', PASSWORD, 'AUDITOR');
   const service = await store.addUser(AI_SERVICE_EMAIL, '!disabled', 'AI_SERVICE');
 
@@ -90,6 +94,7 @@ export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] 
         fullName: 'Rahul Kumar Sharma',
         dateOfBirth: '1990-05-15',
         gender: 'MALE',
+        fatherName: 'Suresh Kumar Sharma',
         panNumber: 'ABCDE1234F',
         // Matches the "2341 2341 4321" in the AI contract sample's raw text.
         aadhaarNumber: '234123414321',
@@ -123,9 +128,32 @@ export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] 
     return out;
   };
 
+  /**
+   * A customer all the way to UNDER_REVIEW: documents uploaded and read, the dev signal injector standing in for the
+   * selfie step, and the risk job run. `at` spreads submission times so queue order is predictable.
+   */
+  async function reachUnderReview(
+    agent: Agent,
+    opts: {
+      typed?: Record<string, unknown>;
+      face?: number;
+      liveness?: boolean;
+    } = {},
+  ) {
+    const docs = await reachExtracted(agent, opts.typed);
+    await services.risk.injectBiometrics(officers.one.id, docs.sessionId, {
+      faceMatch: { score: opts.face ?? 0.92, modelVersion: 'test-1' },
+      liveness: { passed: opts.liveness ?? true },
+    });
+    await runQueuedRisk();
+    return docs;
+  }
+
   return {
     app,
     services,
+    officers,
+    reachUnderReview,
     store,
     kycStore,
     ...fakes,

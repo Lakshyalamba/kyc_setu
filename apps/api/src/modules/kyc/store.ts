@@ -1,5 +1,5 @@
 import { Prisma, type PrismaClient } from '@kyc-setu/db';
-import type { KycStatus, KycStep } from '@kyc-setu/shared';
+import type { DocumentType, KycStatus, KycStep } from '@kyc-setu/shared';
 import type { AuditEntry } from '../auth/store.js';
 
 export interface SessionRecord {
@@ -15,6 +15,10 @@ export interface SessionRecord {
   consentAcceptedAt: Date | null;
   createdAt: Date;
   expiresAt: Date;
+  /** When the application last entered SUBMITTED. */
+  submittedAt: Date | null;
+  /** While RESUBMIT_REQUESTED: the document slots the customer may fill again. */
+  resubmitTypes: DocumentType[];
 }
 
 export interface SessionPatch {
@@ -25,6 +29,8 @@ export interface SessionPatch {
   consentVersionId?: string;
   consentAcceptedAt?: Date;
   flags?: string[];
+  submittedAt?: Date;
+  resubmitTypes?: DocumentType[];
 }
 
 export interface OtpRecord {
@@ -52,7 +58,10 @@ export const TERMINAL: KycStatus[] = ['APPROVED', 'REJECTED', 'EXPIRED'];
 /** Persistence seam for KYC; Prisma in prod, an in-memory fake in unit tests. */
 export interface KycStore {
   findActiveSession(userId: string): Promise<SessionRecord | null>;
+  /** The customer's newest session of any status (approved and rejected ones included). */
+  findLatestSession(userId: string): Promise<SessionRecord | null>;
   findSession(id: string): Promise<SessionRecord | null>;
+  findConsentById(id: string): Promise<ConsentRecord | null>;
   /** Creates the session + its audit row atomically. Null if the user already has an active one. */
   createSession(
     input: { userId: string; expiresAt: Date },
@@ -104,7 +113,10 @@ export function createPrismaKycStore(prisma: PrismaClient): KycStore {
   return {
     findActiveSession: (userId) =>
       prisma.kycSession.findFirst({ where: { userId, status: { notIn: TERMINAL } } }),
+    findLatestSession: (userId) =>
+      prisma.kycSession.findFirst({ where: { userId }, orderBy: { createdAt: 'desc' } }),
     findSession: (id) => prisma.kycSession.findUnique({ where: { id } }),
+    findConsentById: (id) => prisma.consentVersion.findUnique({ where: { id } }),
 
     async createSession(input, audit) {
       try {

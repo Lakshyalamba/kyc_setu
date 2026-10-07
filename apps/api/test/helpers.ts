@@ -113,7 +113,10 @@ export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
     consent,
     findActiveSession: async (userId) =>
       sessions.find((s) => s.userId === userId && !TERMINAL.includes(s.status)) ?? null,
+    // Sessions are appended in creation order, so the last one for the user is the newest.
+    findLatestSession: async (userId) => sessions.filter((s) => s.userId === userId).at(-1) ?? null,
     findSession: async (id) => sessions.find((s) => s.id === id) ?? null,
+    findConsentById: async (id) => (id === consent.id ? consent : null),
     async createSession(input, audit) {
       if (sessions.some((s) => s.userId === input.userId && !TERMINAL.includes(s.status)))
         return null;
@@ -129,6 +132,8 @@ export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
         consentAcceptedAt: null,
         createdAt: new Date(),
         expiresAt: input.expiresAt,
+        submittedAt: null,
+        resubmitTypes: [],
       };
       sessions.push(s);
       audits.push(audit(s));
@@ -412,6 +417,7 @@ export function createFakeExtractionStore(
 export interface FakeEnqueuer extends VerificationEnqueuer {
   queued: string[];
   riskQueued: { sessionId: string; run: number }[];
+  notified: string[];
   failNext: boolean;
 }
 
@@ -419,7 +425,15 @@ export function createFakeEnqueuer(): FakeEnqueuer {
   const e: FakeEnqueuer = {
     queued: [],
     riskQueued: [],
+    notified: [],
     failNext: false,
+    async enqueueNotification(decisionId) {
+      if (e.failNext) {
+        e.failNext = false;
+        throw new Error('redis is down');
+      }
+      e.notified.push(decisionId);
+    },
     async enqueueRisk(sessionId, run) {
       if (e.failNext) {
         e.failNext = false;
@@ -478,14 +492,27 @@ export function createFakeAiClient(): FakeAiClient {
 export const unreachableAi = () => new AiServiceError('AI service unreachable (TypeError)', true);
 
 /** Everything `createApp`/`buildServices` needs beyond env, auth store and kyc store. */
-export function allDeps(audits: AuditEntry[], kycStore: FakeKycStore) {
+export function allDeps(
+  audits: AuditEntry[],
+  kycStore: FakeKycStore,
+  users: { id: string; email: string; role: Role }[] = [],
+) {
   const documentStore = createFakeDocumentStore(audits);
   const extractionStore = createFakeExtractionStore(audits, kycStore, documentStore);
   const objectStore = createFakeObjectStore();
   const enqueuer = createFakeEnqueuer();
   const aiClient = createFakeAiClient();
   const riskStore = createFakeRiskStore(audits);
-  return { documentStore, extractionStore, objectStore, enqueuer, aiClient, riskStore };
+  const officerStore = createFakeOfficerStore(audits, kycStore, documentStore, riskStore, users);
+  return {
+    documentStore,
+    extractionStore,
+    objectStore,
+    enqueuer,
+    aiClient,
+    riskStore,
+    officerStore,
+  };
 }
 
 // ---- Risk fakes ----
@@ -542,6 +569,276 @@ export function createFakeRiskStore(audits: AuditEntry[]): FakeRiskStore {
           ((panHmac !== null && p.panNumberHmac === panHmac) ||
             (aadhaarLast4 !== null && p.aadhaarNumberLast4 === aadhaarLast4)),
       ),
+    async writeAudit(entry) {
+      audits.push(entry);
+    },
+  };
+}
+
+// ---- Officer fakes ----
+import type {
+  AssignmentRecord,
+  AuditRow,
+  DecisionRecord,
+  OfficerStore,
+  QueueCounts,
+  QueueRow,
+} from '../src/modules/officer/store.js';
+
+export interface FakeOfficerStore extends OfficerStore {
+  assignments: (AssignmentRecord & { isActive: boolean; releasedAt: Date | null })[];
+  decisions: DecisionRecord[];
+}
+
+/** In-memory OfficerStore with the same semantics as the SQL one (one active assignment, CAS on the status). */
+export function createFakeOfficerStore(
+  audits: AuditEntry[],
+  kycStore: FakeKycStore,
+  docStore: FakeDocumentStore,
+  riskStore: FakeRiskStore,
+  users: { id: string; email: string; role: Role }[],
+): FakeOfficerStore {
+  const assignments: FakeOfficerStore['assignments'] = [];
+  const decisions: DecisionRecord[] = [];
+  const emailOf = (id: string) => users.find((u) => u.id === id)?.email ?? 'unknown@kycsetu.dev';
+  const active = (sessionId: string) =>
+    assignments.find((a) => a.sessionId === sessionId && a.isActive) ?? null;
+  const rank = (b: string | null) => (b === 'HIGH' ? 3 : b === 'MEDIUM' ? 2 : b === 'LOW' ? 1 : 0);
+  const latestBand = (sessionId: string) =>
+    [...riskStore.assessments]
+      .filter((a) => a.sessionId === sessionId)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+  const nameOf = (s: { personalDetails: unknown }) => {
+    const n = (s.personalDetails as { fullName?: unknown } | null)?.fullName;
+    return typeof n === 'string' ? n : null;
+  };
+
+  return {
+    assignments,
+    decisions,
+
+    async queue(f) {
+      let rows: (QueueRow & { rank: number; sortAt: Date })[] = kycStore.sessions
+        .filter((s) => s.status === f.status)
+        .map((s) => {
+          const a = active(s.id);
+          const ra = latestBand(s.id);
+          return {
+            sessionId: s.id,
+            status: s.status,
+            createdAt: s.createdAt,
+            submittedAt: s.submittedAt,
+            fullName: nameOf(s),
+            band: ra?.band ?? null,
+            triggeredRuleCount: Array.isArray(ra?.triggeredRules) ? ra.triggeredRules.length : 0,
+            assignedOfficerId: a?.officerId ?? null,
+            assignedOfficerEmail: a?.officerEmail ?? null,
+            assignedAt: a?.assignedAt ?? null,
+            flags: s.flags,
+            rank: rank(ra?.band ?? null),
+            sortAt: s.submittedAt ?? s.createdAt,
+          };
+        });
+      if (f.band) rows = rows.filter((r) => r.band === f.band);
+      if (f.assignedTo?.kind === 'officer') {
+        const id = f.assignedTo.officerId;
+        rows = rows.filter((r) => r.assignedOfficerId === id);
+      }
+      if (f.assignedTo?.kind === 'unassigned') rows = rows.filter((r) => !r.assignedOfficerId);
+      if (f.search) {
+        const q = f.search.toLowerCase();
+        rows = rows.filter(
+          (r) => r.sessionId.startsWith(q) || (r.fullName ?? '').toLowerCase().startsWith(q),
+        );
+      }
+      rows.sort(
+        (a, b) =>
+          b.rank - a.rank ||
+          a.sortAt.getTime() - b.sortAt.getTime() ||
+          a.sessionId.localeCompare(b.sessionId),
+      );
+      const after = f.after;
+      if (after) {
+        rows = rows.filter(
+          (r) =>
+            r.rank < after.rank ||
+            (r.rank === after.rank &&
+              (r.sortAt.getTime() > Date.parse(after.at) ||
+                (r.sortAt.getTime() === Date.parse(after.at) && r.sessionId > after.id))),
+        );
+      }
+      return rows.slice(0, f.limit);
+    },
+
+    async counts(status, officerId): Promise<QueueCounts> {
+      const out: QueueCounts = {
+        HIGH: 0,
+        MEDIUM: 0,
+        LOW: 0,
+        total: 0,
+        assignedToMe: 0,
+        unassigned: 0,
+      };
+      for (const s of kycStore.sessions.filter((x) => x.status === status)) {
+        out.total++;
+        const band = latestBand(s.id)?.band;
+        if (band) out[band]++;
+        const a = active(s.id);
+        if (!a) out.unassigned++;
+        else if (a.officerId === officerId) out.assignedToMe++;
+      }
+      return out;
+    },
+
+    activeAssignment: async (sessionId) => active(sessionId),
+
+    async claim(sessionId, officerId, audit) {
+      const existing = active(sessionId);
+      if (existing) {
+        return {
+          kind: existing.officerId === officerId ? 'existing' : 'conflict',
+          assignment: existing,
+        };
+      }
+      const a = {
+        id: randomUUID(),
+        sessionId,
+        officerId,
+        officerEmail: emailOf(officerId),
+        assignedAt: new Date(),
+        isActive: true,
+        releasedAt: null,
+      };
+      assignments.push(a);
+      audits.push(audit(a));
+      return { kind: 'created', assignment: a };
+    },
+
+    async release(sessionId, officerId, audit) {
+      const a = active(sessionId);
+      if (!a || a.officerId !== officerId) return false;
+      a.isActive = false;
+      a.releasedAt = new Date();
+      audits.push(audit({ sessionId }));
+      return true;
+    },
+
+    async takeOver(sessionId, officerId, audit) {
+      const existing = active(sessionId);
+      if (existing?.officerId === officerId) {
+        return { assignment: existing, previous: null, changed: false };
+      }
+      const previous = existing ? { ...existing } : null;
+      if (existing) {
+        existing.isActive = false;
+        existing.releasedAt = new Date();
+      }
+      const a = {
+        id: randomUUID(),
+        sessionId,
+        officerId,
+        officerEmail: emailOf(officerId),
+        assignedAt: new Date(),
+        isActive: true,
+        releasedAt: null,
+      };
+      assignments.push(a);
+      audits.push(audit(a, previous));
+      return { assignment: a, previous, changed: true };
+    },
+
+    async myAssignments(officerId) {
+      return assignments
+        .filter((a) => a.officerId === officerId && a.isActive)
+        .map((a) => {
+          const s = kycStore.sessions.find((x) => x.id === a.sessionId);
+          return {
+            sessionId: a.sessionId,
+            fullName: s ? nameOf(s) : null,
+            status: s?.status ?? 'UNDER_REVIEW',
+            band: latestBand(a.sessionId)?.band ?? null,
+            assignedAt: a.assignedAt,
+            submittedAt: s?.submittedAt ?? null,
+          };
+        });
+    },
+
+    findUsers: async (ids) => users.filter((u) => ids.includes(u.id)),
+
+    async sessionAudit(sessionId): Promise<AuditRow[]> {
+      const docIds = new Set(
+        docStore.documents.filter((d) => d.sessionId === sessionId).map((d) => d.id),
+      );
+      let n = 0;
+      return audits
+        .filter(
+          (a) =>
+            (a.entityType === 'KycSession' && a.entityId === sessionId) ||
+            (a.entityType === 'Document' && docIds.has(a.entityId)),
+        )
+        .map((a) => ({
+          id: randomUUID(),
+          actorId: a.actorId,
+          actorType: a.actorType,
+          action: a.action,
+          entityType: a.entityType,
+          entityId: a.entityId,
+          metadata: a.metadata ?? {},
+          createdAt: new Date(Date.UTC(2026, 9, 11, 0, 0, 0, n++)),
+        }));
+    },
+
+    async lastReveal(sessionId) {
+      const hit = [...audits]
+        .reverse()
+        .find((a) => a.action === 'aadhaar.revealed' && a.entityId === sessionId);
+      return hit ? { actorId: hit.actorId, at: new Date() } : null;
+    },
+
+    decisionsFor: async (sessionId) => decisions.filter((d) => d.sessionId === sessionId),
+    findDecision: async (id) => decisions.find((d) => d.id === id) ?? null,
+    latestDecision: async (sessionId) =>
+      decisions.filter((d) => d.sessionId === sessionId).at(-1) ?? null,
+    countResubmits: async (sessionId) =>
+      decisions.filter((d) => d.sessionId === sessionId && d.decision === 'REQUEST_RESUBMIT')
+        .length,
+
+    async recordDecision(input) {
+      const session = kycStore.sessions.find((s) => s.id === input.sessionId);
+      if (!session || session.status !== input.fromStatus) return { kind: 'session-changed' };
+      const a = active(input.sessionId);
+      if (!a || a.officerId !== input.officerId) return { kind: 'not-assignee' };
+      Object.assign(session, input.sessionPatch);
+      a.isActive = false;
+      a.releasedAt = new Date();
+      const cleared = docStore.documents.filter(
+        (d) =>
+          d.sessionId === input.sessionId &&
+          d.replacedById === null &&
+          input.clearDocumentTypes.includes(d.type),
+      );
+      for (const d of cleared) d.replacedById = d.id;
+      const decision: DecisionRecord = {
+        id: randomUUID(),
+        sessionId: input.sessionId,
+        officerId: input.officerId,
+        decision: input.decision,
+        reasonCode: input.reasonCode,
+        reasonNote: input.reasonNote,
+        resubmitDocumentTypes: input.resubmitDocumentTypes,
+        snapshot: input.snapshot,
+        createdAt: new Date(),
+      };
+      decisions.push(decision);
+      audits.push(
+        ...input.audits(
+          decision,
+          cleared.map((d) => ({ id: d.id, type: d.type })),
+        ),
+      );
+      return { kind: 'ok', decision };
+    },
+
     async writeAudit(entry) {
       audits.push(entry);
     },
