@@ -580,6 +580,6 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
     await customer
       .post('/auth/customer/signup')
       .send({ email: `x-${randomUUID()}@example.com`, password: 'password123' });
-    expect((await customer.post(`/kyc/sessions/${sessionId}/risk/recompute`)).status).toBe(401);
+    expect((await customer.post(`/kyc/sessions/${sessionId}/risk/recompute`)).status).toBe(403);
   });
 });

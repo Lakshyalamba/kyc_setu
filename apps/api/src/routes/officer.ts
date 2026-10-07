@@ -1,4 +1,4 @@
-import { Router, type Request, type RequestHandler } from 'express';
+import { Router, type Request } from 'express';
 import {
   claimResponseSchema,
   decisionRequestSchema,
@@ -15,6 +15,7 @@ import {
   takeOverResponseSchema,
 } from '@kyc-setu/shared';
 import { unauthorized } from '../lib/errors.js';
+import type { PermissionGuards } from '../middleware/permission.js';
 import { route } from '../lib/route.js';
 import type { RequestMeta } from '../modules/kyc/kyc.service.js';
 import type { Actor, OfficerService } from '../modules/officer/officer.service.js';
@@ -30,16 +31,16 @@ const actorOf = (req: Request): Actor => {
 };
 
 /**
- * The officer workbench API. Staff (officers, leads and the read-only auditor) can read; only OFFICER and
- * OFFICER_LEAD can claim, take over, reveal and decide. Everything here is officer-cookie only.
+ * The officer workbench API. Who may do what is in `rolePermissions` (packages/shared): the auditor can read, an
+ * officer or lead can also claim, reveal and decide.
  */
 export function createOfficerRouter(deps: {
   officer: OfficerService;
-  /** createRequireAuth(env, 'officer') + requireRole('OFFICER', 'OFFICER_LEAD', 'AUDITOR') */
-  requireStaff: RequestHandler[];
-  /** createRequireAuth(env, 'officer') + requireRole('OFFICER', 'OFFICER_LEAD') */
-  requireWriter: RequestHandler[];
+  guard: PermissionGuards;
 }): Router {
+  const { guard } = deps;
+  const read = guard.require('kyc.session.read.any');
+  const claim = guard.require('kyc.session.claim');
   const { officer } = deps;
   const router = Router();
   // Payloads here describe real customers: never let a browser or a proxy keep one.
@@ -50,7 +51,7 @@ export function createOfficerRouter(deps: {
 
   router.get(
     '/queue',
-    ...deps.requireStaff,
+    read,
     route({ query: queueQuerySchema, response: queueResponseSchema }, (ctx) =>
       officer.queue(actorOf(ctx.req), ctx.query),
     ),
@@ -58,7 +59,7 @@ export function createOfficerRouter(deps: {
 
   router.post(
     '/queue/:sessionId/claim',
-    ...deps.requireWriter,
+    claim,
     route({ params: queueSessionParamsSchema, response: claimResponseSchema }, async (ctx) => ({
       assignment: await officer.claim(actorOf(ctx.req), ctx.params.sessionId),
     })),
@@ -66,7 +67,7 @@ export function createOfficerRouter(deps: {
 
   router.post(
     '/queue/:sessionId/release',
-    ...deps.requireWriter,
+    claim,
     route({ params: queueSessionParamsSchema, response: releaseResponseSchema }, async (ctx) => ({
       released: await officer.release(actorOf(ctx.req), ctx.params.sessionId),
     })),
@@ -74,7 +75,7 @@ export function createOfficerRouter(deps: {
 
   router.post(
     '/queue/:sessionId/take-over',
-    ...deps.requireWriter,
+    claim,
     route({ params: queueSessionParamsSchema, response: takeOverResponseSchema }, (ctx) =>
       officer.takeOver(actorOf(ctx.req), ctx.params.sessionId),
     ),
@@ -82,7 +83,7 @@ export function createOfficerRouter(deps: {
 
   router.get(
     '/me/assignments',
-    ...deps.requireStaff,
+    read,
     route({ response: myAssignmentsResponseSchema }, (ctx) =>
       officer.myAssignments(actorOf(ctx.req)),
     ),
@@ -90,7 +91,7 @@ export function createOfficerRouter(deps: {
 
   router.get(
     '/sessions/:id',
-    ...deps.requireStaff,
+    read,
     route({ params: sessionIdParamsSchema, response: reviewPayloadSchema }, (ctx) =>
       officer.review(actorOf(ctx.req), ctx.params.id, metaOf(ctx.req)),
     ),
@@ -98,7 +99,7 @@ export function createOfficerRouter(deps: {
 
   router.post(
     '/sessions/:id/reveal',
-    ...deps.requireWriter,
+    guard.require('kyc.session.reveal_pii'),
     route(
       { params: sessionIdParamsSchema, body: revealRequestSchema, response: revealResponseSchema },
       (ctx) => officer.reveal(actorOf(ctx.req), ctx.params.id),
@@ -107,7 +108,7 @@ export function createOfficerRouter(deps: {
 
   router.post(
     '/sessions/:id/decisions',
-    ...deps.requireWriter,
+    guard.require('kyc.session.decide'),
     route(
       {
         params: sessionIdParamsSchema,

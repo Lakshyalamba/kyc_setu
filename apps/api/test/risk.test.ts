@@ -422,9 +422,11 @@ describe('exit criterion 6: recompute', () => {
     });
   });
 
-  it('is officer-only: customers 401, an auditor (read-only) 403, no session 401', async () => {
+  it('needs the decide permission: customers 403, an auditor (read-only) 403, no session 401', async () => {
     const { sessionId } = await assess();
-    expect((await a.post(`/kyc/sessions/${sessionId}/risk/recompute`)).status).toBe(401);
+    const asCustomer = await a.post(`/kyc/sessions/${sessionId}/risk/recompute`);
+    expect(asCustomer.status).toBe(403);
+    expect(asCustomer.body.error.details.permission).toBe('kyc.session.decide');
     const auditor = await h.signedIn('auditor@kycsetu.dev', 'officer');
     expect((await auditor.post(`/kyc/sessions/${sessionId}/risk/recompute`)).status).toBe(403);
     expect((await request(h.app).post(`/kyc/sessions/${sessionId}/risk/recompute`)).status).toBe(
@@ -544,9 +546,9 @@ describe('dev routes', () => {
 
   it('require an officer; customers cannot use them', async () => {
     const docs = await h.reachExtracted(a);
-    expect((await a.get(`/dev/risk/preview?sessionId=${docs.sessionId}`)).status).toBe(401);
+    expect((await a.get(`/dev/risk/preview?sessionId=${docs.sessionId}`)).status).toBe(403);
     expect((await a.post(`/dev/sessions/${docs.sessionId}/biometrics`).send(GOOD)).status).toBe(
-      401,
+      403,
     );
     expect((await officer.get('/dev/risk/preview?sessionId=nope')).status).toBe(400);
   });

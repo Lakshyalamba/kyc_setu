@@ -425,7 +425,7 @@ describe('dev debug route', () => {
     await h.process(ids.AADHAAR_FRONT);
 
     expect((await request(h.app).get(`/dev/extractions/${ids.PAN}`)).status).toBe(401);
-    expect((await a.get(`/dev/extractions/${ids.PAN}`)).status).toBe(401); // a customer session isn't an officer session
+    expect((await a.get(`/dev/extractions/${ids.PAN}`)).status).toBe(403); // a customer session isn't an officer session
 
     const officer = await h.signedIn('officer@kycsetu.dev', 'officer');
     const pan = (await officer.get(`/dev/extractions/${ids.PAN}`)).body.extraction;

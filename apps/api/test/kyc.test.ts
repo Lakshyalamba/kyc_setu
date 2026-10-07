@@ -93,7 +93,7 @@ describe('auth', () => {
     await officer
       .post('/auth/officer/login')
       .send({ email: 'officer@kycsetu.dev', password: CREDS.password });
-    expect((await officer.post('/kyc/sessions')).status).toBe(401);
+    expect((await officer.post('/kyc/sessions')).status).toBe(403); // signed in, but not a customer
   });
 });
 

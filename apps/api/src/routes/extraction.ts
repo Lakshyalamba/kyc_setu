@@ -8,6 +8,7 @@ import {
 } from '@kyc-setu/shared';
 import { unauthorized } from '../lib/errors.js';
 import { route } from '../lib/route.js';
+import type { PermissionGuards } from '../middleware/permission.js';
 import type { ExtractionService } from '../modules/extraction/extraction.service.js';
 
 const userIdOf = (req: Request): string => {
@@ -56,12 +57,12 @@ export function createExtractionRouter(deps: {
  */
 export function createDevExtractionRouter(deps: {
   extraction: ExtractionService;
-  requireOfficer: RequestHandler[];
+  guard: PermissionGuards;
 }): Router {
   const router = Router();
-  router.use(...deps.requireOfficer);
   router.get(
     '/extractions/:documentId',
+    deps.guard.require('kyc.session.read.any'),
     route(
       {
         params: z.object({ documentId: z.string().uuid() }),

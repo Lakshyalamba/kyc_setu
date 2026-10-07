@@ -58,7 +58,7 @@ describe('who may call the officer API', () => {
     const anon = await h.signedIn('nobody@kycsetu.dev', 'officer'); // no such user: stays unauthenticated
 
     expect((await anon.get('/officer/queue')).status).toBe(401);
-    expect((await customer.get('/officer/queue')).status).toBe(401); // customer cookie is not an officer cookie
+    expect((await customer.get('/officer/queue')).status).toBe(403); // signed in, but a customer holds no staff permission
 
     expect((await auditor.get('/officer/queue')).status).toBe(200);
     expect((await review(auditor, sessionId)).status).toBe(200);
@@ -383,7 +383,7 @@ describe('the one-shot review payload', () => {
     expect(ok.headers['content-type']).toBe('image/jpeg');
     expect(ok.headers['cache-control']).toBe('no-store');
     expect((await two.get(path)).status).toBe(403); // another officer, same token
-    expect((await customer.get(path)).status).toBe(401); // the customer cookie is not an officer cookie
+    expect((await customer.get(path)).status).toBe(401); // /files authenticates by token and the officer cookie, not by permission
     expect(
       h.audits.some(
         (a) =>
@@ -796,7 +796,7 @@ describe('what the customer sees', () => {
     });
     expect(res.body.referenceId).toMatch(/^KYC-[0-9A-F]{8}$/);
     expect(JSON.stringify(res.body).toLowerCase()).not.toMatch(/risk|band|score|rule/);
-    expect((await one.get('/kyc/status')).status).toBe(401); // officers have no customer status
+    expect((await one.get('/kyc/status')).status).toBe(403); // officers have no customer status
     const b = await h.signedIn('b@kycsetu.dev');
     expect((await b.get('/kyc/status')).status).toBe(404);
   });
