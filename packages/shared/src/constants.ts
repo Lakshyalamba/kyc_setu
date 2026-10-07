@@ -96,6 +96,7 @@ export const AUDIT_ACTIONS = {
   NOTIFICATION_SENT: 'notification.sent',
   APPROVAL_SLIP_DOWNLOADED: 'kyc.approval_slip_downloaded',
   RBAC_DENIED: 'rbac.denied',
+  CONSENT_REVISED: 'consent.revised',
 } as const;
 
 export const KYC_SESSION_TTL_HOURS = 24;

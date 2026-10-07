@@ -256,6 +256,14 @@ export const reviewPayloadSchema = z.object({
         versionId: z.string().uuid(),
         version: z.string(),
         acceptedAt: isoDate.nullable(),
+        /** When this version came into force, and when (if ever) a later one replaced it. */
+        effectiveFrom: isoDate,
+        supersededAt: isoDate.nullable(),
+        /** The first words of what the customer accepted, for the panel. */
+        snippet: z.string(),
+        /** SHA-256 of the archived text, so a copy can be checked against the row. */
+        sha256: z.string().regex(/^[0-9a-f]{64}$/),
+        /** The exact markdown archived on that version row: what the customer actually saw. */
         textSnapshot: z.string(),
       })
       .nullable(),

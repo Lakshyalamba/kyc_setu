@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { formatDateTime, humanize, timeAgo } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { ConsentPanel } from './consent-panel';
 import { useReview } from './review-context';
 
 function MismatchIcon() {
@@ -187,18 +188,7 @@ export function PersonalDetailsCard() {
             </div>
           ))}
         </dl>
-        {payload.session.consent && (
-          <details className="border-t border-border pt-2 text-xs text-muted-foreground">
-            <summary className="cursor-pointer">
-              Consent v{payload.session.consent.version}
-              {payload.session.consent.acceptedAt &&
-                ` accepted ${formatDateTime(payload.session.consent.acceptedAt)}`}
-            </summary>
-            <pre className="mt-2 max-h-48 overflow-auto font-sans whitespace-pre-wrap">
-              {payload.session.consent.textSnapshot}
-            </pre>
-          </details>
-        )}
+        <ConsentPanel />
       </CardContent>
     </Card>
   );

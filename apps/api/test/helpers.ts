@@ -101,6 +101,7 @@ export function createFakeKycStore(audits: AuditEntry[]): FakeKycStore {
     version: '1.0.0',
     bodyMarkdown: '# Consent\n\nTest text.',
     effectiveFrom: new Date('2026-01-01T00:00:00Z'),
+    supersededAt: null,
   };
   const need = <T>(v: T | undefined): T => {
     if (v === undefined) throw new Error('not found');

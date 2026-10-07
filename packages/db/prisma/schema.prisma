@@ -177,13 +177,18 @@ model KycSession {
   @@map("kyc_sessions")
 }
 
+/// A published consent text. Immutable: a trigger rejects any change to the text, version or effective date and any
+/// delete, so `session.consentVersion.bodyMarkdown` is always exactly what the customer was shown. A revision is a NEW
+/// row; the only thing that ever changes on an old one is `supersededAt`, set once, in the same transaction.
 model ConsentVersion {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String    @id @default(uuid()) @db.Uuid
   /// semver, e.g. 1.0.0
-  version       String   @unique
-  bodyMarkdown  String   @db.Text
+  version       String    @unique
+  bodyMarkdown  String    @db.Text
   effectiveFrom DateTime
-  createdAt     DateTime @default(now())
+  /// Set when a later version replaces this one. Null for the version customers are asked to accept today.
+  supersededAt  DateTime?
+  createdAt     DateTime  @default(now())
 
   sessions KycSession[]
 

@@ -52,6 +52,8 @@ export interface ConsentRecord {
   version: string;
   bodyMarkdown: string;
   effectiveFrom: Date;
+  /** Set once a later version replaces this one; the text itself never changes. */
+  supersededAt: Date | null;
 }
 
 export const TERMINAL: KycStatus[] = ['APPROVED', 'REJECTED', 'EXPIRED'];
@@ -167,7 +169,7 @@ export function createPrismaKycStore(prisma: SafeClient): KycStore {
 
     latestConsent: (now) =>
       prisma.consentVersion.findFirst({
-        where: { effectiveFrom: { lte: now } },
+        where: { effectiveFrom: { lte: now }, supersededAt: null },
         orderBy: { effectiveFrom: 'desc' },
       }),
 

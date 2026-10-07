@@ -35,6 +35,7 @@ import type { DocumentStore } from '../documents/store.js';
 import type { ExtractionStore, ExtractionWithType } from '../extraction/store.js';
 import { patchFrom, toState, type RequestMeta } from '../kyc/kyc.service.js';
 import { decryptStored } from '../kyc/personal-codec.js';
+import { sha256Hex } from '../consent/consent.service.js';
 import { maskForRole } from '../pii/mask.js';
 import type { KycStore, SessionRecord } from '../kyc/store.js';
 import { buildRiskInput } from '../risk/inputs.js';
@@ -77,6 +78,16 @@ const NEXT_STATUS = {
 } as const satisfies Record<DecisionRequest['decision'], KycStatus>;
 /** Steps the customer goes through again after a resubmission request. */
 const REDONE_STEPS = ['DOCUMENTS', 'SELFIE', 'REVIEW'] as const;
+/** The first words of a consent text, without markdown headings, for a panel that should not show a page of legal text. */
+export function snippetOf(markdown: string, max = 200): string {
+  const plain = markdown
+    .replace(/^#+\s*/gm, '')
+    .replace(/[*_`>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return plain.length <= max ? plain : `${plain.slice(0, max).replace(/\s+\S*$/, '')}…`;
+}
+
 const HIDDEN_METADATA_KEYS = new Set(['ip', 'userAgent']);
 const RANK: Record<Band, number> = { HIGH: 3, MEDIUM: 2, LOW: 1 };
 
@@ -654,6 +665,10 @@ export function createOfficerService(deps: OfficerServiceDeps) {
                 versionId: consent.id,
                 version: consent.version,
                 acceptedAt: session.consentAcceptedAt?.toISOString() ?? null,
+                effectiveFrom: consent.effectiveFrom.toISOString(),
+                supersededAt: consent.supersededAt?.toISOString() ?? null,
+                snippet: snippetOf(consent.bodyMarkdown),
+                sha256: sha256Hex(consent.bodyMarkdown),
                 textSnapshot: consent.bodyMarkdown,
               }
             : null,

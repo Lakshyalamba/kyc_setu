@@ -5,8 +5,8 @@ import { randomUUID } from 'node:crypto';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@kyc-setu/db';
-import { createApp } from '../src/app.js';
 import { createSafeClient } from '../src/db/safeClient.js';
+import { createRealApp } from './realApp.js';
 import { hashPassword } from '../src/lib/password.js';
 import {
   GENESIS_HASH,
@@ -20,15 +20,6 @@ import {
 } from '../src/modules/audit/chain.js';
 import { createAuditChainService } from '../src/modules/audit/chain.service.js';
 import { createPrismaAuditChainStore } from '../src/modules/audit/chain.store.js';
-import { createPrismaAuthStore } from '../src/modules/auth/store.js';
-import { createPrismaDocumentStore } from '../src/modules/documents/store.js';
-import { createS3ObjectStore } from '../src/modules/documents/object-store.js';
-import { createPrismaExtractionStore } from '../src/modules/extraction/store.js';
-import { createPrismaKycStore } from '../src/modules/kyc/store.js';
-import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
-import { createPrismaRiskStore } from '../src/modules/risk/store.js';
-import { createS3Client } from '@kyc-setu/shared/storage';
-import { createFakeAiClient, createFakeEnqueuer, testEnv } from './helpers.js';
 
 describe('canonical JSON and the hashing rule', () => {
   it('sorts keys at every level, drops whitespace and ignores undefined', () => {
@@ -318,7 +309,7 @@ describe.skipIf(!up)('the audit chain on Postgres', () => {
 describe.skipIf(!up)('GET /audit/chain/verify', () => {
   const raw = new PrismaClient({ datasourceUrl: dbUrl });
   const safe = createSafeClient(raw);
-  let app: ReturnType<typeof createApp>;
+  let app: ReturnType<typeof createRealApp>['app'];
   const login = async (email: string) => {
     const agent = request.agent(app);
     const res = await agent.post('/auth/officer/login').send({ email, password: 'password123' });
@@ -337,29 +328,7 @@ describe.skipIf(!up)('GET /audit/chain/verify', () => {
     ] as const)
       await raw.user.create({ data: { email, role, passwordHash: hash } });
 
-    const env = testEnv();
-    app = createApp({
-      env,
-      store: createPrismaAuthStore(safe),
-      kycStore: createPrismaKycStore(safe),
-      documentStore: createPrismaDocumentStore(safe),
-      objectStore: createS3ObjectStore(
-        createS3Client({
-          endpoint: env.S3_ENDPOINT,
-          region: 'us-east-1',
-          accessKeyId: 'a',
-          secretAccessKey: 'b',
-        }),
-        'unused',
-      ),
-      extractionStore: createPrismaExtractionStore(safe),
-      riskStore: createPrismaRiskStore(safe),
-      officerStore: createPrismaOfficerStore(safe),
-      auditChainStore: createPrismaAuditChainStore(safe),
-      enqueuer: createFakeEnqueuer(),
-      aiClient: createFakeAiClient(),
-      healthProbe: async () => ({ database: 'up', redis: 'up', queue: null }),
-    });
+    app = createRealApp(raw).app;
     // Two closed days of history, then build.
     for (const [ago, n] of [
       [3, 3],
