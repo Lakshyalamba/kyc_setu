@@ -5,10 +5,15 @@ import { prisma, type Role } from './index.js';
 const PASSWORD = 'password123'; // local development only
 const AI_SERVICE_EMAIL = 'ai-service@kycsetu.internal'; // keep in sync with @kyc-setu/shared AI_SERVICE_EMAIL
 const USERS: { email: string; role: Role }[] = [
+  { email: 'lead@kycsetu.dev', role: 'OFFICER_LEAD' },
   { email: 'officer@kycsetu.dev', role: 'OFFICER' },
+  { email: 'officer2@kycsetu.dev', role: 'OFFICER' },
   { email: 'auditor@kycsetu.dev', role: 'AUDITOR' },
   { email: 'customer1@kycsetu.dev', role: 'CUSTOMER' },
   { email: 'customer2@kycsetu.dev', role: 'CUSTOMER' },
+  { email: 'customer3@kycsetu.dev', role: 'CUSTOMER' },
+  { email: 'customer4@kycsetu.dev', role: 'CUSTOMER' },
+  { email: 'customer5@kycsetu.dev', role: 'CUSTOMER' },
 ];
 
 if (process.env['NODE_ENV'] === 'production') {
@@ -62,5 +67,5 @@ await prisma.consentVersion.upsert({
 });
 console.log(`+ consent version ${CONSENT_V1_VERSION} (upserted)`);
 
-console.log(`Seeded. All seed users share the dev password "${PASSWORD}".`);
+console.log(`Seeded users. All seed users share the dev password "${PASSWORD}".`);
 await prisma.$disconnect();

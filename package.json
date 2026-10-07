@@ -20,7 +20,7 @@
     "db:generate": "pnpm --filter @kyc-setu/db run generate",
     "db:migrate": "pnpm --filter @kyc-setu/db run migrate",
     "db:validate": "pnpm --filter @kyc-setu/db run validate",
-    "seed": "pnpm --filter @kyc-setu/db run seed",
+    "seed": "pnpm --filter @kyc-setu/db run seed && pnpm --filter @kyc-setu/api run seed:review",
     "e2e": "pnpm --filter @kyc-setu/web run e2e",
     "demo:docs": "pnpm --filter @kyc-setu/api run demo:docs --",
     "test:ai:ocr": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m ocr",

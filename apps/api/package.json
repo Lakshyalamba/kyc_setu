@@ -12,6 +12,7 @@
     "start:worker": "node --env-file=../../.env dist/src/worker.js",
     "ping": "tsx --env-file=../../.env src/scripts/ping.ts",
     "test": "vitest run",
+    "seed:review": "tsx --env-file=../../.env src/scripts/seed-review.ts",
     "demo:docs": "tsx --env-file=../../.env src/scripts/demo-docs.ts",
     "demo:risk": "tsx --env-file=../../.env src/scripts/demo-risk.ts"
   },
