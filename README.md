@@ -5,12 +5,15 @@ and fintechs: customers complete KYC on their phone (consent, details, PAN + Aad
 selfie), the backend orchestrates AI verification (OCR, cross-document validation, face match, risk
 scoring), and bank officers review submissions before approving or rejecting.
 
-**Status: Phase 6 (the officer dashboard and review workflow)** on top of Phase 5 (cross-document validation + a
+**Status: Phase 7 (audit integrity, consent versioning, role-based access and an auditor console)** on top of Phase 6 (the
+officer dashboard and review workflow), Phase 5 (cross-document validation + a
 rule-based risk engine), Phase 3 (OCR extraction), Phase 2 (encrypted document upload), Phase 1 (KYC session + personal
 details) and the Phase 0 foundations. A customer can verify their mobile, give consent, fill in personal details and
 upload PAN, Aadhaar and a signature; a worker reads the documents with OCR; a deterministic, explainable risk engine
 scores the case; and an officer works a queue, inspects every piece of evidence on one screen and approves, rejects or
-sends the application back, and the customer's own screens follow. **The selfie step, face matching and liveness
+sends the application back, and the customer's own screens follow. The audit trail is tamper-evident (append-only, hash-chained
+day by day, verifiable from a page), every route asks for a named permission, identifiers are masked in one place, and an
+auditor can read everything, change nothing and take away a signed packet for any session. **The selfie step, face matching and liveness
 (Phase 4) do not exist in this repository yet**: the engine and the review page consume their results through a defined
 interface, and a dev-only injector stands in for them. See [What's not built yet](#whats-not-built-yet).
 
@@ -52,7 +55,7 @@ Prerequisites: Node 22+, [pnpm](https://pnpm.io), [uv](https://docs.astral.sh/uv
 
 ```bash
 cp .env.example .env     # 1. local-dev defaults work as-is
-make up                  # 2. Postgres, Redis, MinIO
+make up                  # 2. Postgres, Redis, MinIO (and a development signing key in infra/dev-keys/)
 pnpm install             # 3. also generates the Prisma client
 pnpm db:migrate          # 4. apply migrations
 pnpm seed                # 5. staff, 5 customers with applications to review, consent text, the AI service account
@@ -89,15 +92,17 @@ MinIO console <http://localhost:9001> (`minioadmin` / `minioadmin`).
 
 ### Commands
 
-| Command                            | What it does                                                      |
-| ---------------------------------- | ----------------------------------------------------------------- |
-| `make up` / `make down`            | Start / stop Postgres, Redis, MinIO                               |
-| `make reset`                       | **Wipe all data**, recreate infra, migrate, seed                  |
-| `make test`                        | `pnpm test` with infra required (integration tests must not skip) |
-| `pnpm typecheck`                   | `tsc -b` for libs/api + `tsc --noEmit` for web                    |
-| `pnpm lint`                        | ESLint + Prettier check                                           |
-| `pnpm db:validate`                 | `prisma validate`                                                 |
-| `pnpm --filter @kyc-setu/api ping` | Enqueue a `ping` job and wait for the worker's result             |
+| Command                            | What it does                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------------- |
+| `make up` / `make down`            | Start / stop Postgres, Redis, MinIO                                               |
+| `make reset`                       | **Wipe all data**, recreate infra, migrate, seed                                  |
+| `make test`                        | `pnpm test` with infra required (integration tests must not skip)                 |
+| `pnpm typecheck`                   | `tsc -b` for libs/api + `tsc --noEmit` for web                                    |
+| `pnpm lint`                        | ESLint + Prettier check                                                           |
+| `pnpm db:validate`                 | `prisma validate`                                                                 |
+| `pnpm --filter @kyc-setu/api ping` | Enqueue a `ping` job and wait for the worker's result                             |
+| `pnpm audit:chain`                 | Chain every closed day of the audit log (what the nightly job does) and verify it |
+| `pnpm consent:revise`              | Publish a new consent text (`-- --version 1.1.0 --file consent.md`)               |
 
 ### Verifying Phase 0
 
@@ -130,6 +135,9 @@ on boot and exits with a list of problems if anything is missing or malformed.
 | `AI_REQUEST_TIMEOUT_MS`           | api     | Per-request timeout when calling the OCR service (default 60000)                                              |
 | `EXTRACTION_BACKOFF_SECONDS`      | api     | Delays before retries 1, 2, 3 of a failed extraction (default `10,60,300`, so 4 attempts in total)            |
 | `OCR_RAW_TEXT_RETENTION_DAYS`     | api     | How long encrypted raw OCR text may be kept (default 90). The cleanup job exists but is **not scheduled** yet |
+| `RATE_LIMIT_ENABLED`              | api     | `true`/`false`: sign-in, OTP and reveal limits. Default on in production, off elsewhere                       |
+| `AUDIT_EXPORT_BUCKET`             | api     | Private bucket for signed session packets (default `kyc-audit-exports`)                                       |
+| `AUDIT_SIGNING_KEY_FILE`          | api     | Ed25519 PEM that signs packets. Dev: generated into `infra/dev-keys/`. Production: required, HSM/KMS-backed   |
 | `NEXT_PUBLIC_API_URL`             | web     | API base URL the browser and server components call                                                           |
 
 ## KYC flow (Phase 1)
@@ -371,6 +379,130 @@ cannot claim, reveal or decide.
   Run it twice and nothing is duplicated. Log in as `officer@kycsetu.dev` and open the HIGH application.
   A database that already holds applications from earlier experiments will list those too; `make reset` starts clean.
 
+## Audit integrity and access control (Phase 7)
+
+### Who may do what
+
+Routes ask for a **permission**, never for a role. The table is data (`packages/shared/src/rbac/permissions.ts`), and
+`requirePermission` is the only authorisation check: it authenticates, looks the permission up for the caller's role, and
+answers **403 naming the permission** (`{ error: { code: 'FORBIDDEN', details: { permission } } }`), writing an
+`rbac.denied` audit row (who, which permission, which route: no bodies, no ids). A caller who is not signed in gets 401.
+
+| Permission               | CUSTOMER | OFFICER | OFFICER_LEAD | AUDITOR | What it covers                                        |
+| ------------------------ | :------: | :-----: | :----------: | :-----: | ----------------------------------------------------- |
+| `kyc.session.read.own`   |    ✓     |         |              |         | a customer's own session, documents, status, slip     |
+| `kyc.session.read.any`   |          |    ✓    |      ✓       |    ✓    | the queue and the review payload (always masked)      |
+| `kyc.session.claim`      |          |    ✓    |      ✓       |         | claim, release, take over                             |
+| `kyc.session.decide`     |          |    ✓    |      ✓       |         | approve, reject, send back; recompute risk            |
+| `kyc.session.reveal_pii` |          |    ✓    |      ✓       |         | the audited Aadhaar reveal                            |
+| `audit.read`             |          |         |      ✓       |    ✓    | chain verification, checkpoints, cross-session search |
+| `audit.export`           |          |         |      ✓       |    ✓    | build a signed session packet                         |
+| `officer.manage`         |          |         |      ✓       |         | unlock an account, retention dry run                  |
+| `consent.manage`         |          |         |              |         | publishing consent text: held by no role yet (stub)   |
+
+`test/rbac.test.ts` walks every mounted router and fails for any route that is neither guarded nor on the reasoned allowlist
+(`apps/api/src/routes/allowlist.ts`: health, signup, the two logins, `/auth/me`, `/auth/logout`, and `/files/:token`, which
+authorises by a signed token). It also runs **every guarded route as every role** and asserts 403-with-permission exactly
+where the role lacks it.
+
+### Masking happens in the serializer
+
+`maskForRole(plain, role, options)` is the only place personal details become something a response may contain: a customer
+sees their own details with the Aadhaar masked; staff and the auditor see PAN, mobile and Aadhaar masked to their last
+characters; the full Aadhaar exists only in the response of the audited reveal, tagged `{ value, revealed: true, revealedAt }`,
+and only for a role holding `kyc.session.reveal_pii`. `test/pii-leak.test.ts` calls every GET route as every role against a
+fully populated application and fails on any raw Aadhaar (or a PAN or mobile handed to staff); it found and closed one real
+leak, the dev-only `/dev/extractions` route, which is now closed to the auditor.
+
+### The audit log cannot be rewritten, and tampering is detectable
+
+- **The database refuses.** A trigger on `audit_logs` raises on every `UPDATE` and `DELETE`, with no setting an application
+  can flip. `createSafeClient` goes further: `auditLog` has no `update`, `updateMany`, `upsert`, `delete` or `deleteMany` in its
+  type (so the call does not compile, also inside transactions), with a runtime guard behind it.
+- **A daily hash chain.** For each closed IST day, the audit rows (in `(createdAt, id)` order) are chained:
+  `h(i) = sha256(canonicalJson(row i) + h(i-1))`, seeded with the previous day's `chainHash` (64 zeros before the first), and
+  stored in `audit_chain_checkpoint` (also append-only) together with each row's hash, so a verification can name the first
+  row that no longer matches. The nightly `audit-chain-build` job (BullMQ scheduler, **00:05 Asia/Kolkata**, one schedule
+  however many workers boot) chains every closed day with rows and no checkpoint, bootstrapping from the oldest row; `pnpm
+audit:chain` runs the same code by hand.
+- **`GET /audit/chain/verify?from=&to=`** (`audit.read`) recomputes the range and reports per day PASS or FAIL with the row
+  id and whether it was **MODIFIED**, **MISSING**, **UNEXPECTED** (a row added after the day closed) or the day's **LINK_BROKEN**.
+  It writes nothing, not even an audit row. A closed day that has rows but no checkpoint is reported as unchecked, not as a pass.
+- **What this does and does not stop.** A superuser can switch a trigger off; the chain exists so that the next verification
+  notices what they did. The tests tamper behind the trigger (`session_replication_role = replica`) and check the day and the
+  row are named. Anything added to a day _after_ it was chained is also caught, which is why the seed never writes into a day
+  that already has a checkpoint.
+
+### Consent text is immutable
+
+A trigger freezes the text, version, effective date and creation time of a published `consent_versions` row and refuses
+deletes; only `supersededAt` can be set, once. A revision is a **new** row with a higher version, written in the same
+transaction that supersedes the previous one (`pnpm consent:revise -- --version 1.1.0 --file consent.md`; nobody holds
+`consent.manage` yet, so there is no HTTP route). `/kyc/consent/current` returns the newest non-superseded version, and because a
+session points at the row it accepted, `session.consentVersion.bodyMarkdown` is always what the customer saw. The review page
+shows the version, when it was accepted, a snippet and a **View full consent** dialog with the exact archived markdown and its
+SHA-256.
+
+### Rate limits and lockout
+
+| What                                | Limit                        | Response                                           |
+| ----------------------------------- | ---------------------------- | -------------------------------------------------- |
+| `POST /auth/*/login`                | 5 / 15 min per address       | 429 `RATE_LIMITED`, with `retryAfterSeconds`       |
+| `POST /auth/*/login`                | 5 / 15 min per email address | 429                                                |
+| `POST /kyc/sessions/:id/otp/send`   | 3 / 10 min per user          | 429                                                |
+| `POST /officer/sessions/:id/reveal` | 10 / hour per officer        | 429 (refused before it reaches the audit log)      |
+| Wrong password, per account         | 5 in 30 min locks for 15 min | 423 `ACCOUNT_LOCKED`, even with the right password |
+
+Limits live in Redis (`rate-limit-redis`), so every API instance and a restart share one count; they are **on in production and
+off elsewhere** unless `RATE_LIMIT_ENABLED` says otherwise, because a developer or an end-to-end run signs in far more than five
+times in fifteen minutes. Lockout is separate and always on: the fifth wrong password writes an `auth_lockouts` row and
+`auth.account_locked`; each refused attempt is `auth.login_blocked`; failures that caused a lock (or that a lead forgave) do not
+count towards the next. A lead unlocks from **/officer/admin** (a stub: one form and a list, `POST /admin/unlock`), audited with
+their id. No e-mail is sent: the notification is a masked line on stdout.
+
+### A signed packet for any session
+
+`POST /audit/sessions/:id/export` (`audit.export`) queues an `audit-export` job; the worker builds the ZIP, stores it in the
+private `kyc-audit-exports` bucket and audits `audit.export.requested` / `completed` (with the ZIP's final SHA-256 and the signing
+key's fingerprint); `GET /audit/exports/:id` hands out a **one-hour** presigned link (each issued link is audited). Inside:
+
+```
+manifest.json   session + status timeline, consent version and exact text, risk engine version, the audit chain
+                checkpoints covering the session's life, face signals, what was redacted, a hash of every file
+personal.json   masked, for the role that asked          extractions.json  raw OCR text decrypted, identifiers masked
+documents/      the uploaded files, decrypted, byte for byte           risk.json   every assessment with its inputs
+decisions.json  with their snapshots                    audit.jsonl   every audit row of the session, oldest first
+face/           recorded signals and a note: crops and frames do not exist until Phase 4
+files.sha256 (+ .sig)  signing-public-key.pem  verify.sh
+```
+
+`files.sha256` lists every file including the manifest; `files.sha256.sig` is an **Ed25519 signature over it**, and the public
+key is in the manifest, in `signing-public-key.pem` and, as a fingerprint, in the audit log. Unzip and run `./verify.sh`: it
+recomputes every hash (reporting MISSING, CHANGED and UNLISTED files) and, with OpenSSL 3, checks the signature. Changing a
+document is caught by the hashes; changing the hashes is caught by the signature. **The development key (`make up` writes it to
+git-ignored `infra/dev-keys/`) is not secure: in production the key must be HSM- or KMS-backed and the application refuses to
+invent one.**
+
+### Retention (configured, not scheduled)
+
+`packages/shared/src/retention.ts` holds the periods (documents 7 years after the decision, raw OCR text 90 days after
+extraction, the audit log indefinitely, face embeddings and selfie frames 7 years: the last two are not stored yet).
+`POST /admin/retention/dry-run` (a lead) and the `retention-sweep` job report what each period would purge, change nothing and
+are not scheduled; a real purge is refused. [docs/retention-policy.md](docs/retention-policy.md) says it in plain English, including
+how to ask for deletion and why the audit log is exempt.
+
+### The auditor console
+
+`/auditor` (the audit.read permission: the auditor, or a lead): three cards (chain integrity with the last day chained, session
+search, export); `/auditor/chain` (verify a date range; no button that changes anything); `/auditor/sessions` (every
+application in any state, filters for status, decision, date range and a name or id prefix); `/auditor/sessions/:id` (the review
+page with no claim, decision or reveal); `/auditor/sessions/:id/export` (build, watch, download). An auditor who opens `/officer`
+is sent there.
+
+**Try it:** `make up && pnpm db:migrate && pnpm seed && pnpm dev`, then `pnpm audit:chain`; sign in as `auditor@kycsetu.dev`.
+`pnpm seed` also gives the log two closed days (backdated rows that say what they are) so the chain has something to verify on a
+fresh database. Against psql, `UPDATE audit_logs SET action = 'x'` fails with `audit_logs is append-only`.
+
 ## Design notes
 
 - **Auth.** argon2id password hashes; HS256 JWT (`sub`, `role`) in an `httpOnly`, `SameSite=Lax`
@@ -394,10 +526,10 @@ cannot claim, reveal or decide.
 
 ## What's not built yet
 
-| Phase | Scope                                                                                                                                                                                                                                                                                                       |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 4     | **Not in this repository.** Selfie capture UI, face matching against the ID photo, and the liveness / motion check. The risk engine already consumes their outputs (`FaceMatchResult`, `LivenessResult` in `@kyc-setu/shared`, stored in `biometric_signals`); the dev injector stands in until this exists |
-| 7     | Hardening & deploy: rate limiting, email verification / password reset, observability, a real KMS (AWS) and key rotation, document and raw-OCR-text retention (the sweeper exists but is unscheduled), real SMS provider, OCR accuracy work on real (consented) scans, hosting config                       |
+| Phase | Scope                                                                                                                                                                                                                                                                                                        |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 4     | **Not in this repository.** Selfie capture UI, face matching against the ID photo, and the liveness / motion check. The risk engine already consumes their outputs (`FaceMatchResult`, `LivenessResult` in `@kyc-setu/shared`, stored in `biometric_signals`); the dev injector stands in until this exists  |
+| 8     | Hardening & deploy: email verification / password reset and real e-mail for lockouts and OTPs, observability, a real KMS (AWS) and key rotation, an HSM-backed export signing key, a real retention purge and its schedule, a real SMS provider, OCR accuracy work on real (consented) scans, hosting config |
 
 Also deliberately omitted so far: CSRF tokens (SameSite=Lax + JSON/multipart-only + strict CORS for now), a job to expire
 idle sessions, virus scanning of uploads, a way to re-run extraction for a document that ended in `ERROR`, and any
