@@ -5,6 +5,7 @@ import type { AuditEnqueuer } from '../modules/audit/export.service.js';
 export const AUDIT_QUEUE = 'audit';
 export const CHAIN_BUILD_JOB = 'audit-chain-build';
 export const EXPORT_JOB = 'audit-export';
+export const RETENTION_JOB = 'retention-sweep';
 
 export interface ChainBuildJobData {
   kind: 'audit-chain-build';
@@ -13,8 +14,13 @@ export interface ExportJobData {
   kind: 'audit-export';
   exportId: string;
 }
+export interface RetentionJobData {
+  kind: 'retention-sweep';
+  /** Always true today; the field is there so a real purge is an explicit, separate decision. */
+  dryRun: boolean;
+}
 /** Everything the audit queue carries. */
-export type AuditJobData = ChainBuildJobData | ExportJobData;
+export type AuditJobData = ChainBuildJobData | ExportJobData | RetentionJobData;
 
 export function createAuditQueue(
   connection: Redis,

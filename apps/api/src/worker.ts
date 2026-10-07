@@ -66,7 +66,7 @@ const s3 = createS3Client({
   secretAccessKey: env.S3_SECRET_KEY,
 });
 const auditQueue = createAuditQueue(createRedis(env.REDIS_URL));
-const { extraction, risk, notifier, auditChain, auditExport } = buildServices({
+const { extraction, risk, notifier, auditChain, auditExport, retention } = buildServices({
   env,
   store,
   kycStore: createPrismaKycStore(prisma),
@@ -106,6 +106,7 @@ const auditWorker = createAuditWorker({
   connection: createRedis(env.REDIS_URL),
   chain: auditChain,
   exporter: auditExport,
+  retention,
 });
 console.log('[worker] listening on queue "audit" (chain build at 00:05 IST, session packets)');
 

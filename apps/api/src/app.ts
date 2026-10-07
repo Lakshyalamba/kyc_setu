@@ -51,8 +51,17 @@ export function createApp(deps: AppDeps): Express {
     ...(deps.kycOverrides?.now ? { now: deps.kycOverrides.now } : {}),
   });
   const limiters = deps.rateLimit ? createRateLimiters(deps.rateLimit) : NO_LIMITS;
-  const { kyc, docs, extraction, risk, officer, customerStatus, auditChain, auditExport } =
-    buildServices(deps);
+  const {
+    kyc,
+    docs,
+    extraction,
+    risk,
+    officer,
+    customerStatus,
+    auditChain,
+    auditExport,
+    retention,
+  } = buildServices(deps);
   // Every route states the permission it needs (packages/shared/src/rbac); denials are audited.
   const guard = createPermissionGuards({ env, audit: (entry) => deps.store.writeAudit(entry) });
   const requireCustomer = [guard.require('kyc.session.read.own')];
@@ -76,7 +85,7 @@ export function createApp(deps: AppDeps): Express {
   mount('/kyc', createCustomerStatusRouter({ status: customerStatus, requireCustomer }));
   mount('/officer', createOfficerRouter({ officer, guard, limiters }));
   mount('/audit', createAuditRouter({ chain: auditChain, exporter: auditExport, guard }));
-  mount('/admin', createAdminRouter({ auth, guard }));
+  mount('/admin', createAdminRouter({ auth, retention, guard }));
   mount('/files', createFilesRouter({ docs, env }));
 
   if (env.NODE_ENV !== 'production') {

@@ -64,6 +64,8 @@ export interface ExtractionStore {
   /** Terminal failure. */
   fail(documentId: string, attempt: number, message: string, audit: AuditEntry): Promise<void>;
   findStalePending(olderThan: Date, limit: number): Promise<string[]>;
+  /** How many rows still hold raw OCR text finished before `before` (what the sweeper would clear). */
+  countRawTextBefore(before: Date): Promise<number>;
   /** Retention sweeper primitive: drops encrypted raw text finished before `before`. Returns rows affected. */
   clearRawTextBefore(before: Date): Promise<number>;
   writeAudit(entry: AuditEntry): Promise<void>;
@@ -161,6 +163,11 @@ export function createPrismaExtractionStore(prisma: SafeClient): ExtractionStore
       });
       return rows.map((r) => r.documentId);
     },
+
+    countRawTextBefore: (before) =>
+      prisma.extraction.count({
+        where: { completedAt: { lt: before }, rawTextEncrypted: { not: null } },
+      }),
 
     async clearRawTextBefore(before) {
       const res = await prisma.extraction.updateMany({

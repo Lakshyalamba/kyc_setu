@@ -2,12 +2,14 @@ import { UnrecoverableError, Worker, type Job } from 'bullmq';
 import type { Redis } from 'ioredis';
 import type { AuditChainService } from '../modules/audit/chain.service.js';
 import type { ExportService } from '../modules/audit/export.service.js';
+import type { RetentionService } from '../modules/retention/retention.service.js';
 import { AUDIT_QUEUE, type AuditJobData } from '../queue/audit.js';
 
 export interface AuditProcessorDeps {
   chain: AuditChainService;
   /** Optional so a chain-only worker (or a test) can omit it. */
   exporter?: ExportService;
+  retention?: RetentionService;
 }
 
 /** The audit queue's processor, separate from the Worker so tests can call it directly. */
@@ -30,6 +32,13 @@ export function createAuditProcessor(deps: AuditProcessorDeps) {
         const out = await deps.exporter.process(job.data.exportId);
         console.log(`[audit] export ${job.data.exportId}: ${out.status}`);
         return out;
+      }
+      case 'retention-sweep': {
+        if (!deps.retention)
+          throw new UnrecoverableError('retention is not configured on this worker');
+        // Never scheduled: only an operator who adds the job gets here, and only a dry run is accepted.
+        const report = await deps.retention.sweep({ dryRun: job.data.dryRun });
+        return { dryRun: report.dryRun, totalWouldPurge: report.totalWouldPurge };
       }
       default:
         throw new UnrecoverableError(`unknown audit job ${(job.data as { kind?: string }).kind}`);

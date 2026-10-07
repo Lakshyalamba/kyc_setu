@@ -104,6 +104,7 @@ export const AUDIT_ACTIONS = {
   AUDIT_EXPORT_COMPLETED: 'audit.export.completed',
   AUDIT_EXPORT_FAILED: 'audit.export.failed',
   AUDIT_EXPORT_LINK_ISSUED: 'audit.export.link_issued',
+  RETENTION_DRY_RUN: 'retention.dry_run',
 } as const;
 
 /** A signed session packet may be downloaded for an hour after it is built. */

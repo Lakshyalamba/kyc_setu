@@ -34,6 +34,10 @@ import {
 import { createNotificationService, type NotificationService } from './modules/officer/notify.js';
 import { createOfficerService, type OfficerService } from './modules/officer/officer.service.js';
 import type { OfficerStore } from './modules/officer/store.js';
+import {
+  createRetentionService,
+  type RetentionService,
+} from './modules/retention/retention.service.js';
 import { createRiskService, type RiskService } from './modules/risk/risk.service.js';
 import type { RiskStore } from './modules/risk/store.js';
 import type { VerificationEnqueuer } from './queue/verification.js';
@@ -70,6 +74,7 @@ export interface Services {
   customerStatus: CustomerStatusService;
   auditChain: AuditChainService;
   auditExport: ExportService;
+  retention: RetentionService;
   kms: KmsClient;
 }
 
@@ -164,6 +169,12 @@ export function buildServices(deps: ServiceDeps): Services {
     includeDevInjected: env.NODE_ENV !== 'production',
     ...deps.kycOverrides,
   });
+  const retention = createRetentionService({
+    officerStore: deps.officerStore,
+    extractionStore: deps.extractionStore,
+    audit: (entry) => deps.store.writeAudit(entry),
+    ...deps.kycOverrides,
+  });
   return {
     kyc,
     docs,
@@ -174,6 +185,7 @@ export function buildServices(deps: ServiceDeps): Services {
     customerStatus,
     auditChain,
     auditExport,
+    retention,
     kms,
   };
 }

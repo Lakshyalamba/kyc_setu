@@ -451,6 +451,12 @@ export function createFakeExtractionStore(
         .filter((r) => r.status === 'PENDING' && r.createdAt < olderThan)
         .map((r) => r.documentId);
     },
+    async countRawTextBefore(before) {
+      sync();
+      return [...rows.values()].filter(
+        (r) => r.completedAt && r.completedAt < before && r.rawTextEncrypted,
+      ).length;
+    },
     async clearRawTextBefore(before) {
       sync();
       let n = 0;
@@ -867,6 +873,24 @@ export function createFakeOfficerStore(
     findDecision: async (id) => decisions.find((d) => d.id === id) ?? null,
     latestDecision: async (sessionId) =>
       decisions.filter((d) => d.sessionId === sessionId).at(-1) ?? null,
+    documentsDecidedBefore: async (cutoff) => {
+      const sessions = new Set(
+        decisions
+          .filter((d) => d.createdAt < cutoff)
+          .map((d) => d.sessionId)
+          .filter((id) =>
+            ['APPROVED', 'REJECTED'].includes(
+              kycStore.sessions.find((s) => s.id === id)?.status ?? '',
+            ),
+          ),
+      );
+      const docs = docStore.documents.filter((d) => sessions.has(d.sessionId));
+      return {
+        documents: docs.length,
+        sessions: sessions.size,
+        bytes: docs.reduce((n, d) => n + d.sizeBytes, 0),
+      };
+    },
     countResubmits: async (sessionId) =>
       decisions.filter((d) => d.sessionId === sessionId && d.decision === 'REQUEST_RESUBMIT')
         .length,

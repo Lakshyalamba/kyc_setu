@@ -161,6 +161,10 @@ export interface OfficerStore {
   findDecision(id: string): Promise<DecisionRecord | null>;
   latestDecision(sessionId: string): Promise<DecisionRecord | null>;
   countResubmits(sessionId: string): Promise<number>;
+  /** Documents (and their total size) of sessions whose final decision was before `cutoff`: past their retention period. */
+  documentsDecidedBefore(
+    cutoff: Date,
+  ): Promise<{ documents: number; sessions: number; bytes: number }>;
   /**
    * One transaction: compare-and-set the session status, end the officer's assignment, insert the decision,
    * clear documents (resubmission), write the audit rows. Nothing is written unless all of it succeeds.
@@ -471,6 +475,22 @@ export function createPrismaOfficerStore(prisma: SafeClient): OfficerStore {
     },
     countResubmits: (sessionId) =>
       prisma.decision.count({ where: { sessionId, decision: 'REQUEST_RESUBMIT' } }),
+
+    async documentsDecidedBefore(cutoff) {
+      const [row] = await prisma.$queryRaw<
+        { documents: number; sessions: number; bytes: number | null }[]
+      >`
+        SELECT count(d.id)::int AS documents, count(DISTINCT s.id)::int AS sessions, COALESCE(sum(d."sizeBytes"), 0)::int AS bytes
+        FROM kyc_sessions s
+        JOIN documents d ON d."sessionId" = s.id
+        WHERE s.status IN ('APPROVED', 'REJECTED')
+          AND (SELECT max(dec."createdAt") FROM decisions dec WHERE dec."sessionId" = s.id) < ${cutoff}`;
+      return {
+        documents: row?.documents ?? 0,
+        sessions: row?.sessions ?? 0,
+        bytes: row?.bytes ?? 0,
+      };
+    },
 
     async recordDecision(input) {
       try {
