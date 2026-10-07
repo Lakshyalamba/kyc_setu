@@ -97,6 +97,9 @@ export const AUDIT_ACTIONS = {
   APPROVAL_SLIP_DOWNLOADED: 'kyc.approval_slip_downloaded',
   RBAC_DENIED: 'rbac.denied',
   CONSENT_REVISED: 'consent.revised',
+  AUTH_LOGIN_BLOCKED: 'auth.login_blocked',
+  AUTH_ACCOUNT_LOCKED: 'auth.account_locked',
+  AUTH_ACCOUNT_UNLOCKED: 'auth.account_unlocked',
 } as const;
 
 export const KYC_SESSION_TTL_HOURS = 24;

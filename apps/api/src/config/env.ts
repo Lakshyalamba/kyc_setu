@@ -52,6 +52,12 @@ export const envSchema = z
     /** `local` wraps data keys with KMS_LOCAL_MASTER_KEY (dev only); `aws` is a stub for now. */
     KMS_PROVIDER: z.enum(['local', 'aws']).default('local'),
     KMS_LOCAL_MASTER_KEY: z.string().optional(),
+    /**
+     * Per-IP, per-email and per-user request limits (login, OTP, reveal), kept in Redis. Defaults to on in production
+     * and off elsewhere, because a developer or an end-to-end run signs in far more than 5 times in 15 minutes.
+     * Account lockout after repeated wrong passwords is separate and always on.
+     */
+    RATE_LIMIT_ENABLED: z.enum(['true', 'false']).optional(),
     /** Signs the short-lived /files/<token> URLs. */
     FILE_URL_SECRET: z.string().min(32, 'FILE_URL_SECRET must be at least 32 characters'),
   })

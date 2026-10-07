@@ -10,7 +10,12 @@ import {
 import { randomUUID } from 'node:crypto';
 import type { Env } from '../src/config/env.js';
 import { hashPassword } from '../src/lib/password.js';
-import type { AuditEntry, AuthStore, UserRecord } from '../src/modules/auth/store.js';
+import type {
+  AuditEntry,
+  AuthStore,
+  LockoutRecord,
+  UserRecord,
+} from '../src/modules/auth/store.js';
 import type { Role } from '@kyc-setu/shared';
 
 export const testEnv = (overrides: Partial<Env> = {}): Env => ({
@@ -42,15 +47,33 @@ export const testEnv = (overrides: Partial<Env> = {}): Env => ({
 export interface FakeStore extends AuthStore {
   users: UserRecord[];
   audits: AuditEntry[];
+  lockouts: LockoutRecord[];
+  /** The clock the service under test uses, so failures and locks are stamped consistently. */
+  clock: () => Date;
   addUser(email: string, password: string, role: Role): Promise<UserRecord>;
 }
 
 export function createFakeStore(): FakeStore {
   const users: UserRecord[] = [];
   const audits: AuditEntry[] = [];
+  const lockouts: LockoutRecord[] = [];
+  // When each audit entry was written, so failures can be counted "within the last 30 minutes".
+  const wrote = new WeakMap<AuditEntry, number>();
+  const self: { clock: () => Date } = { clock: () => new Date() };
+  const push = (e: AuditEntry) => {
+    wrote.set(e, self.clock().getTime());
+    audits.push(e);
+  };
   return {
     users,
     audits,
+    lockouts,
+    get clock() {
+      return self.clock;
+    },
+    set clock(fn: () => Date) {
+      self.clock = fn;
+    },
     async addUser(email, password, role) {
       const user = {
         id: randomUUID(),
@@ -73,11 +96,46 @@ export function createFakeStore(): FakeStore {
         createdAt: new Date(),
       };
       users.push(user);
-      audits.push(audit(user));
+      push(audit(user));
       return user;
     },
     async writeAudit(entry) {
-      audits.push(entry);
+      push(entry);
+    },
+    activeLockout: async (userId, now) =>
+      lockouts.find((l) => l.userId === userId && !l.unlockedAt && l.lockedUntil > now) ?? null,
+    latestLockout: async (userId) => lockouts.filter((l) => l.userId === userId).at(-1) ?? null,
+    countFailedLogins: async (userId, since) =>
+      audits.filter(
+        (a) =>
+          a.actorId === userId &&
+          (a.action === 'auth.customer.login_failed' || a.action === 'auth.officer.login_failed') &&
+          (wrote.get(a) ?? 0) >= since.getTime(),
+      ).length,
+    async createLockout(input, audit) {
+      const l: LockoutRecord = {
+        id: randomUUID(),
+        lockedAt: self.clock(),
+        unlockedAt: null,
+        unlockedById: null,
+        ...input,
+      };
+      lockouts.push(l);
+      push(audit(l));
+      return l;
+    },
+    async unlock(userId, byUserId, now, audit) {
+      const l = lockouts.find((x) => x.userId === userId && !x.unlockedAt && x.lockedUntil > now);
+      if (!l) return null;
+      l.unlockedAt = now;
+      l.unlockedById = byUserId;
+      push(audit(l));
+      return l;
+    },
+    async listActiveLockouts(now) {
+      return lockouts
+        .filter((l) => !l.unlockedAt && l.lockedUntil > now)
+        .map((l) => ({ ...l, email: users.find((u) => u.id === l.userId)?.email ?? '?' }));
     },
   };
 }

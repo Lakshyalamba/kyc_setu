@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { AI_SERVICE_EMAIL, type DocumentType } from '@kyc-setu/shared';
-import { createApp } from '../src/app.js';
+import { createApp, type AppDeps } from '../src/app.js';
 import { buildServices } from '../src/services.js';
 import { makeJpeg, makePng } from './fixtures.js';
 import { encryptForStorage } from '../src/modules/kyc/personal-codec.js';
@@ -13,11 +13,15 @@ export type Agent = ReturnType<typeof request.agent>;
 const healthy = async () => ({ database: 'up' as const, redis: 'up' as const, queue: null });
 
 /** A complete in-memory system: HTTP app + the same services the worker uses, sharing every fake. */
-export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] = {}) {
+export async function createHarness(
+  envOverrides: Parameters<typeof testEnv>[0] = {},
+  appOverrides: Partial<AppDeps> = {},
+) {
   const store = createFakeStore();
   const kycStore = createFakeKycStore(store.audits);
   const fakes = allDeps(store.audits, kycStore, store.users);
   let clock = new Date('2026-10-09T10:00:00Z');
+  store.clock = () => clock;
   const deps = {
     env: testEnv(envOverrides),
     store,
@@ -25,7 +29,7 @@ export async function createHarness(envOverrides: Parameters<typeof testEnv>[0] 
     ...fakes,
     kycOverrides: { now: () => clock },
   };
-  const app = createApp({ ...deps, healthProbe: healthy });
+  const app = createApp({ ...deps, healthProbe: healthy, ...appOverrides });
   const services = buildServices(deps);
 
   await store.addUser('a@kycsetu.dev', PASSWORD, 'CUSTOMER');

@@ -4,12 +4,14 @@ import express, { type Express, type Router } from 'express';
 import helmet from 'helmet';
 import { createRequireAuth } from './middleware/auth.js';
 import { createPermissionGuards } from './middleware/permission.js';
+import { NO_LIMITS, createRateLimiters, type RateLimitConfig } from './middleware/rateLimit.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
-import { createAuthService } from './modules/auth/auth.service.js';
+import { createAuthService, type AuthPolicy } from './modules/auth/auth.service.js';
 import { buildServices, type ServiceDeps } from './services.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createDocumentsRouter, createFilesRouter } from './routes/documents.js';
 import { createDevExtractionRouter, createExtractionRouter } from './routes/extraction.js';
+import { createAdminRouter } from './routes/admin.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createCustomerStatusRouter } from './routes/customer-status.js';
 import { createHealthRouter, type HealthProbe } from './routes/health.js';
@@ -25,6 +27,10 @@ export interface MountedRouter {
 
 export interface AppDeps extends ServiceDeps {
   healthProbe: HealthProbe;
+  /** Request limits. Absent means none (unit tests); the server turns them on and backs them with Redis. */
+  rateLimit?: RateLimitConfig;
+  /** How many wrong passwords lock an account, and for how long (defaults: 5 within 30 minutes, locked for 15). */
+  authPolicy?: Partial<AuthPolicy>;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -38,7 +44,13 @@ export function createApp(deps: AppDeps): Express {
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
-  const auth = createAuthService({ env, store: deps.store });
+  const auth = createAuthService({
+    env,
+    store: deps.store,
+    ...(deps.authPolicy ? { policy: deps.authPolicy } : {}),
+    ...(deps.kycOverrides?.now ? { now: deps.kycOverrides.now } : {}),
+  });
+  const limiters = deps.rateLimit ? createRateLimiters(deps.rateLimit) : NO_LIMITS;
   const { kyc, docs, extraction, risk, officer, customerStatus, auditChain } = buildServices(deps);
   // Every route states the permission it needs (packages/shared/src/rbac); denials are audited.
   const guard = createPermissionGuards({ env, audit: (entry) => deps.store.writeAudit(entry) });
@@ -53,16 +65,17 @@ export function createApp(deps: AppDeps): Express {
   app.locals['mounts'] = mounts;
 
   mount('', createHealthRouter(deps.healthProbe));
-  mount('/auth', createAuthRouter({ env, auth, requireAuth: createRequireAuth(env) }));
+  mount('/auth', createAuthRouter({ env, auth, requireAuth: createRequireAuth(env), limiters }));
   // The risk routes serve officers AND customers, so they must come BEFORE the customer-only routers below:
   // each of those does `router.use(requireCustomer)`, which would otherwise reject officers on any /kyc path.
   mount('/kyc', createRiskRouter({ risk, kycStore: deps.kycStore, guard }));
-  mount('/kyc', createKycRouter({ kyc, requireCustomer }));
+  mount('/kyc', createKycRouter({ kyc, requireCustomer, limiters }));
   mount('/kyc', createDocumentsRouter({ docs, requireCustomer }));
   mount('/kyc', createExtractionRouter({ extraction, requireCustomer }));
   mount('/kyc', createCustomerStatusRouter({ status: customerStatus, requireCustomer }));
-  mount('/officer', createOfficerRouter({ officer, guard }));
+  mount('/officer', createOfficerRouter({ officer, guard, limiters }));
   mount('/audit', createAuditRouter({ chain: auditChain, guard }));
+  mount('/admin', createAdminRouter({ auth, guard }));
   mount('/files', createFilesRouter({ docs, env }));
 
   if (env.NODE_ENV !== 'production') {

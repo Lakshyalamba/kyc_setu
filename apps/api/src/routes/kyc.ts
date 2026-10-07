@@ -11,6 +11,7 @@ import {
 } from '@kyc-setu/shared';
 import { unauthorized } from '../lib/errors.js';
 import { route } from '../lib/route.js';
+import type { Limiters } from '../middleware/rateLimit.js';
 import type { KycService, RequestMeta } from '../modules/kyc/kyc.service.js';
 
 const metaOf = (req: Request): RequestMeta => ({
@@ -27,6 +28,7 @@ const userIdOf = (req: Request): string => {
 export function createKycRouter(deps: {
   kyc: KycService;
   requireCustomer: RequestHandler[];
+  limiters: Limiters;
 }): Router {
   const { kyc } = deps;
   const router = Router();
@@ -57,6 +59,7 @@ export function createKycRouter(deps: {
 
   router.post(
     '/sessions/:id/otp/send',
+    deps.limiters.otpSend,
     route(
       {
         params: sessionIdParamsSchema,

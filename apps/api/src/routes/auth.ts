@@ -10,6 +10,7 @@ import type { Env } from '../config/env.js';
 import { clearAuthCookie, setAuthCookie, type Realm } from '../lib/cookies.js';
 import { unauthorized } from '../lib/errors.js';
 import { route } from '../lib/route.js';
+import type { Limiters } from '../middleware/rateLimit.js';
 import { toUserDto, type AuthService, type RequestMeta } from '../modules/auth/auth.service.js';
 
 const realmQuery = z.object({ realm: z.enum(['customer', 'officer']).optional() });
@@ -23,8 +24,9 @@ export function createAuthRouter(deps: {
   env: Env;
   auth: AuthService;
   requireAuth: RequestHandler;
+  limiters: Limiters;
 }): Router {
-  const { env, auth, requireAuth } = deps;
+  const { env, auth, requireAuth, limiters } = deps;
   const router = Router();
 
   router.post(
@@ -42,8 +44,9 @@ export function createAuthRouter(deps: {
       setAuthCookie(ctx.res, env, realm, token);
       return { user: toUserDto(user) };
     });
-  router.post('/customer/login', login('customer'));
-  router.post('/officer/login', login('officer'));
+  const loginLimits = [limiters.loginByIp, limiters.loginByEmail];
+  router.post('/customer/login', ...loginLimits, login('customer'));
+  router.post('/officer/login', ...loginLimits, login('officer'));
 
   router.get(
     '/me',

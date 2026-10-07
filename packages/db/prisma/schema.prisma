@@ -134,6 +134,7 @@ model User {
   signedUrls    SignedUrlIssue[]
   decisions     Decision[]
   assignments   OfficerAssignment[]
+  lockouts      AuthLockout[]
 
   @@map("users")
 }
@@ -430,4 +431,22 @@ model AuditChainCheckpoint {
   computedAt             DateTime @default(now())
 
   @@map("audit_chain_checkpoint")
+}
+
+/// "Too many wrong passwords": the account is refused until `lockedUntil`, or until a lead unlocks it. The failed
+/// attempts themselves are audit rows; this row records the decision to lock, so it can be shown, lifted and explained.
+model AuthLockout {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  lockedAt       DateTime  @default(now())
+  lockedUntil    DateTime
+  failedAttempts Int
+  /// Set when a lead lifts the lock early.
+  unlockedAt     DateTime?
+  unlockedById   String?   @db.Uuid
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId, lockedUntil])
+  @@map("auth_lockouts")
 }

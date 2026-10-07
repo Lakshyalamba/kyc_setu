@@ -1,6 +1,8 @@
 import {
   claimResponseSchema,
   decisionResponseSchema,
+  lockoutsResponseSchema,
+  unlockResponseSchema,
   myAssignmentsResponseSchema,
   queueResponseSchema,
   releaseResponseSchema,
@@ -28,6 +30,12 @@ const qs = (params: Record<string, string | number | undefined>) => {
   for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== '') q.set(k, String(v));
   const s = q.toString();
   return s ? `?${s}` : '';
+};
+
+export const adminApi = {
+  lockouts: () => apiFetch('/admin/lockouts', { schema: lockoutsResponseSchema }),
+  unlock: (email: string) =>
+    apiFetch('/admin/unlock', { method: 'POST', body: { email }, schema: unlockResponseSchema }),
 };
 
 export const officerApi = {

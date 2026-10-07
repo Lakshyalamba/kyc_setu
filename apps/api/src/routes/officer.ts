@@ -16,6 +16,7 @@ import {
 } from '@kyc-setu/shared';
 import { unauthorized } from '../lib/errors.js';
 import type { PermissionGuards } from '../middleware/permission.js';
+import type { Limiters } from '../middleware/rateLimit.js';
 import { route } from '../lib/route.js';
 import type { RequestMeta } from '../modules/kyc/kyc.service.js';
 import type { Actor, OfficerService } from '../modules/officer/officer.service.js';
@@ -37,6 +38,7 @@ const actorOf = (req: Request): Actor => {
 export function createOfficerRouter(deps: {
   officer: OfficerService;
   guard: PermissionGuards;
+  limiters: Limiters;
 }): Router {
   const { guard } = deps;
   const read = guard.require('kyc.session.read.any');
@@ -100,6 +102,7 @@ export function createOfficerRouter(deps: {
   router.post(
     '/sessions/:id/reveal',
     guard.require('kyc.session.reveal_pii'),
+    deps.limiters.reveal,
     route(
       { params: sessionIdParamsSchema, body: revealRequestSchema, response: revealResponseSchema },
       (ctx) => officer.reveal(actorOf(ctx.req), ctx.params.id),

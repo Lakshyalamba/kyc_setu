@@ -10,6 +10,7 @@ import { createPrismaRiskStore } from './modules/risk/store.js';
 import { createBullEnqueuer, createVerificationQueue } from './queue/verification.js';
 import { assertBucketPrivate, createS3ObjectStore } from './modules/documents/object-store.js';
 import { createPrismaDocumentStore } from './modules/documents/store.js';
+import { redisStoreFactory } from './middleware/rateLimit.js';
 import { loadEnv } from './config/env.js';
 import { createPrismaKycStore } from './modules/kyc/store.js';
 import { createPrismaAuthStore } from './modules/auth/store.js';
@@ -33,6 +34,9 @@ await assertBucketPrivate(s3, env.S3_BUCKET); // objects are reachable only thro
 console.log(`[api] bucket "${env.S3_BUCKET}" ${bucketState}, no public access`);
 
 const redis = createRedis(env.REDIS_URL);
+const rateLimitsOn = env.RATE_LIMIT_ENABLED
+  ? env.RATE_LIMIT_ENABLED === 'true'
+  : env.NODE_ENV === 'production';
 const queue = createSystemQueue(redis);
 const verificationQueue = createVerificationQueue(redis, env.EXTRACTION_BACKOFF_SECONDS);
 const app = createApp({
@@ -48,7 +52,15 @@ const app = createApp({
   enqueuer: createBullEnqueuer(verificationQueue),
   aiClient: createHttpAiClient(env),
   healthProbe: createHealthProbe({ prisma, redis, queue }),
+  rateLimit: {
+    enabled: rateLimitsOn,
+    // One count per limiter, in the same Redis the queues use: shared by every API instance, kept across restarts.
+    makeStore: redisStoreFactory(redis),
+  },
 });
+console.log(
+  `[api] rate limits ${rateLimitsOn ? 'on' : 'off (set RATE_LIMIT_ENABLED=true to try them)'}`,
+);
 
 const server = app.listen(env.API_PORT, () =>
   console.log(`[api] listening on http://localhost:${env.API_PORT}`),

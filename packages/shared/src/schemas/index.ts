@@ -9,3 +9,4 @@ export * from './extraction.js';
 export * from './risk.js';
 export * from './officer.js';
 export * from './audit.js';
+export * from './admin.js';
