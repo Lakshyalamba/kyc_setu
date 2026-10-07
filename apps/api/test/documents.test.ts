@@ -236,9 +236,18 @@ describe('upload', () => {
       const a = await signedIn('a@kycsetu.dev');
       const id = await atDocumentsStep(a);
       const big = Buffer.concat([makeJpeg(100), Buffer.alloc(6 * 1024 * 1024)]);
-      const res = await upload(a, id, 'PAN', big, 'image/jpeg');
-      expect(res.status).toBe(413);
-      expect(res.body.error.code).toBe('FILE_TOO_LARGE');
+      // The server answers 413 and closes the connection before the client has written all 6 MB. Depending on
+      // timing the client then sees the response, or EPIPE / ECONNRESET on the write. Both mean "rejected up front".
+      const res = await upload(a, id, 'PAN', big, 'image/jpeg').catch(
+        (err: NodeJS.ErrnoException) => {
+          if (err.code === 'EPIPE' || err.code === 'ECONNRESET') return null;
+          throw err;
+        },
+      );
+      if (res) {
+        expect(res.status).toBe(413);
+        expect(res.body.error.code).toBe('FILE_TOO_LARGE');
+      }
       expect(reasonOf()).toEqual(['TOO_LARGE']);
       expect(objects.objects.size).toBe(0);
     });
