@@ -1,6 +1,8 @@
 import { AwsKmsClient, LocalKmsClient, type KmsClient } from '@kyc-setu/shared/crypto';
 import { parsePiiKey } from '@kyc-setu/shared/pii';
 import type { Env } from './config/env.js';
+import { createAuditChainService, type AuditChainService } from './modules/audit/chain.service.js';
+import type { AuditChainStore } from './modules/audit/chain.store.js';
 import type { AuthStore } from './modules/auth/store.js';
 import {
   createDocumentsService,
@@ -41,6 +43,7 @@ export interface ServiceDeps {
   extractionStore: ExtractionStore;
   riskStore: RiskStore;
   officerStore: OfficerStore;
+  auditChainStore: AuditChainStore;
   /** Queues extraction jobs when documents are submitted. */
   enqueuer: VerificationEnqueuer;
   aiClient: AiClient;
@@ -58,6 +61,7 @@ export interface Services {
   officer: OfficerService;
   notifier: NotificationService;
   customerStatus: CustomerStatusService;
+  auditChain: AuditChainService;
   kms: KmsClient;
 }
 
@@ -137,5 +141,6 @@ export function buildServices(deps: ServiceDeps): Services {
     store: deps.officerStore,
     auth: deps.store,
   });
-  return { kyc, docs, extraction, risk, officer, notifier, customerStatus, kms };
+  const auditChain = createAuditChainService({ store: deps.auditChainStore, ...deps.kycOverrides });
+  return { kyc, docs, extraction, risk, officer, notifier, customerStatus, auditChain, kms };
 }

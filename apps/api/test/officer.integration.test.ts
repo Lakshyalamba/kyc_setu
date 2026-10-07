@@ -18,6 +18,7 @@ import { createPrismaDocumentStore } from '../src/modules/documents/store.js';
 import { createPrismaExtractionStore } from '../src/modules/extraction/store.js';
 import { encryptForStorage } from '../src/modules/kyc/personal-codec.js';
 import { createPrismaKycStore } from '../src/modules/kyc/store.js';
+import { createPrismaAuditChainStore } from '../src/modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
 import { createRedis } from '../src/queue/connection.js';
@@ -90,6 +91,7 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
+      auditChainStore: createPrismaAuditChainStore(prisma),
       enqueuer: createBullEnqueuer(queue),
       aiClient: createFakeAiClient(),
     };

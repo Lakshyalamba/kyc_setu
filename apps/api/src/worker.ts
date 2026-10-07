@@ -8,6 +8,7 @@ import { createS3ObjectStore } from './modules/documents/object-store.js';
 import { createPrismaDocumentStore } from './modules/documents/store.js';
 import { createHttpAiClient } from './modules/extraction/ai-client.js';
 import { createPrismaExtractionStore } from './modules/extraction/store.js';
+import { createPrismaAuditChainStore } from './modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from './modules/officer/store.js';
 import { createPrismaRiskStore } from './modules/risk/store.js';
 import { createPrismaKycStore } from './modules/kyc/store.js';
@@ -19,7 +20,9 @@ import {
   createVerificationQueue,
   requeueStalePending,
 } from './queue/verification.js';
+import { createAuditQueue, registerAuditSchedules } from './queue/audit.js';
 import { buildServices } from './services.js';
+import { createAuditWorker } from './workers/audit.js';
 import { createVerificationWorker } from './workers/verification.js';
 
 // Everything the API and the worker do to the database goes through the safe client: no audit_logs update or delete.
@@ -53,7 +56,7 @@ const verificationQueue = createVerificationQueue(
 );
 const enqueuer = createBullEnqueuer(verificationQueue);
 const extractionStore = createPrismaExtractionStore(prisma);
-const { extraction, risk, notifier } = buildServices({
+const { extraction, risk, notifier, auditChain } = buildServices({
   env,
   store,
   kycStore: createPrismaKycStore(prisma),
@@ -70,6 +73,7 @@ const { extraction, risk, notifier } = buildServices({
   extractionStore,
   riskStore: createPrismaRiskStore(prisma),
   officerStore: createPrismaOfficerStore(prisma),
+  auditChainStore: createPrismaAuditChainStore(prisma),
   enqueuer,
   aiClient: createHttpAiClient(env),
 });
@@ -85,6 +89,15 @@ console.log(
   `[worker] listening on queue "verification" (concurrency 2, retries after ${env.EXTRACTION_BACKOFF_SECONDS.join('s, ')}s)`,
 );
 
+// --- audit queue: the nightly hash chain (00:05 IST) -------------------------------------------------------
+const auditQueue = createAuditQueue(createRedis(env.REDIS_URL));
+await registerAuditSchedules(auditQueue);
+const auditWorker = createAuditWorker({
+  connection: createRedis(env.REDIS_URL),
+  chain: auditChain,
+});
+console.log('[worker] listening on queue "audit" (chain build at 00:05 IST)');
+
 // Re-queue anything committed as PENDING whose job never reached Redis.
 const requeued = await requeueStalePending(extractionStore, enqueuer);
 if (requeued > 0) console.log(`[worker] re-queued ${requeued} stale pending extraction(s)`);
@@ -95,8 +108,8 @@ await queue.add(PING_JOB, { message: 'worker boot' });
 
 async function shutdown(signal: string): Promise<void> {
   console.log(`[worker] ${signal} received, shutting down`);
-  await Promise.all([worker.close(), verificationWorker.close()]);
-  await Promise.all([queue.close(), verificationQueue.close()]);
+  await Promise.all([worker.close(), verificationWorker.close(), auditWorker.close()]);
+  await Promise.all([queue.close(), verificationQueue.close(), auditQueue.close()]);
   connection.disconnect();
   await prisma.$disconnect();
   process.exit(0);

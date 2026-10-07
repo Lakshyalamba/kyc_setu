@@ -9,6 +9,7 @@ import { createS3Client } from '@kyc-setu/shared/storage';
 import { createS3ObjectStore } from '../src/modules/documents/object-store.js';
 import { createHttpAiClient } from '../src/modules/extraction/ai-client.js';
 import { createPrismaExtractionStore } from '../src/modules/extraction/store.js';
+import { createPrismaAuditChainStore } from '../src/modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
 import { createPrismaDocumentStore } from '../src/modules/documents/store.js';
@@ -83,6 +84,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
+      auditChainStore: createPrismaAuditChainStore(prisma),
       enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
@@ -123,6 +125,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
+      auditChainStore: createPrismaAuditChainStore(prisma),
       enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
@@ -212,6 +215,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
+      auditChainStore: createPrismaAuditChainStore(prisma),
       enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),

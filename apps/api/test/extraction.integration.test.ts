@@ -15,6 +15,7 @@ import { createHttpAiClient } from '../src/modules/extraction/ai-client.js';
 import { createS3ObjectStore } from '../src/modules/documents/object-store.js';
 import { createPrismaDocumentStore } from '../src/modules/documents/store.js';
 import { createPrismaExtractionStore } from '../src/modules/extraction/store.js';
+import { createPrismaAuditChainStore } from '../src/modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
 import { hashPassword } from '../src/lib/password.js';
@@ -135,6 +136,7 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
+      auditChainStore: createPrismaAuditChainStore(prisma),
       enqueuer: createBullEnqueuer(queue),
       aiClient: createHttpAiClient(env),
     };

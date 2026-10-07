@@ -406,3 +406,23 @@ model AuditLog {
   @@index([createdAt])
   @@map("audit_logs")
 }
+
+/// One row per closed day (IST) that had audit rows: the hash chain over that day's rows, seeded with the previous
+/// checkpoint's chainHash. Append-only (a trigger rejects UPDATE/DELETE), like the log it protects.
+/// `rowHashes` holds [rowId, chain hash after that row] in order, which is what lets a verification name the first
+/// row that no longer matches rather than only the day.
+model AuditChainCheckpoint {
+  id                     String   @id @default(uuid()) @db.Uuid
+  /// The IST calendar date the rows were created on.
+  chainDate              DateTime @unique @db.Date
+  startRowId             String   @db.Uuid
+  endRowId               String   @db.Uuid
+  rowCount               Int
+  /// The previous checkpoint's chainHash; 64 zeros for the first.
+  previousCheckpointHash String
+  chainHash              String
+  rowHashes              Json     @db.JsonB
+  computedAt             DateTime @default(now())
+
+  @@map("audit_chain_checkpoint")
+}

@@ -504,7 +504,9 @@ export function allDeps(
   const aiClient = createFakeAiClient();
   const riskStore = createFakeRiskStore(audits);
   const officerStore = createFakeOfficerStore(audits, kycStore, documentStore, riskStore, users);
+  const auditChainStore = createFakeAuditChainStore();
   return {
+    auditChainStore,
     documentStore,
     extractionStore,
     objectStore,
@@ -842,5 +844,32 @@ export function createFakeOfficerStore(
     async writeAudit(entry) {
       audits.push(entry);
     },
+  };
+}
+
+// ---- Audit chain fake ----
+import type { AuditChainStore, CheckpointRecord } from '../src/modules/audit/chain.store.js';
+
+/** An empty log with room for checkpoints: enough for the route-level tests; the chain itself is tested on Postgres. */
+export function createFakeAuditChainStore(): AuditChainStore & { checkpoints: CheckpointRecord[] } {
+  const checkpoints: CheckpointRecord[] = [];
+  const sorted = () => [...checkpoints].sort((a, b) => (a.chainDate < b.chainDate ? 1 : -1));
+  return {
+    checkpoints,
+    firstRowAt: async () => null,
+    rowsBetween: async () => [],
+    latestCheckpoint: async () => sorted()[0] ?? null,
+    checkpointBefore: async (day) => sorted().find((c) => c.chainDate < day) ?? null,
+    checkpointsBetween: async (a, b) =>
+      checkpoints
+        .filter((c) => c.chainDate >= a && c.chainDate <= b)
+        .sort((x, y) => (x.chainDate < y.chainDate ? -1 : 1)),
+    recentCheckpoints: async (n) => sorted().slice(0, n),
+    async insertCheckpoint(input) {
+      const rec = { ...input, id: randomUUID(), computedAt: new Date() };
+      checkpoints.push(rec);
+      return rec;
+    },
+    daysWithRows: async () => [],
   };
 }

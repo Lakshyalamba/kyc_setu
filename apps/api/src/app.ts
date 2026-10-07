@@ -10,6 +10,7 @@ import { buildServices, type ServiceDeps } from './services.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createDocumentsRouter, createFilesRouter } from './routes/documents.js';
 import { createDevExtractionRouter, createExtractionRouter } from './routes/extraction.js';
+import { createAuditRouter } from './routes/audit.js';
 import { createCustomerStatusRouter } from './routes/customer-status.js';
 import { createHealthRouter, type HealthProbe } from './routes/health.js';
 import { createOfficerRouter } from './routes/officer.js';
@@ -38,7 +39,7 @@ export function createApp(deps: AppDeps): Express {
   app.use(cookieParser());
 
   const auth = createAuthService({ env, store: deps.store });
-  const { kyc, docs, extraction, risk, officer, customerStatus } = buildServices(deps);
+  const { kyc, docs, extraction, risk, officer, customerStatus, auditChain } = buildServices(deps);
   // Every route states the permission it needs (packages/shared/src/rbac); denials are audited.
   const guard = createPermissionGuards({ env, audit: (entry) => deps.store.writeAudit(entry) });
   const requireCustomer = [guard.require('kyc.session.read.own')];
@@ -61,6 +62,7 @@ export function createApp(deps: AppDeps): Express {
   mount('/kyc', createExtractionRouter({ extraction, requireCustomer }));
   mount('/kyc', createCustomerStatusRouter({ status: customerStatus, requireCustomer }));
   mount('/officer', createOfficerRouter({ officer, guard }));
+  mount('/audit', createAuditRouter({ chain: auditChain, guard }));
   mount('/files', createFilesRouter({ docs, env }));
 
   if (env.NODE_ENV !== 'production') {

@@ -28,6 +28,7 @@ import type { AiClient, ExtractRequest } from '../../modules/extraction/ai-clien
 import { createPrismaExtractionStore } from '../../modules/extraction/store.js';
 import { encryptForStorage } from '../../modules/kyc/personal-codec.js';
 import { createPrismaKycStore } from '../../modules/kyc/store.js';
+import { createPrismaAuditChainStore } from '../../modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from '../../modules/officer/store.js';
 import { createPrismaRiskStore } from '../../modules/risk/store.js';
 import type { VerificationEnqueuer } from '../../queue/verification.js';
@@ -255,6 +256,7 @@ export async function createSeeder() {
     extractionStore: createPrismaExtractionStore(prisma),
     riskStore: createPrismaRiskStore(prisma),
     officerStore: createPrismaOfficerStore(prisma),
+    auditChainStore: createPrismaAuditChainStore(prisma),
     enqueuer: nothingToQueue,
     aiClient: cannedAi((id) => bySession.get(id)),
   });
