@@ -15,6 +15,10 @@
   --input: oklch(0.88 0.01 255);
   --ring: oklch(0.6 0.15 265);
   --radius: 0.75rem;
+  /* The officer workbench is neutral; only risk severity is allowed to shout. */
+  --risk-high: oklch(0.52 0.21 27);
+  --risk-medium: oklch(0.62 0.15 70);
+  --risk-low: oklch(0.52 0.12 150);
 }
 
 @theme inline {
@@ -31,6 +35,9 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-risk-high: var(--risk-high);
+  --color-risk-medium: var(--risk-medium);
+  --color-risk-low: var(--risk-low);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
 }

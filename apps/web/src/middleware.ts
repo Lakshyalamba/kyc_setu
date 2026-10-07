@@ -7,7 +7,7 @@ import { CUSTOMER_COOKIE, OFFICER_COOKIE } from '@kyc-setu/shared';
  */
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const needsOfficer = pathname === '/officer';
+  const needsOfficer = pathname.startsWith('/officer') && pathname !== '/officer/login';
   const needsCustomer = pathname.startsWith('/kyc');
 
   if (needsCustomer && !req.cookies.has(CUSTOMER_COOKIE)) {
@@ -19,4 +19,4 @@ export function middleware(req: NextRequest) {
   return NextResponse.next();
 }
 
-export const config = { matcher: ['/kyc/:path*', '/officer'] };
+export const config = { matcher: ['/kyc/:path*', '/officer/:path*'] };
