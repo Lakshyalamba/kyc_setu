@@ -71,7 +71,7 @@ export async function fillPersonalAndSubmit(page: Page) {
 const SAMPLES = path.resolve(__dirname, '../../../scripts/sample-docs');
 export const sample = (name: string) => path.join(SAMPLES, name);
 
-async function aiIsUp(): Promise<boolean> {
+export async function aiIsUp(): Promise<boolean> {
   try {
     const res = await fetch('http://localhost:8000/healthz', { signal: AbortSignal.timeout(3000) });
     return res.ok && ((await res.json()) as { status?: string }).status === 'ok';
