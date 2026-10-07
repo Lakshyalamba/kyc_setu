@@ -57,6 +57,11 @@ try {
       );
     }
   }
+  if (!unique) {
+    const { added } = await seeder.seedAuditHistory();
+    if (added.length && !asJson)
+      console.log(`+ audit history for ${added.join(', ')} (for the hash chain to verify)`);
+  }
   if (asJson) console.log(`SEEDED ${JSON.stringify(out)}`);
 } finally {
   await seeder.close();

@@ -28,6 +28,7 @@ import type { AiClient, ExtractRequest } from '../../modules/extraction/ai-clien
 import { createPrismaExtractionStore } from '../../modules/extraction/store.js';
 import { encryptForStorage } from '../../modules/kyc/personal-codec.js';
 import { createPrismaKycStore } from '../../modules/kyc/store.js';
+import { addDays, istDay, istDayBounds } from '../../modules/audit/chain.js';
 import { createPrismaAuditChainStore } from '../../modules/audit/chain.store.js';
 import { createPrismaAuditExportStore } from '../../modules/audit/export.store.js';
 import { createEphemeralSigner } from '../../modules/audit/signing.js';
@@ -439,5 +440,42 @@ export async function createSeeder() {
     };
   }
 
-  return { seed, close: () => prisma.$disconnect() };
+  /**
+   * Gives the audit log two closed days, so the hash chain has something to build and verify on a fresh database
+   * (everything else the seed writes is dated today, and today is never chained). The rows are ordinary inserts that
+   * carry earlier dates; they say what they are. A day that already has a checkpoint is left alone, because adding to
+   * a chained day is exactly what the chain exists to catch.
+   */
+  async function seedAuditHistory(): Promise<{ added: string[] }> {
+    const today = istDay(new Date());
+    const latest = await prisma.auditChainCheckpoint.findFirst({ orderBy: { chainDate: 'desc' } });
+    const latestChained = latest ? latest.chainDate.toISOString().slice(0, 10) : '0000-00-00';
+    const added: string[] = [];
+    for (const ago of [2, 1]) {
+      const day = addDays(today, -ago);
+      if (day <= latestChained) continue;
+      const { from, to } = istDayBounds(day);
+      const already = await prisma.auditLog.count({
+        where: { action: 'seed.history', createdAt: { gte: from, lt: to } },
+      });
+      if (already > 0) continue;
+      await prisma.auditLog.createMany({
+        data: Array.from({ length: 6 }, (_, i) => ({
+          actorType: 'SYSTEM' as const,
+          action: 'seed.history',
+          entityType: 'Seed',
+          entityId: `history-${day}`,
+          metadata: {
+            note: 'Backdated by the development seed so the audit chain has a closed day to verify.',
+            n: i + 1,
+          },
+          createdAt: new Date(from.getTime() + (4 + i * 3) * 3_600_000),
+        })),
+      });
+      added.push(day);
+    }
+    return { added };
+  }
+
+  return { seed, seedAuditHistory, close: () => prisma.$disconnect() };
 }
