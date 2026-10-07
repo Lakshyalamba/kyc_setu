@@ -94,6 +94,27 @@ enum BiometricSource {
   DEV_INJECTED
 }
 
+enum DecisionType {
+  APPROVE
+  REJECT
+  REQUEST_RESUBMIT
+}
+
+/// One controlled vocabulary for both reject and resubmit reasons (OTHER is shared). Which codes are valid for which
+/// decision is enforced in the API and, as a CHECK constraint, in the database.
+enum ReasonCode {
+  IDENTITY_MISMATCH
+  DOCUMENT_TAMPERED
+  FACE_MISMATCH
+  DUPLICATE_IDENTITY
+  AGE_INELIGIBLE
+  POOR_IMAGE_QUALITY
+  WRONG_DOCUMENT
+  SIGNATURE_UNCLEAR
+  SELFIE_RETAKE
+  OTHER
+}
+
 enum ActorType {
   USER
   SYSTEM
@@ -111,6 +132,8 @@ model User {
   kycSessions   KycSession[]
   otpChallenges OtpChallenge[]
   signedUrls    SignedUrlIssue[]
+  decisions     Decision[]
+  assignments   OfficerAssignment[]
 
   @@map("users")
 }
@@ -127,6 +150,10 @@ model KycSession {
   completedSteps KycStep[] @default([])
   /// Problems for officers to look at, e.g. EXTRACTION_WRONG_DOCUMENT, EXTRACTION_ERROR.
   flags          String[]  @default([])
+  /// When the application last entered SUBMITTED (a resubmission starts the clock again). Drives queue order and waiting time.
+  submittedAt    DateTime?
+  /// While RESUBMIT_REQUESTED: the document slots the customer may fill again. Emptied when they submit.
+  resubmitTypes  DocumentType[] @default([])
 
   /// Sensitive fields (panNumber, aadhaarNumber) are stored AES-256-GCM encrypted; see packages/shared pii crypto.
   personalDetails Json? @db.JsonB
@@ -140,6 +167,8 @@ model KycSession {
   documents      Document[]
   riskAssessments  RiskAssessment[]
   biometricSignals BiometricSignal[]
+  decisions        Decision[]
+  assignments      OfficerAssignment[]
 
   // Note: a partial unique index on (userId) WHERE status NOT IN (APPROVED, REJECTED, EXPIRED)
   // enforces "one active session per user". Prisma can't express it; it lives in the migration SQL.
@@ -314,6 +343,49 @@ model BiometricSignal {
 
   @@index([sessionId, createdAt])
   @@map("biometric_signals")
+}
+
+/// An officer's final call on a session. Append-only (a trigger rejects UPDATE/DELETE): a later change to the
+/// data, the rules or the officer's account never rewrites what was decided or what the officer was shown.
+/// `snapshot` is everything the review page showed at that moment. Sensitive values inside it stay encrypted
+/// exactly as they are in the session and extraction rows.
+model Decision {
+  id                    String         @id @default(uuid()) @db.Uuid
+  sessionId             String         @db.Uuid
+  officerId             String         @db.Uuid
+  decision              DecisionType
+  reasonCode            ReasonCode?
+  reasonNote            String?        @db.Text
+  /// Only for REQUEST_RESUBMIT (empty otherwise; a CHECK constraint keeps it consistent with `decision`).
+  resubmitDocumentTypes DocumentType[] @default([])
+  snapshot              Json           @db.JsonB
+  createdAt             DateTime       @default(now())
+
+  session KycSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  officer User       @relation(fields: [officerId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, createdAt])
+  @@index([officerId])
+  @@map("decisions")
+}
+
+/// "I'm reviewing this": a soft lock, not a hard concurrency control (the decision itself is guarded by a
+/// compare-and-set on the session status). A partial unique index in the migration allows at most one active row
+/// per session.
+model OfficerAssignment {
+  id         String    @id @default(uuid()) @db.Uuid
+  sessionId  String    @db.Uuid
+  officerId  String    @db.Uuid
+  assignedAt DateTime  @default(now())
+  releasedAt DateTime?
+  isActive   Boolean   @default(true)
+
+  session KycSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  officer User       @relation(fields: [officerId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, isActive])
+  @@index([officerId, isActive])
+  @@map("officer_assignments")
 }
 
 /// Append-only: no updatedAt, never updated or deleted by application code.

@@ -7,3 +7,4 @@ export * from './personal.js';
 export * from './documents.js';
 export * from './extraction.js';
 export * from './risk.js';
+export * from './officer.js';

@@ -83,6 +83,18 @@ export const AUDIT_ACTIONS = {
   RISK_RECOMPUTED: 'risk.recomputed',
   RISK_FAILED: 'risk.failed',
   DEV_BIOMETRICS_INJECTED: 'dev.biometrics_injected',
+  RISK_BIOMETRICS_CARRIED_FORWARD: 'risk.biometrics_carried_forward',
+  OFFICER_REVIEW_OPENED: 'officer.review_opened',
+  ASSIGNMENT_CLAIMED: 'assignment.claimed',
+  ASSIGNMENT_RELEASED: 'assignment.released',
+  ASSIGNMENT_TAKEN_OVER: 'assignment.taken_over',
+  AADHAAR_REVEALED: 'aadhaar.revealed',
+  DECISION_RECORDED: 'decision.recorded',
+  KYC_DOCUMENTS_CLEARED: 'kyc.documents.cleared',
+  NOTIFICATION_QUEUED: 'notification.queued',
+  NOTIFICATION_ENQUEUE_FAILED: 'notification.enqueue_failed',
+  NOTIFICATION_SENT: 'notification.sent',
+  APPROVAL_SLIP_DOWNLOADED: 'kyc.approval_slip_downloaded',
 } as const;
 
 export const KYC_SESSION_TTL_HOURS = 24;
@@ -147,3 +159,75 @@ export const AI_INTERNAL_LINK_TTL_SECONDS = 60;
 export const AI_SERVICE_EMAIL = 'ai-service@kycsetu.internal';
 
 export const RISK_BANDS = ['LOW', 'MEDIUM', 'HIGH'] as const;
+
+// ---- Officer review (Phase 6) ----
+
+export const DECISION_TYPES = ['APPROVE', 'REJECT', 'REQUEST_RESUBMIT'] as const;
+export type DecisionTypeName = (typeof DECISION_TYPES)[number];
+
+export const REJECT_REASON_CODES = [
+  'IDENTITY_MISMATCH',
+  'DOCUMENT_TAMPERED',
+  'FACE_MISMATCH',
+  'DUPLICATE_IDENTITY',
+  'AGE_INELIGIBLE',
+  'OTHER',
+] as const;
+export const RESUBMIT_REASON_CODES = [
+  'POOR_IMAGE_QUALITY',
+  'WRONG_DOCUMENT',
+  'SIGNATURE_UNCLEAR',
+  'SELFIE_RETAKE',
+  'OTHER',
+] as const;
+/** Every code, in the order of the database enum. */
+export const REASON_CODES = [
+  'IDENTITY_MISMATCH',
+  'DOCUMENT_TAMPERED',
+  'FACE_MISMATCH',
+  'DUPLICATE_IDENTITY',
+  'AGE_INELIGIBLE',
+  'POOR_IMAGE_QUALITY',
+  'WRONG_DOCUMENT',
+  'SIGNATURE_UNCLEAR',
+  'SELFIE_RETAKE',
+  'OTHER',
+] as const;
+export type ReasonCodeName = (typeof REASON_CODES)[number];
+
+/** The controlled list per decision type. APPROVE takes no reason code. */
+export const REASON_CODES_BY_DECISION = {
+  APPROVE: [],
+  REJECT: REJECT_REASON_CODES,
+  REQUEST_RESUBMIT: RESUBMIT_REASON_CODES,
+} as const satisfies Record<DecisionTypeName, readonly ReasonCodeName[]>;
+
+export const REASON_CODE_LABELS: Record<ReasonCodeName, string> = {
+  IDENTITY_MISMATCH: 'Identity details do not match',
+  DOCUMENT_TAMPERED: 'Document appears altered',
+  FACE_MISMATCH: 'Face does not match the ID photo',
+  DUPLICATE_IDENTITY: 'Identity already verified for another customer',
+  AGE_INELIGIBLE: 'Applicant is below the minimum age',
+  POOR_IMAGE_QUALITY: 'Image quality is too poor',
+  WRONG_DOCUMENT: 'Wrong document provided',
+  SIGNATURE_UNCLEAR: 'Signature is unclear',
+  SELFIE_RETAKE: 'Selfie needs to be retaken',
+  OTHER: 'Other',
+};
+
+export const DOCUMENT_TYPE_LABELS: Record<(typeof DOCUMENT_TYPES)[number], string> = {
+  PAN: 'PAN card',
+  AADHAAR_FRONT: 'Aadhaar (front)',
+  AADHAAR_BACK: 'Aadhaar (back)',
+  SIGNATURE: 'Signature',
+};
+
+/** A session can be sent back to the customer this many times; after that the officer must decide. */
+export const MAX_RESUBMISSIONS = 2;
+/** Notes the customer will read must say something. */
+export const DECISION_NOTE_MIN = 5;
+export const DECISION_NOTE_MAX = 1000;
+/** The review page releases its claim after this long without any input. */
+export const REVIEW_IDLE_RELEASE_MINUTES = 30;
+/** Confirmation dialogs keep their final button disabled this long. */
+export const REVIEW_CONFIRM_DELAY_MS = 2000;
