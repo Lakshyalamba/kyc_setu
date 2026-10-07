@@ -20,6 +20,13 @@ import {
   type KycServiceDeps,
 } from './modules/kyc/kyc.service.js';
 import type { KycStore } from './modules/kyc/store.js';
+import {
+  createCustomerStatusService,
+  type CustomerStatusService,
+} from './modules/officer/customer-status.js';
+import { createNotificationService, type NotificationService } from './modules/officer/notify.js';
+import { createOfficerService, type OfficerService } from './modules/officer/officer.service.js';
+import type { OfficerStore } from './modules/officer/store.js';
 import { createRiskService, type RiskService } from './modules/risk/risk.service.js';
 import type { RiskStore } from './modules/risk/store.js';
 import type { VerificationEnqueuer } from './queue/verification.js';
@@ -33,6 +40,7 @@ export interface ServiceDeps {
   objectStore: ObjectStore;
   extractionStore: ExtractionStore;
   riskStore: RiskStore;
+  officerStore: OfficerStore;
   /** Queues extraction jobs when documents are submitted. */
   enqueuer: VerificationEnqueuer;
   aiClient: AiClient;
@@ -47,6 +55,9 @@ export interface Services {
   docs: DocumentsService;
   extraction: ExtractionService;
   risk: RiskService;
+  officer: OfficerService;
+  notifier: NotificationService;
+  customerStatus: CustomerStatusService;
   kms: KmsClient;
 }
 
@@ -61,6 +72,9 @@ export function buildServices(deps: ServiceDeps): Services {
       : new AwsKmsClient());
 
   const kyc = createKycService({ env, store: deps.kycStore, piiKey, ...deps.kycOverrides });
+  // `docs` and `extraction` need each other once (a resubmission nudges the extraction pipeline after a submit),
+  // so the link is made lazily.
+  const later: { advance?: (sessionId: string) => Promise<void> } = {};
   const docs = createDocumentsService({
     env,
     kyc,
@@ -69,6 +83,18 @@ export function buildServices(deps: ServiceDeps): Services {
     objects: deps.objectStore,
     kms,
     enqueuer: deps.enqueuer,
+    afterSubmit: (sessionId) => later.advance?.(sessionId) ?? Promise.resolve(),
+    ...deps.kycOverrides,
+  });
+  const risk = createRiskService({
+    env,
+    store: deps.riskStore,
+    kycStore: deps.kycStore,
+    extractionStore: deps.extractionStore,
+    decisions: deps.officerStore,
+    enqueuer: deps.enqueuer,
+    kms,
+    piiKey,
     ...deps.kycOverrides,
   });
   const extraction = createExtractionService({
@@ -82,17 +108,34 @@ export function buildServices(deps: ServiceDeps): Services {
     ai: deps.aiClient,
     kms,
     piiKey,
+    onDocsExtracted: async (sessionId) => {
+      await risk.resumeAfterResubmission(sessionId);
+    },
     ...deps.kycOverrides,
   });
-  const risk = createRiskService({
+  later.advance = (sessionId) => extraction.advanceIfReady(sessionId);
+  const officer = createOfficerService({
     env,
-    store: deps.riskStore,
+    store: deps.officerStore,
     kycStore: deps.kycStore,
+    documentStore: deps.documentStore,
     extractionStore: deps.extractionStore,
+    riskStore: deps.riskStore,
+    docs,
     enqueuer: deps.enqueuer,
     kms,
     piiKey,
     ...deps.kycOverrides,
   });
-  return { kyc, docs, extraction, risk, kms };
+  const notifier = createNotificationService({
+    store: deps.officerStore,
+    kycStore: deps.kycStore,
+    auth: deps.store,
+  });
+  const customerStatus = createCustomerStatusService({
+    kycStore: deps.kycStore,
+    store: deps.officerStore,
+    auth: deps.store,
+  });
+  return { kyc, docs, extraction, risk, officer, notifier, customerStatus, kms };
 }

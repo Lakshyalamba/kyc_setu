@@ -9,6 +9,7 @@ import { createS3Client } from '@kyc-setu/shared/storage';
 import { createS3ObjectStore } from '../src/modules/documents/object-store.js';
 import { createHttpAiClient } from '../src/modules/extraction/ai-client.js';
 import { createPrismaExtractionStore } from '../src/modules/extraction/store.js';
+import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
 import { createPrismaDocumentStore } from '../src/modules/documents/store.js';
 import { createPrismaKycStore } from '../src/modules/kyc/store.js';
@@ -26,6 +27,12 @@ import {
 import { assertBucketPrivate } from '../src/modules/documents/object-store.js';
 import { makeJpeg, makePng, sha256 } from './fixtures.js';
 import { testEnv } from './helpers.js';
+
+const noopEnqueuer = {
+  enqueueExtractions: async () => undefined,
+  enqueueRisk: async () => undefined,
+  enqueueNotification: async () => undefined,
+};
 
 const up = process.env['INFRA_UP'] === '1';
 const dbUrl = process.env['TEST_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '';
@@ -75,7 +82,8 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       objectStore: createS3ObjectStore(s3, process.env['S3_BUCKET'] ?? 'kyc-documents'),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
-      enqueuer: { enqueueExtractions: async () => undefined, enqueueRisk: async () => undefined },
+      officerStore: createPrismaOfficerStore(prisma),
+      enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
     });
@@ -114,7 +122,8 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       objectStore: createS3ObjectStore(s3, process.env['S3_BUCKET'] ?? 'kyc-documents'),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
-      enqueuer: { enqueueExtractions: async () => undefined, enqueueRisk: async () => undefined },
+      officerStore: createPrismaOfficerStore(prisma),
+      enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
     });
@@ -202,7 +211,8 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       objectStore: createS3ObjectStore(s3, bucket),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
-      enqueuer: { enqueueExtractions: async () => undefined, enqueueRisk: async () => undefined },
+      officerStore: createPrismaOfficerStore(prisma),
+      enqueuer: noopEnqueuer,
       aiClient: createHttpAiClient(testEnv()),
       healthProbe: createHealthProbe({ prisma, redis, queue }),
     });

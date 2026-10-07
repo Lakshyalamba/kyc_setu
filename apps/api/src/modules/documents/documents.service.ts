@@ -14,6 +14,7 @@ import {
   type DocumentUploadResponse,
   type KycStatus,
   type SignedUrlPurpose,
+  type SignedUrlRef,
   type SignedUrlResponse,
   type UPLOAD_FAILURE_REASONS,
 } from '@kyc-setu/shared';
@@ -62,6 +63,11 @@ export interface DocumentsServiceDeps {
   kms: KmsClient;
   /** Queues extraction jobs after a successful documents submit. */
   enqueuer: VerificationEnqueuer;
+  /**
+   * Runs once a submit has committed. A resubmission that changed only documents with nothing to read (a signature)
+   * queues no extraction that could move the session on, so the pipeline is nudged here.
+   */
+  afterSubmit?: (sessionId: string) => Promise<void>;
   now?: () => Date;
   newId?: () => string;
 }
@@ -128,6 +134,17 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
     }
   }
 
+  /** After an officer asks for a resubmission only the requested slots may change; the rest stay as verified. */
+  function requireSlotOpen(s: SessionRecord, type: DocumentType): void {
+    if (s.status === 'RESUBMIT_REQUESTED' && !s.resubmitTypes.includes(type)) {
+      throw new AppError(
+        409,
+        'RESUBMIT_SLOT_LOCKED',
+        'This document was not requested again, so it can’t be changed',
+      );
+    }
+  }
+
   return {
     /** Authorisation + state checks. Runs BEFORE any of the request body is read. */
     async prepareUpload(userId: string, sessionId: string): Promise<SessionRecord> {
@@ -163,6 +180,7 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
       input: { type: DocumentType; declaredMime: string; file: Readable },
       m: RequestMeta,
     ): Promise<DocumentUploadResponse> {
+      requireSlotOpen(session, input.type);
       const documentId = newId();
       const storageKey = `sessions/${session.id}/${documentId}.enc`;
       let failure: UploadFailure | undefined;
@@ -295,6 +313,7 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
       if (!doc || doc.sessionId !== s.id || doc.replacedById !== null) {
         throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found');
       }
+      requireSlotOpen(s, doc.type);
       // Soft delete: the row and the ciphertext are kept.
       const ok = await store.softDelete(
         docId,
@@ -336,7 +355,8 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
       const updated = await kycStore.updateSession(
         s.id,
         s.status,
-        patchFrom(next),
+        // The slots opened by a resubmission request close again once the customer submits.
+        { ...patchFrom(next), resubmitTypes: [] },
         [
           transition,
           audit(userId, AUDIT_ACTIONS.KYC_DOCUMENTS_SUBMITTED, 'KycSession', s.id, {
@@ -368,6 +388,11 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
           '[documents] could not enqueue extraction jobs; the recovery sweep will retry',
           (err as Error).message,
         );
+      }
+      try {
+        await deps.afterSubmit?.(s.id);
+      } catch (err) {
+        console.error('[documents] post-submit step failed', (err as Error).message);
       }
       return kyc.toDto(updated);
     },
@@ -407,6 +432,46 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
         env.FILE_URL_SECRET,
       );
       return { url: `${env.API_PUBLIC_URL}/files/${token}`, expiresAt };
+    },
+
+    /**
+     * An officer's 5-minute link to one document. Role checks happen at the route; every link is its own
+     * SignedUrlIssue row and its own audit row, because the trail of who was shown what is the point.
+     */
+    async issueOfficerUrl(
+      officerId: string,
+      doc: DocumentRecord,
+      m: RequestMeta,
+    ): Promise<SignedUrlRef> {
+      const expiresAt = new Date(now().getTime() + SIGNED_URL_TTL_SECONDS * 1000);
+      const issue = await store.createSignedUrlIssue(
+        { documentId: doc.id, issuedToUserId: officerId, purpose: 'OFFICER_REVIEW', expiresAt },
+        (i) =>
+          audit(officerId, AUDIT_ACTIONS.DOCUMENT_SIGNED_URL_ISSUED, 'Document', doc.id, {
+            documentId: doc.id,
+            sessionId: doc.sessionId,
+            issueId: i.id,
+            purpose: 'OFFICER_REVIEW',
+            expiresAt: expiresAt.toISOString(),
+            issuedTo: officerId,
+            ...requestMeta(m),
+          }),
+      );
+      const token = createFileToken(
+        {
+          issueId: issue.id,
+          documentId: doc.id,
+          purpose: 'OFFICER_REVIEW',
+          issuedToUserId: officerId,
+          expiresAtMs: expiresAt.getTime(),
+        },
+        env.FILE_URL_SECRET,
+      );
+      return {
+        url: `${env.API_PUBLIC_URL}/files/${token}`,
+        expiresAt: expiresAt.toISOString(),
+        purpose: 'OFFICER_REVIEW',
+      };
     },
 
     /** GET /kyc/documents/:docId/signed-url */

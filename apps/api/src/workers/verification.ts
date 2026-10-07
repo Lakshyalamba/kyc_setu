@@ -1,6 +1,7 @@
 import { UnrecoverableError, Worker, type Job } from 'bullmq';
 import type { Redis } from 'ioredis';
 import type { ExtractionService } from '../modules/extraction/extraction.service.js';
+import type { NotificationService } from '../modules/officer/notify.js';
 import type { RiskService } from '../modules/risk/risk.service.js';
 import {
   VERIFICATION_QUEUE,
@@ -17,9 +18,16 @@ export function createVerificationProcessor(
   extraction: ExtractionService,
   backoffSeconds: number[],
   risk?: RiskService,
+  notifier?: NotificationService,
 ) {
   const maxAttempts = maxAttemptsFor(backoffSeconds);
   return async (job: Job<VerificationJobData>) => {
+    if (job.data.kind === 'notify') {
+      if (!notifier)
+        throw new UnrecoverableError('notifications are not configured on this worker');
+      const outcome = await notifier.send(job.data.decisionId); // a throw here is retried by BullMQ
+      return outcome.sent ? { template: outcome.template } : { skipped: outcome.reason };
+    }
     if (job.data.kind === 'risk') {
       if (!risk) throw new UnrecoverableError('risk service is not configured on this worker');
       const { sessionId } = job.data;
@@ -60,6 +68,7 @@ export function createVerificationWorker(opts: {
   connection: Redis;
   extraction: ExtractionService;
   risk?: RiskService;
+  notifier?: NotificationService;
   backoffSeconds: number[];
   concurrency?: number;
   /** Defaults to the real queue; tests pass a unique name so they can't collide with a running dev worker. */
@@ -67,7 +76,7 @@ export function createVerificationWorker(opts: {
 }): Worker<VerificationJobData> {
   const worker = new Worker<VerificationJobData>(
     opts.queueName ?? VERIFICATION_QUEUE,
-    createVerificationProcessor(opts.extraction, opts.backoffSeconds, opts.risk),
+    createVerificationProcessor(opts.extraction, opts.backoffSeconds, opts.risk, opts.notifier),
     {
       connection: opts.connection,
       concurrency: opts.concurrency ?? 2,

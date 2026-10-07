@@ -5,6 +5,7 @@ import type { ExtractionStore } from '../modules/extraction/store.js';
 export const VERIFICATION_QUEUE = 'verification';
 export const EXTRACT_JOB = 'extract';
 export const RISK_JOB = 'risk';
+export const NOTIFY_JOB = 'notify';
 
 export interface ExtractJobData {
   documentId: string;
@@ -16,14 +17,21 @@ export interface RiskJobData {
   kind: 'risk';
 }
 
+export interface NotifyJobData {
+  decisionId: string;
+  kind: 'notify';
+}
+
 /** Everything the verification queue carries. */
-export type VerificationJobData = ExtractJobData | RiskJobData;
+export type VerificationJobData = ExtractJobData | RiskJobData | NotifyJobData;
 
 /** What the document-submit flow needs from the queue. */
 export interface VerificationEnqueuer {
   enqueueExtractions(documentIds: string[]): Promise<void>;
   /** `run` is 1 for the first automatic assessment of a session, 2 for the next, and so on. */
   enqueueRisk(sessionId: string, run: number): Promise<void>;
+  /** Tells the customer about an officer's decision. One job per decision. */
+  enqueueNotification(decisionId: string): Promise<void>;
 }
 
 /** 1 first attempt + one retry per configured backoff delay. */
@@ -49,9 +57,17 @@ export function createVerificationQueue(
 /** A deterministic job id makes enqueueing idempotent: the same document can't be queued twice. */
 export const extractJobId = (documentId: string) => `extract-${documentId}`;
 export const riskJobId = (sessionId: string, run: number) => `risk-${sessionId}-${run}`;
+export const notifyJobId = (decisionId: string) => `notify-${decisionId}`;
 
 export function createBullEnqueuer(queue: Queue<VerificationJobData>): VerificationEnqueuer {
   return {
+    async enqueueNotification(decisionId) {
+      await queue.add(
+        NOTIFY_JOB,
+        { decisionId, kind: 'notify' },
+        { jobId: notifyJobId(decisionId) },
+      );
+    },
     async enqueueRisk(sessionId, run) {
       await queue.add(RISK_JOB, { sessionId, kind: 'risk' }, { jobId: riskJobId(sessionId, run) });
     },

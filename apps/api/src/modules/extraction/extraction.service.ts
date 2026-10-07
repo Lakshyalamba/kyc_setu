@@ -55,6 +55,8 @@ export interface ExtractionServiceDeps {
   ai: AiClient;
   kms: KmsClient;
   piiKey: Buffer;
+  /** Called after a session reaches DOCS_EXTRACTED (e.g. to carry earlier biometrics into a resubmission). */
+  onDocsExtracted?: (sessionId: string) => Promise<void>;
   now?: () => Date;
 }
 
@@ -142,7 +144,8 @@ export function createExtractionService(deps: ExtractionServiceDeps) {
     const finished: readonly (ExtractionStatus | undefined)[] = EXTRACTION_FINISHED_STATUSES;
     if (statuses.some((s) => !finished.includes(s))) return; // something still pending, or errored
 
-    const flags = new Set(session.flags);
+    // Extraction flags describe the documents as they are now, so a resubmission starts from a clean slate.
+    const flags = new Set(session.flags.filter((f) => !f.startsWith('EXTRACTION_')));
     for (const s of statuses) {
       const flag = s
         ? EXTRACTION_FLAG_BY_STATUS[s as keyof typeof EXTRACTION_FLAG_BY_STATUS]
@@ -156,7 +159,7 @@ export function createExtractionService(deps: ExtractionServiceDeps) {
       now(),
     );
     const added = [...flags].filter((f) => !session.flags.includes(f));
-    await kycStore.updateSession(
+    const moved = await kycStore.updateSession(
       session.id,
       'DOCS_UPLOADED',
       { ...patchFrom(next), flags: [...flags] },
@@ -167,6 +170,7 @@ export function createExtractionService(deps: ExtractionServiceDeps) {
         ),
       ],
     );
+    if (moved) await deps.onDocsExtracted?.(session.id);
   }
 
   async function flagSession(sessionId: string, flag: string): Promise<void> {
@@ -178,6 +182,9 @@ export function createExtractionService(deps: ExtractionServiceDeps) {
   }
 
   return {
+    /** Moves the session on if every document already has a finished extraction. Safe to call at any time. */
+    advanceIfReady: maybeAdvanceSession,
+
     /** One attempt at extracting one document. Never throws for expected failures: returns the outcome. */
     async process(documentId: string, info: AttemptInfo): Promise<ProcessOutcome> {
       const extraction = await store.findByDocumentId(documentId);

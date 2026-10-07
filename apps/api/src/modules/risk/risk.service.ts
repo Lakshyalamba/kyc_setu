@@ -20,6 +20,7 @@ import type { ExtractionStore } from '../extraction/store.js';
 import { patchFrom, toState } from '../kyc/kyc.service.js';
 import type { KycStore } from '../kyc/store.js';
 import { buildRiskInput } from './inputs.js';
+import type { OfficerStore } from '../officer/store.js';
 import type { AssessmentRecord, NewAssessment, RiskStore } from './store.js';
 
 export type RiskRunOutcome =
@@ -31,6 +32,8 @@ export interface RiskServiceDeps {
   store: RiskStore;
   kycStore: KycStore;
   extractionStore: ExtractionStore;
+  /** Only used to tell whether the session is being re-checked after an officer asked for a resubmission. */
+  decisions: Pick<OfficerStore, 'latestDecision'>;
   enqueuer: VerificationEnqueuer;
   kms: KmsClient;
   piiKey: Buffer;
@@ -132,7 +135,9 @@ export function createRiskService(deps: RiskServiceDeps) {
     const session = await kycStore.findSession(sessionId);
     if (!session || session.status !== from) return false;
     const { session: next, audit: entry } = applyTransition(toState(session), to, null, now());
-    return (await kycStore.updateSession(sessionId, from, patchFrom(next), [entry])) !== null;
+    // The waiting clock for the officer queue starts when the application is submitted (again).
+    const patch = to === 'SUBMITTED' ? { ...patchFrom(next), submittedAt: now() } : patchFrom(next);
+    return (await kycStore.updateSession(sessionId, from, patch, [entry])) !== null;
   }
 
   return {
@@ -167,6 +172,36 @@ export function createRiskService(deps: RiskServiceDeps) {
         audit(null, AUDIT_ACTIONS.RISK_JOB_ENQUEUED, sessionId, { attempt: n }),
       );
       return true;
+    },
+
+    /**
+     * After an officer asked for a resubmission and the new documents have been read, the customer should not have to
+     * take a selfie again: the face match and liveness already on file are carried forward and the risk job is queued.
+     * Not done when the officer asked for a selfie retake, or when there is nothing on file to carry.
+     */
+    async resumeAfterResubmission(sessionId: string): Promise<boolean> {
+      const session = await kycStore.findSession(sessionId);
+      if (!session || session.status !== 'DOCS_EXTRACTED') return false;
+      const last = await deps.decisions.latestDecision(sessionId);
+      if (!last || last.decision !== 'REQUEST_RESUBMIT' || last.reasonCode === 'SELFIE_RETAKE') {
+        return false;
+      }
+      const bio = await store.latestBiometrics(sessionId, { includeDevInjected });
+      if (!bio || bio.faceMatchScore === null || bio.livenessPassed === null) return false;
+      const { session: next, audit: entry } = applyTransition(
+        toState(session),
+        'SELFIE_CAPTURED',
+        null,
+        now(),
+      );
+      const moved = await kycStore.updateSession(sessionId, 'DOCS_EXTRACTED', patchFrom(next), [
+        entry,
+        audit(null, AUDIT_ACTIONS.RISK_BIOMETRICS_CARRIED_FORWARD, sessionId, {
+          biometricId: bio.id,
+          source: bio.source,
+        }),
+      ]);
+      return moved ? this.onInputsChanged(sessionId) : false;
     },
 
     /**

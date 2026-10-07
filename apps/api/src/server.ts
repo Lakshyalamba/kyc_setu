@@ -3,6 +3,7 @@ import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 import { createApp } from './app.js';
 import { createHttpAiClient } from './modules/extraction/ai-client.js';
 import { createPrismaExtractionStore } from './modules/extraction/store.js';
+import { createPrismaOfficerStore } from './modules/officer/store.js';
 import { createPrismaRiskStore } from './modules/risk/store.js';
 import { createBullEnqueuer, createVerificationQueue } from './queue/verification.js';
 import { assertBucketPrivate, createS3ObjectStore } from './modules/documents/object-store.js';
@@ -37,6 +38,7 @@ const app = createApp({
   objectStore: createS3ObjectStore(s3, env.S3_BUCKET),
   extractionStore: createPrismaExtractionStore(prisma),
   riskStore: createPrismaRiskStore(prisma),
+  officerStore: createPrismaOfficerStore(prisma),
   enqueuer: createBullEnqueuer(verificationQueue),
   aiClient: createHttpAiClient(env),
   healthProbe: createHealthProbe({ prisma, redis, queue }),

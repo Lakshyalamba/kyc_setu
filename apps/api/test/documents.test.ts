@@ -8,6 +8,7 @@ import {
   createFakeEnqueuer,
   createFakeExtractionStore,
   createFakeKycStore,
+  createFakeOfficerStore,
   createFakeRiskStore,
   createFakeObjectStore,
   createFakeStore,
@@ -34,20 +35,23 @@ let enqueuer: FakeEnqueuer;
 let aiClient: FakeAiClient;
 let clock: Date;
 
-const build = () =>
-  createApp({
+const build = () => {
+  const riskStore = createFakeRiskStore(store.audits);
+  return createApp({
     env: testEnv(),
     store,
     kycStore,
     documentStore: docStore,
     objectStore: objects,
     extractionStore: extractionStore,
-    riskStore: createFakeRiskStore(store.audits),
+    riskStore,
+    officerStore: createFakeOfficerStore(store.audits, kycStore, docStore, riskStore, store.users),
     enqueuer,
     aiClient,
     healthProbe: healthy,
     kycOverrides: { now: () => clock },
   });
+};
 
 type Agent = ReturnType<typeof request.agent>;
 
