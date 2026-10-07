@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation';
 import { StartKyc } from '@/components/kyc/start-kyc';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { getCurrentKycSession, requireCustomer } from '@/lib/kyc-server';
+import { getCurrentKycSession, getCustomerStatus, requireCustomer } from '@/lib/kyc-server';
 import { stepPath } from '@/lib/kyc-steps';
 
 export const dynamic = 'force-dynamic';
@@ -9,8 +9,15 @@ export const dynamic = 'force-dynamic';
 export default async function KycIndexPage() {
   await requireCustomer();
   const session = await getCurrentKycSession();
-  // Resume: send the customer to wherever they left off.
-  if (session) redirect(stepPath(session.currentStep));
+  // Resume: send the customer to wherever they left off. A resubmission request is read first.
+  if (session) {
+    if (session.status === 'RESUBMIT_REQUESTED') redirect('/kyc/status');
+    redirect(stepPath(session.currentStep));
+  }
+  // No application in progress: an approved or rejected one has its own page, and nothing to start again.
+  const latest = await getCustomerStatus();
+  if (latest?.status === 'APPROVED') redirect('/kyc/done');
+  if (latest?.status === 'REJECTED') redirect('/kyc/rejected');
 
   return (
     <Card>

@@ -1,5 +1,6 @@
 import {
   consentCurrentResponseSchema,
+  customerStatusResponseSchema,
   kycSessionResponseSchema,
   otpSendResponseSchema,
   type OtpSendResponse,
@@ -9,6 +10,9 @@ import { apiFetch } from './api';
 
 /** Browser-side calls for the KYC flow (cookies ride along automatically). */
 export const kycClient = {
+  /** Where the customer's application stands, including after it was approved or rejected. */
+  status: () => apiFetch('/kyc/status', { schema: customerStatusResponseSchema }),
+
   startSession: () =>
     apiFetch('/kyc/sessions', { method: 'POST', schema: kycSessionResponseSchema }),
 

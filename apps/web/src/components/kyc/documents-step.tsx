@@ -4,9 +4,12 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import {
   ALLOWED_DOCUMENT_MIME,
+  DOCUMENT_TYPE_LABELS,
+  REASON_CODE_LABELS,
   type DocumentDto,
   type DocumentType,
   type KycSessionDto,
+  type ReasonCodeName,
 } from '@kyc-setu/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,12 +42,21 @@ type UiState = Partial<Record<DocumentType, { uploading?: boolean; error?: strin
 const byType = (docs: DocumentDto[]) =>
   Object.fromEntries(docs.map((d) => [d.type, d])) as Partial<Record<DocumentType, DocumentDto>>;
 
+/** Set when an officer asked for specific documents again: only those slots can change. */
+export interface ResubmitInfo {
+  types: DocumentType[];
+  reasonCode: ReasonCodeName | null;
+  note: string | null;
+}
+
 export function DocumentsStep({
   session,
   initialDocuments,
+  resubmit = null,
 }: {
   session: KycSessionDto;
   initialDocuments: DocumentDto[];
+  resubmit?: ResubmitInfo | null;
 }) {
   const router = useRouter();
   const [docs, setDocs] = useState(() => byType(initialDocuments));
@@ -92,7 +104,8 @@ export function DocumentsStep({
     setSubmitError(null);
     try {
       const { session: next } = await documentsClient.submit(session.id);
-      router.push(stepPath(next.currentStep));
+      // After a resubmission the checks run again by themselves; the status page shows how it is going.
+      router.push(resubmit ? '/kyc/status' : stepPath(next.currentStep));
       router.refresh();
     } catch (err) {
       setSubmitError(
@@ -125,20 +138,38 @@ export function DocumentsStep({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Upload your documents</CardTitle>
+        <CardTitle>
+          {resubmit ? 'Upload the requested documents' : 'Upload your documents'}
+        </CardTitle>
         <CardDescription>
           Clear, well-lit photos where all four corners are visible. Files are encrypted before they
           are stored.
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {resubmit && (
+          <div
+            className="space-y-1 rounded-md border border-border bg-secondary px-3 py-2 text-sm"
+            data-testid="resubmit-banner"
+          >
+            <p className="font-medium">
+              Please upload again: {resubmit.types.map((t) => DOCUMENT_TYPE_LABELS[t]).join(', ')}
+            </p>
+            {resubmit.reasonCode && (
+              <p className="text-muted-foreground">{REASON_CODE_LABELS[resubmit.reasonCode]}</p>
+            )}
+            {resubmit.note && <p>{resubmit.note}</p>}
+          </div>
+        )}
         {SLOTS.map(({ type, label, hint, camera }) => {
           const accept = (ALLOWED_DOCUMENT_MIME[type] as readonly string[]).join(',');
           const isSignature = type === 'SIGNATURE';
           const busy = statusOf(type) === 'uploading';
+          const locked = !!resubmit && !resubmit.types.includes(type);
           return (
             <DocumentSlot
               key={type}
+              locked={locked}
               type={type}
               label={label}
               hint={hint}
@@ -215,11 +246,13 @@ export function DocumentsStep({
           {submitError}
         </p>
         <Button size="lg" onClick={submit} disabled={!allUploaded || submitting}>
-          {submitting ? 'Saving…' : 'Continue to Selfie'}
+          {submitting ? 'Saving…' : resubmit ? 'Send for review again' : 'Continue to Selfie'}
         </Button>
         {!allUploaded && (
           <p className="text-center text-xs text-muted-foreground">
-            Upload all four documents to continue.
+            {resubmit
+              ? 'Upload the requested documents to continue.'
+              : 'Upload all four documents to continue.'}
           </p>
         )}
       </CardContent>

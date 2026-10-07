@@ -87,6 +87,7 @@ export function DocumentSlot({
   error,
   children,
   onReplace,
+  locked = false,
 }: {
   type: DocumentType;
   label: string;
@@ -97,18 +98,21 @@ export function DocumentSlot({
   /** The picker(s) shown when empty / failed / replacing. */
   children: ReactNode;
   onReplace: () => void;
+  /** Already verified and not asked for again: no picker, no Replace. */
+  locked?: boolean;
 }) {
   const [replacing, setReplacing] = useState(false);
   useEffect(() => {
     if (status === 'uploaded') setReplacing(false);
   }, [status, doc?.id]);
 
-  const showPicker = status === 'empty' || status === 'failed' || replacing;
+  const showPicker = !locked && (status === 'empty' || status === 'failed' || replacing);
 
   return (
     <section
       data-testid={`slot-${type}`}
       data-status={status}
+      data-locked={locked}
       aria-label={label}
       className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4"
     >
@@ -146,7 +150,13 @@ export function DocumentSlot({
 
       {showPicker && children}
 
-      {status === 'uploaded' && !replacing && (
+      {locked && (
+        <p className="text-xs text-muted-foreground" data-testid={`locked-${type}`}>
+          Already on file. This one doesn’t need to be uploaded again.
+        </p>
+      )}
+
+      {status === 'uploaded' && !replacing && !locked && (
         <Button
           type="button"
           variant="outline"

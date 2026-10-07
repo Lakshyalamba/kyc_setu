@@ -3,6 +3,8 @@ import { cache } from 'react';
 import { redirect } from 'next/navigation';
 import {
   consentCurrentResponseSchema,
+  customerStatusResponseSchema,
+  type CustomerStatusResponse,
   documentListResponseSchema,
   type DocumentDto,
   kycSessionResponseSchema,
@@ -59,3 +61,14 @@ export async function getSessionDocuments(sessionId: string): Promise<DocumentDt
   });
   return documents;
 }
+
+/** The customer's newest application of any status (approved and rejected ones included), or null if none. Cached per request. */
+export const getCustomerStatus = cache(async (): Promise<CustomerStatusResponse | null> => {
+  const api = await serverApi();
+  try {
+    return await api('/kyc/status', { schema: customerStatusResponseSchema });
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) return null;
+    throw err;
+  }
+});
