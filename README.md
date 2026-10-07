@@ -5,13 +5,14 @@ and fintechs: customers complete KYC on their phone (consent, details, PAN + Aad
 selfie), the backend orchestrates AI verification (OCR, cross-document validation, face match, risk
 scoring), and bank officers review submissions before approving or rejecting.
 
-**Status: Phase 5 (cross-document validation + a rule-based risk engine)** on top of Phase 3 (OCR extraction), Phase 2
-(encrypted document upload), Phase 1 (KYC session + personal details) and the Phase 0 foundations. A customer can verify
-their mobile, give consent, fill in personal details and upload PAN, Aadhaar and a signature; a worker reads the
-documents with OCR; and a deterministic, explainable risk engine scores the case. **The selfie step, face matching and
-liveness (Phase 4) do not exist in this repository yet**: the engine consumes their results through a defined
-interface, and a dev-only injector stands in for them. The officer dashboard comes later; see
-[What's not built yet](#whats-not-built-yet).
+**Status: Phase 6 (the officer dashboard and review workflow)** on top of Phase 5 (cross-document validation + a
+rule-based risk engine), Phase 3 (OCR extraction), Phase 2 (encrypted document upload), Phase 1 (KYC session + personal
+details) and the Phase 0 foundations. A customer can verify their mobile, give consent, fill in personal details and
+upload PAN, Aadhaar and a signature; a worker reads the documents with OCR; a deterministic, explainable risk engine
+scores the case; and an officer works a queue, inspects every piece of evidence on one screen and approves, rejects or
+sends the application back, and the customer's own screens follow. **The selfie step, face matching and liveness
+(Phase 4) do not exist in this repository yet**: the engine and the review page consume their results through a defined
+interface, and a dev-only injector stands in for them. See [What's not built yet](#whats-not-built-yet).
 
 ## Architecture
 
@@ -54,7 +55,7 @@ cp .env.example .env     # 1. local-dev defaults work as-is
 make up                  # 2. Postgres, Redis, MinIO
 pnpm install             # 3. also generates the Prisma client
 pnpm db:migrate          # 4. apply migrations
-pnpm seed                # 5. officer, auditor, 2 customers, consent text, the AI service account
+pnpm seed                # 5. staff, 5 customers with applications to review, consent text, the AI service account
 make ai                  # 6. OCR service in Docker (first build is slow and ~4 GB; models are baked in)
 pnpm dev                 # 7. web :3000, api :4000, queue worker
 pnpm test                # 8. (optional) needs `make up`
@@ -69,12 +70,19 @@ Then open <http://localhost:3000>.
 > Postgres installed on your machine. **MinIO** is pulled from `cgr.dev/chainguard/minio`, because
 > MinIO no longer publishes images to Docker Hub or Quay.
 
-| Seeded user             | Role     | Password      | Log in at        |
-| ----------------------- | -------- | ------------- | ---------------- |
-| `officer@kycsetu.dev`   | OFFICER  | `password123` | `/officer/login` |
-| `auditor@kycsetu.dev`   | AUDITOR  | `password123` | `/officer/login` |
-| `customer1@kycsetu.dev` | CUSTOMER | `password123` | `/login`         |
-| `customer2@kycsetu.dev` | CUSTOMER | `password123` | `/login`         |
+| Seeded user             | Role         | Application                                              | Log in at        |
+| ----------------------- | ------------ | -------------------------------------------------------- | ---------------- |
+| `lead@kycsetu.dev`      | OFFICER_LEAD |                                                          | `/officer/login` |
+| `officer@kycsetu.dev`   | OFFICER      |                                                          | `/officer/login` |
+| `officer2@kycsetu.dev`  | OFFICER      |                                                          | `/officer/login` |
+| `auditor@kycsetu.dev`   | AUDITOR      | read-only                                                | `/officer/login` |
+| `customer1@kycsetu.dev` | CUSTOMER     | fresh: just started (`DRAFT`)                            | `/login`         |
+| `customer2@kycsetu.dev` | CUSTOMER     | under review, **LOW** (clean)                            | `/login`         |
+| `customer3@kycsetu.dev` | CUSTOMER     | under review, **MEDIUM** (typed name differs from cards) | `/login`         |
+| `customer4@kycsetu.dev` | CUSTOMER     | under review, **HIGH** (different face, liveness failed) | `/login`         |
+| `customer5@kycsetu.dev` | CUSTOMER     | already `APPROVED` (an earlier application)              | `/login`         |
+
+Every seeded user's password is `password123` (local development only).
 
 Useful URLs: API health <http://localhost:4000/healthz> · AI health <http://localhost:8000/healthz> ·
 MinIO console <http://localhost:9001> (`minioadmin` / `minioadmin`).
@@ -284,7 +292,84 @@ extraction + typed details + face match + liveness + prior approvals
 - **Try it:** with everything running (`make ai`, `pnpm dev`), `pnpm demo:risk` runs a fresh customer all the way to an
   assessment. Scenarios: `--scenario clean | stranger | borderline | liveness | typo-pan | duplicate-pan | underage`,
   plus `--recompute` / `--recompute-worse-face`. (`duplicate-pan` marks a first session APPROVED directly in the dev
-  database, because officer approval does not exist yet, and restores it afterwards.)
+  database rather than through an officer decision, and restores it afterwards.)
+
+## Officer review (Phase 6)
+
+An officer logs in at `/officer`, works a queue sorted by priority (HIGH risk first, oldest first within a band), claims
+an application, inspects all the evidence on one screen and decides. The decision moves the session, is written down
+together with exactly what the officer was shown, and tells the customer.
+
+```
+ /officer (queue) ──claim──▶ /officer/sessions/:id ──decision──▶ APPROVED | REJECTED | RESUBMIT_REQUESTED
+   GET /officer/queue          GET /officer/sessions/:id           POST /officer/sessions/:id/decisions
+   POST .../claim|release|take-over   (one payload)               Decision row (frozen snapshot) + audit + notification job
+```
+
+| Route                                  | Who                             | Purpose                                                                                                          |
+| -------------------------------------- | ------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `GET /officer/queue`                   | staff                           | `?band=&status=&assignedTo=me\|unassigned\|<id>&search=&cursor=&limit=`; `UNDER_REVIEW` by default; keyset pages |
+| `POST /officer/queue/:id/claim`        | `OFFICER`, `OFFICER_LEAD`       | Idempotent for the same officer; **409** with the holder's name if someone else has it                           |
+| `POST /officer/queue/:id/release`      | `OFFICER`, `OFFICER_LEAD`       | Ends only _your own_ claim, so a stale tab can't drop someone else's                                             |
+| `POST /officer/queue/:id/take-over`    | `OFFICER`, `OFFICER_LEAD`       | Ends the other officer's claim and starts yours; audited as `assignment.taken_over` with both officer ids        |
+| `GET /officer/sessions/:id`            | staff                           | Everything the review page needs, in one response (below)                                                        |
+| `POST /officer/sessions/:id/reveal`    | `OFFICER`, `OFFICER_LEAD`       | The only way to see a full Aadhaar number. Needs your claim; audited every time                                  |
+| `POST /officer/sessions/:id/decisions` | `OFFICER`, `OFFICER_LEAD`       | `APPROVE`, `REJECT` or `REQUEST_RESUBMIT`                                                                        |
+| `GET /officer/me/assignments`          | staff                           | What you are holding right now                                                                                   |
+| `GET /kyc/status`                      | the customer                    | Where their application stands, including after it was approved or rejected                                      |
+| `GET /kyc/sessions/:id/approval-slip`  | the owning customer, `APPROVED` | A one-page PDF (a stub)                                                                                          |
+
+"Staff" is `OFFICER`, `OFFICER_LEAD` and the read-only `AUDITOR`. The auditor can open the queue and any review page but
+cannot claim, reveal or decide.
+
+- **The review payload** is one response: session and consent text, typed details next to what each card says (mismatches
+  marked), the four documents with a 5-minute `OFFICER_REVIEW` link each, every extracted field with its confidence and
+  box, quality metrics, face match and liveness, the latest risk assessment (triggered rules with reasons, applied rules,
+  engine version), the audit timeline with actor names, decisions so far, the current claim and why the viewer can or
+  cannot decide. Types: `reviewPayloadSchema` in `packages/shared/src/schemas/officer.ts`.
+- **Soft lock, hard decision.** A claim is "I'm reviewing this", enforced by a partial unique index (one active claim per
+  session). It is not what protects the data: the decision itself is a compare-and-set on `UNDER_REVIEW`, in one
+  transaction with the decision row, the end of the claim and the audit rows, so two officers can never both decide.
+  The page claims on open, re-claims every minute (a 409 means someone took over), and releases on leaving or after 30
+  idle minutes. A `four-eyes` guard exists but is a stub with a `TODO`: officers cannot create sessions yet.
+- **Signed links.** Every document on every page load gets its own `SignedUrlIssue` row and `document.signed_url_issued`
+  audit row (purpose `OFFICER_REVIEW`, 5 minutes, bound to that officer). Reloading issues four more. That is the
+  point: the log says who was shown what.
+- **PII.** The payload never contains a full Aadhaar or PAN number (PAN is `XXXXXX234F`, Aadhaar `XXXX-XXXX-4321`,
+  names `Rahul K. S.` in the queue). Reveal returns the number in that response only, writes
+  `aadhaar.revealed {revealed: true}` _before_ returning it, and the page keeps it in component state: a reload masks it
+  again and nothing about it is in the URL or the HTML.
+- **Decisions.** `APPROVE` takes an optional note. `REJECT` and `REQUEST_RESUBMIT` need a reason code from a controlled
+  list and a note of at least five characters (the customer reads both). The lists are `REASON_CODES_BY_DECISION` in
+  `@kyc-setu/shared`, enforced by the request schema and, as a `CHECK`, by the database:
+  `REJECT`: `IDENTITY_MISMATCH`, `DOCUMENT_TAMPERED`, `FACE_MISMATCH`, `DUPLICATE_IDENTITY`, `AGE_INELIGIBLE`, `OTHER`;
+  `REQUEST_RESUBMIT`: `POOR_IMAGE_QUALITY`, `WRONG_DOCUMENT`, `SIGNATURE_UNCLEAR`, `SELFIE_RETAKE`, `OTHER`.
+  `decisions` is append-only, and its `snapshot` freezes what the officer saw (documents with their SHA-256, extractions,
+  the typed-vs-extracted rows, face match, the risk assessment). Sensitive values inside it stay encrypted exactly as
+  in the session and extraction rows, so nothing readable is copied out.
+- **Resubmission.** The requested document slots are emptied (soft delete: rows and ciphertext stay) and the customer can
+  change only those. When they submit, the documents are read again; the face match and liveness already on file are
+  carried forward (not after `SELFIE_RETAKE`, and only if something is on file) and the risk engine runs again, so the
+  application returns to the queue, unassigned, with a new assessment. At most two resubmissions per application.
+  _Deviation from the brief:_ the slots are cleared when the officer decides rather than "on next customer login", which
+  looks the same to the customer and needs no login hook.
+- **Notification.** A `notify` job on the verification queue; for now it writes one line to the worker's stdout (masked
+  address, template name, reason code, never the note) and an audit row. An e-mail service replaces one function.
+- **Customer side.** `/kyc/status` polls every 20 seconds and moves on by itself: `/kyc/done` (reference id, a download
+  button for the slip), `/kyc/rejected` (reason and the officer's note, nothing to click), or the resubmission view
+  listing the documents to upload again. Nothing there mentions risk. `/kyc` sends an approved or rejected customer to
+  the matching page.
+- **Audit:** `officer.review_opened`, `assignment.claimed` / `released` / `taken_over`, `aadhaar.revealed`,
+  `decision.recorded` (`decisionId`, `decision`, `reasonCode`, `officerId`: no notes, no personal values),
+  `kyc.documents.cleared`, `notification.queued` / `sent`, `kyc.approval_slip_downloaded`.
+- **What is not real yet** (Phase 4): there is no selfie, so the face-match section shows the score, the thresholds and the
+  liveness result from the dev injector and "not cropped yet / no selfie on file" where the two aligned crops and the
+  three motion frames will go. The payload already has the fields (`aadhaarCropUrl`, `selfieCropUrl`, `frameUrls`).
+- **Try it:** `pnpm seed` (after `make up` and `pnpm db:migrate`) creates the applications in the table above, through the
+  real upload, extraction and risk code with the OCR service replaced by canned answers from generated sample cards
+  (`scripts/sample-docs/personas`, regenerate with `uv run --project services/ai python scripts/sample-docs/make_samples.py --personas`).
+  Run it twice and nothing is duplicated. Log in as `officer@kycsetu.dev` and open the HIGH application.
+  A database that already holds applications from earlier experiments will list those too; `make reset` starts clean.
 
 ## Design notes
 
@@ -312,7 +397,6 @@ extraction + typed details + face match + liveness + prior approvals
 | Phase | Scope                                                                                                                                                                                                                                                                                                       |
 | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 4     | **Not in this repository.** Selfie capture UI, face matching against the ID photo, and the liveness / motion check. The risk engine already consumes their outputs (`FaceMatchResult`, `LivenessResult` in `@kyc-setu/shared`, stored in `biometric_signals`); the dev injector stands in until this exists |
-| 6     | Officer dashboard: review queue (`OFFICER_REVIEW` signed URLs, extracted values, risk breakdown, flags), approve / reject / request resubmission, RBAC for `OFFICER_LEAD` / `AUDITOR`                                                                                                                       |
 | 7     | Hardening & deploy: rate limiting, email verification / password reset, observability, a real KMS (AWS) and key rotation, document and raw-OCR-text retention (the sweeper exists but is unscheduled), real SMS provider, OCR accuracy work on real (consented) scans, hosting config                       |
 
 Also deliberately omitted so far: CSRF tokens (SameSite=Lax + JSON/multipart-only + strict CORS for now), a job to expire
