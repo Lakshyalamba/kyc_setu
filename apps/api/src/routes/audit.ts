@@ -2,6 +2,8 @@ import { Router, type Request } from 'express';
 import {
   chainVerifyQuerySchema,
   chainVerifyResponseSchema,
+  auditSessionsQuerySchema,
+  auditSessionsResponseSchema,
   checkpointsResponseSchema,
   exportRequestResponseSchema,
   exportStatusResponseSchema,
@@ -13,6 +15,7 @@ import { route } from '../lib/route.js';
 import type { PermissionGuards } from '../middleware/permission.js';
 import type { AuditChainService } from '../modules/audit/chain.service.js';
 import type { ExportService } from '../modules/audit/export.service.js';
+import type { OfficerService } from '../modules/officer/officer.service.js';
 
 /** The auditor's routes. Everything here reads; nothing here writes to the audit log. */
 const requesterOf = (req: Request) => {
@@ -23,9 +26,10 @@ const requesterOf = (req: Request) => {
 export function createAuditRouter(deps: {
   chain: AuditChainService;
   exporter: ExportService;
+  officer: OfficerService;
   guard: PermissionGuards;
 }): Router {
-  const { chain, exporter, guard } = deps;
+  const { chain, exporter, officer, guard } = deps;
   const router = Router();
   router.use((_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store');
@@ -44,6 +48,15 @@ export function createAuditRouter(deps: {
     '/chain/checkpoints',
     guard.require('audit.read'),
     route({ response: checkpointsResponseSchema }, () => chain.checkpoints()),
+  );
+
+  // Every application in any state, for the auditor. Read-only.
+  router.get(
+    '/sessions',
+    guard.require('audit.read'),
+    route({ query: auditSessionsQuerySchema, response: auditSessionsResponseSchema }, (ctx) =>
+      officer.auditSessions(ctx.query),
+    ),
   );
 
   // A signed packet of everything about one session. Building it takes a moment, so this answers 202 and the page polls.

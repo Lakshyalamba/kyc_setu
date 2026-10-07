@@ -68,7 +68,7 @@ async function login(page: Page, role: 'officer' | 'customer', email: string) {
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(PASSWORD);
   await page.getByRole('button', { name: 'Log in' }).click();
-  await expect(page).toHaveURL(role === 'officer' ? /\/officer$/ : /\/kyc/);
+  await expect(page).toHaveURL(role === 'officer' ? /\/(officer|auditor)$/ : /\/kyc/);
 }
 
 async function officerPage(browser: Browser, email = OFFICER) {
@@ -495,16 +495,13 @@ test('two officers: the second sees who holds it, takes over, and the first can 
   await two.context.close();
 });
 
-test('an auditor can look but not claim or decide', async ({ browser }) => {
-  const { low } = seed(['low']);
+test('an auditor has no review queue: the officer pages send them to the audit pages', async ({
+  browser,
+}) => {
   const auditor = await officerPage(browser, 'auditor@kycsetu.dev');
-  await review(auditor.page, low!.sessionId);
-  await expect(auditor.page.getByTestId('review-page')).toBeVisible();
-  await expect(auditor.page.getByTestId('lock-state')).toHaveAttribute('data-lock', 'readonly');
-  for (const b of ['approve', 'resubmit', 'reject'] as const)
-    await expect(bar(auditor.page, b)).toBeDisabled();
-  await expect(auditor.page.getByTestId('reveal-aadhaar')).toHaveCount(0);
-  expect(await prisma.officerAssignment.count({ where: { sessionId: low!.sessionId } })).toBe(0);
+  await expect(auditor.page).toHaveURL(/\/auditor$/);
+  await auditor.page.goto('/officer');
+  await expect(auditor.page).toHaveURL(/\/auditor$/);
   await auditor.context.close();
 });
 

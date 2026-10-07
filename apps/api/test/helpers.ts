@@ -873,6 +873,45 @@ export function createFakeOfficerStore(
     findDecision: async (id) => decisions.find((d) => d.id === id) ?? null,
     latestDecision: async (sessionId) =>
       decisions.filter((d) => d.sessionId === sessionId).at(-1) ?? null,
+    async auditSessions(f) {
+      const rows = kycStore.sessions
+        .map((s) => {
+          const last = decisions.filter((d) => d.sessionId === s.id).at(-1) ?? null;
+          return {
+            sessionId: s.id,
+            status: s.status,
+            createdAt: s.createdAt,
+            submittedAt: s.submittedAt,
+            fullName: nameOf(s),
+            band: latestBand(s.id)?.band ?? null,
+            decision: last?.decision ?? null,
+            decidedAt: last?.createdAt ?? null,
+            sortAt: s.submittedAt ?? s.createdAt,
+          };
+        })
+        .filter(
+          (r) =>
+            (!f.status || r.status === f.status) &&
+            (!f.decision || r.decision === f.decision) &&
+            (!f.from || r.sortAt >= f.from) &&
+            (!f.to || r.sortAt < f.to) &&
+            (!f.search ||
+              r.sessionId.startsWith(f.search.toLowerCase()) ||
+              (r.fullName ?? '').toLowerCase().startsWith(f.search.toLowerCase())),
+        )
+        .sort(
+          (a, b) => b.sortAt.getTime() - a.sortAt.getTime() || (a.sessionId < b.sessionId ? 1 : -1),
+        );
+      const after = f.after;
+      const page = after
+        ? rows.filter(
+            (r) =>
+              r.sortAt.getTime() < Date.parse(after.at) ||
+              (r.sortAt.getTime() === Date.parse(after.at) && r.sessionId < after.id),
+          )
+        : rows;
+      return page.slice(0, f.limit).map(({ sortAt: _s, ...r }) => r);
+    },
     documentsDecidedBefore: async (cutoff) => {
       const sessions = new Set(
         decisions

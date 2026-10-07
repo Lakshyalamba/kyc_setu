@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   REVIEW_IDLE_RELEASE_MINUTES,
   type AssignmentDto,
@@ -49,12 +49,23 @@ function holderFrom(err: unknown): AssignmentDto | null {
  */
 export function ReviewPage({
   sessionId,
-  canWrite,
+  canWrite: mayWrite,
+  readOnly = false,
+  backHref,
+  backLabel,
+  headerExtra,
 }: {
   sessionId: string;
   /** From the officer's role: auditors never claim. */
   canWrite: boolean;
+  /** The auditor's view of the same page: no claim, no decision buttons, no reveal. */
+  readOnly?: boolean;
+  backHref?: string;
+  backLabel?: string;
+  /** Extra header content for a read-only viewer (a link to the export, say). */
+  headerExtra?: ReactNode;
 }) {
+  const canWrite = mayWrite && !readOnly;
   const router = useRouter();
   const [payload, setPayload] = useState<ReviewPayload | null>(null);
   const [assignment, setAssignment] = useState<AssignmentDto | null>(null);
@@ -288,14 +299,20 @@ export function ReviewPage({
           busy={lockBusy}
           onClaim={() => void claim()}
           onRefresh={() => void load().catch(() => undefined)}
+          {...(backHref ? { backHref } : {})}
+          {...(backLabel ? { backLabel } : {})}
           decisions={
-            <DecisionBar
-              variant="inline"
-              sessionId={sessionId}
-              canDecide={canDecide}
-              blockedReason={blockedReason}
-              onDecided={onDecided}
-            />
+            readOnly ? (
+              headerExtra
+            ) : (
+              <DecisionBar
+                variant="inline"
+                sessionId={sessionId}
+                canDecide={canDecide}
+                blockedReason={blockedReason}
+                onDecided={onDecided}
+              />
+            )
           }
         />
 
@@ -365,13 +382,15 @@ export function ReviewPage({
           </div>
         </div>
 
-        <DecisionBar
-          variant="sticky"
-          sessionId={sessionId}
-          canDecide={canDecide}
-          blockedReason={blockedReason}
-          onDecided={onDecided}
-        />
+        {!readOnly && (
+          <DecisionBar
+            variant="sticky"
+            sessionId={sessionId}
+            canDecide={canDecide}
+            blockedReason={blockedReason}
+            onDecided={onDecided}
+          />
+        )}
       </div>
     </ReviewProvider>
   );

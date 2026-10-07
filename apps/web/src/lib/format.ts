@@ -29,10 +29,14 @@ export function formatDateTime(iso: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** `name-mismatch-form-pan` -> `Name mismatch form pan` (used where there is no hand-written label). */
+/**
+ * `name-mismatch-form-pan` -> `Name mismatch form pan`, and a SHOUTED enum like `UNDER_REVIEW` -> `Under review`
+ * (used where there is no hand-written label).
+ */
 export const humanize = (id: string): string => {
   const words = id.replace(/[._-]+/g, ' ').trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  const sentence = /^[A-Z0-9 ]+$/.test(words) ? words.toLowerCase() : words;
+  return sentence.charAt(0).toUpperCase() + sentence.slice(1);
 };
 
 export const RULE_LABELS: Record<string, string> = {

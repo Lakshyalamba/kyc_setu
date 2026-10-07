@@ -43,6 +43,31 @@ export interface QueueRow {
   flags: string[];
 }
 
+/** One row of the auditor's cross-session search. */
+export interface AuditSessionRow {
+  sessionId: string;
+  status: KycStatus;
+  createdAt: Date;
+  submittedAt: Date | null;
+  fullName: string | null;
+  band: Band | null;
+  decision: DecisionTypeName | null;
+  decidedAt: Date | null;
+}
+
+export interface AuditSessionFilter {
+  status?: KycStatus;
+  decision?: DecisionTypeName;
+  /** When the application was submitted (or, if it never was, created): from this instant inclusive... */
+  from?: Date;
+  /** ...to this one exclusive. */
+  to?: Date;
+  search?: string;
+  /** Keyset position: newest first, so rows strictly older than this (at, then id). */
+  after?: { at: string; id: string };
+  limit: number;
+}
+
 export interface QueueCounts {
   HIGH: number;
   MEDIUM: number;
@@ -161,6 +186,8 @@ export interface OfficerStore {
   findDecision(id: string): Promise<DecisionRecord | null>;
   latestDecision(sessionId: string): Promise<DecisionRecord | null>;
   countResubmits(sessionId: string): Promise<number>;
+  /** Every application in any state, newest first: for the auditor. Read-only. */
+  auditSessions(filter: AuditSessionFilter): Promise<AuditSessionRow[]>;
   /** Documents (and their total size) of sessions whose final decision was before `cutoff`: past their retention period. */
   documentsDecidedBefore(
     cutoff: Date,
@@ -475,6 +502,43 @@ export function createPrismaOfficerStore(prisma: SafeClient): OfficerStore {
     },
     countResubmits: (sessionId) =>
       prisma.decision.count({ where: { sessionId, decision: 'REQUEST_RESUBMIT' } }),
+
+    async auditSessions(f) {
+      const where: Prisma.Sql[] = [Prisma.sql`TRUE`];
+      if (f.status) where.push(Prisma.sql`s.status = ${f.status}::"KycStatus"`);
+      if (f.decision) where.push(Prisma.sql`d.decision = ${f.decision}::"DecisionType"`);
+      if (f.from) where.push(Prisma.sql`COALESCE(s."submittedAt", s."createdAt") >= ${f.from}`);
+      if (f.to) where.push(Prisma.sql`COALESCE(s."submittedAt", s."createdAt") < ${f.to}`);
+      if (f.search) {
+        const like = `${escapeLike(f.search)}%`;
+        where.push(
+          Prisma.sql`(s.id::text ILIKE ${like} OR (s."personalDetails" ->> 'fullName') ILIKE ${like})`,
+        );
+      }
+      const after = f.after
+        ? Prisma.sql`WHERE q."sortAt" < ${f.after.at}::timestamp
+            OR (q."sortAt" = ${f.after.at}::timestamp AND q.id < ${f.after.id}::uuid)`
+        : Prisma.empty;
+      return prisma.$queryRaw<AuditSessionRow[]>(Prisma.sql`
+        SELECT q.id AS "sessionId", q.status, q."createdAt", q."submittedAt", q."fullName", q.band, q.decision, q."decidedAt"
+        FROM (
+          SELECT s.id, s.status::text AS status, s."createdAt", s."submittedAt",
+                 COALESCE(s."submittedAt", s."createdAt") AS "sortAt",
+                 s."personalDetails" ->> 'fullName' AS "fullName",
+                 ra.band::text AS band, d.decision::text AS decision, d."createdAt" AS "decidedAt"
+          FROM kyc_sessions s
+          LEFT JOIN LATERAL (
+            SELECT r.band FROM risk_assessments r WHERE r."sessionId" = s.id ORDER BY r."createdAt" DESC LIMIT 1
+          ) ra ON TRUE
+          LEFT JOIN LATERAL (
+            SELECT x.decision, x."createdAt" FROM decisions x WHERE x."sessionId" = s.id ORDER BY x."createdAt" DESC LIMIT 1
+          ) d ON TRUE
+          WHERE ${Prisma.join(where, ' AND ')}
+        ) q
+        ${after}
+        ORDER BY q."sortAt" DESC, q.id DESC
+        LIMIT ${f.limit}`);
+    },
 
     async documentsDecidedBefore(cutoff) {
       const [row] = await prisma.$queryRaw<

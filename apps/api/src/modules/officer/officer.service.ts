@@ -9,6 +9,8 @@ import {
   maskPan,
   qualitySchema,
   type AssignmentDto,
+  type AuditSessionsQuery,
+  type AuditSessionsResponse,
   type ComparisonRow,
   type DecisionBlocker,
   type DecisionRequest,
@@ -36,6 +38,8 @@ import type { ExtractionStore, ExtractionWithType } from '../extraction/store.js
 import { patchFrom, toState, type RequestMeta } from '../kyc/kyc.service.js';
 import { decryptStored } from '../kyc/personal-codec.js';
 import { sha256Hex } from '../consent/consent.service.js';
+import { referenceIdOf } from './customer-status.js';
+import { istDayBounds } from '../audit/chain.js';
 import { maskForRole } from '../pii/mask.js';
 import type { KycStore, SessionRecord } from '../kyc/store.js';
 import { buildRiskInput } from '../risk/inputs.js';
@@ -118,6 +122,26 @@ function decodeCursor(raw: string): QueueCursor {
       /^[0-9a-f-]{36}$/i.test(v.id)
     ) {
       return { rank: v.rank, at: v.at, id: v.id };
+    }
+  } catch {
+    /* falls through */
+  }
+  throw new AppError(400, 'VALIDATION_ERROR', 'Invalid cursor');
+}
+
+function decodeAuditCursor(raw: string): { at: string; id: string } {
+  try {
+    const v = JSON.parse(Buffer.from(raw, 'base64url').toString('utf8')) as {
+      at?: unknown;
+      id?: unknown;
+    };
+    if (
+      typeof v.at === 'string' &&
+      !Number.isNaN(Date.parse(v.at)) &&
+      typeof v.id === 'string' &&
+      /^[0-9a-f-]{36}$/i.test(v.id)
+    ) {
+      return { at: v.at, id: v.id };
     }
   } catch {
     /* falls through */
@@ -540,6 +564,47 @@ export function createOfficerService(deps: OfficerServiceDeps) {
               })
             : null,
         counts: await store.counts(q.status, actor.userId),
+      };
+    },
+
+    /**
+     * The auditor's search: every application in any state (approved, rejected and expired included), newest first, by
+     * date range, decision type and status. Read-only, and the names are masked like everywhere else.
+     */
+    async auditSessions(q: AuditSessionsQuery): Promise<AuditSessionsResponse> {
+      const after = q.cursor ? decodeAuditCursor(q.cursor) : undefined;
+      const rows = await store.auditSessions({
+        ...(q.status ? { status: q.status } : {}),
+        ...(q.decision ? { decision: q.decision } : {}),
+        ...(q.from ? { from: istDayBounds(q.from).from } : {}),
+        ...(q.to ? { to: istDayBounds(q.to).to } : {}),
+        ...(q.search ? { search: q.search } : {}),
+        ...(after ? { after } : {}),
+        limit: q.limit + 1,
+      });
+      const page = rows.slice(0, q.limit);
+      const last = page.at(-1);
+      return {
+        items: page.map((r) => ({
+          sessionId: r.sessionId,
+          referenceId: referenceIdOf(r.sessionId),
+          customerName: maskName(r.fullName),
+          status: r.status,
+          createdAt: r.createdAt.toISOString(),
+          submittedAt: r.submittedAt?.toISOString() ?? null,
+          riskBand: r.band,
+          decision: r.decision,
+          decidedAt: r.decidedAt?.toISOString() ?? null,
+        })),
+        nextCursor:
+          rows.length > q.limit && last
+            ? Buffer.from(
+                JSON.stringify({
+                  at: (last.submittedAt ?? last.createdAt).toISOString(),
+                  id: last.sessionId,
+                }),
+              ).toString('base64url')
+            : null,
       };
     },
 

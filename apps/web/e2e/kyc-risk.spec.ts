@@ -81,9 +81,9 @@ test('the customer ends on an "under review" screen that shows nothing about ris
   // And a customer cannot ask for a recompute or use the dev routes.
   expect(
     (await page.request.post(`${API_URL}/kyc/sessions/${session.id}/risk/recompute`)).status(),
-  ).toBe(401);
+  ).toBe(403); // signed in as a customer, which holds no staff permission
   expect(
     (await page.request.get(`${API_URL}/dev/risk/preview?sessionId=${session.id}`)).status(),
-  ).toBe(401);
+  ).toBe(403);
   await officer.close();
 });

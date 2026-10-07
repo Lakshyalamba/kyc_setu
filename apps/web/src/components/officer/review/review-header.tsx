@@ -17,12 +17,16 @@ export function ReviewHeader({
   onClaim,
   onRefresh,
   decisions,
+  backHref = '/officer',
+  backLabel = 'Queue',
 }: {
   lock: LockView;
   busy: boolean;
   onClaim: () => void;
   onRefresh: () => void;
   decisions: ReactNode;
+  backHref?: string;
+  backLabel?: string;
 }) {
   const { payload } = useReview();
   const status = payload.session.status;
@@ -31,8 +35,8 @@ export function ReviewHeader({
       className="sticky top-12 z-20 -mx-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-b border-border bg-card/95 px-4 py-2 backdrop-blur"
       data-testid="review-header"
     >
-      <Link href="/officer" className="text-sm text-muted-foreground hover:text-foreground">
-        ← Queue
+      <Link href={backHref} className="text-sm text-muted-foreground hover:text-foreground">
+        ← {backLabel}
       </Link>
       <h1 className="text-base font-semibold" data-testid="customer-name">
         {payload.customer.displayName}

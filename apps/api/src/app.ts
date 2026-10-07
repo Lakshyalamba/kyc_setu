@@ -84,7 +84,7 @@ export function createApp(deps: AppDeps): Express {
   mount('/kyc', createExtractionRouter({ extraction, requireCustomer }));
   mount('/kyc', createCustomerStatusRouter({ status: customerStatus, requireCustomer }));
   mount('/officer', createOfficerRouter({ officer, guard, limiters }));
-  mount('/audit', createAuditRouter({ chain: auditChain, exporter: auditExport, guard }));
+  mount('/audit', createAuditRouter({ chain: auditChain, exporter: auditExport, officer, guard }));
   mount('/admin', createAdminRouter({ auth, retention, guard }));
   mount('/files', createFilesRouter({ docs, env }));
 

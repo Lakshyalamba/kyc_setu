@@ -29,6 +29,9 @@ describe('labels', () => {
     expect(auditLabel('decision.recorded')).toBe('Decision recorded');
     expect(auditLabel('some.new_action')).toBe('Some new action');
     expect(humanize('x_y-z')).toBe('X y z');
+    expect(humanize('UNDER_REVIEW')).toBe('Under review');
+    expect(humanize('APPROVE')).toBe('Approve');
+    expect(humanize('5_TO_10_LAKH')).toBe('5 to 10 lakh');
     expect(reasonLabel('FACE_MISMATCH')).toBe('Face does not match the ID photo');
     expect(reasonLabel(null)).toBe('');
   });
