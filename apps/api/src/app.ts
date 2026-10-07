@@ -9,7 +9,9 @@ import { buildServices, type ServiceDeps } from './services.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createDocumentsRouter, createFilesRouter } from './routes/documents.js';
 import { createDevExtractionRouter, createExtractionRouter } from './routes/extraction.js';
+import { createCustomerStatusRouter } from './routes/customer-status.js';
 import { createHealthRouter, type HealthProbe } from './routes/health.js';
+import { createOfficerRouter } from './routes/officer.js';
 import { createKycRouter } from './routes/kyc.js';
 import { createDevRiskRouter, createRiskRouter } from './routes/risk.js';
 
@@ -29,7 +31,7 @@ export function createApp(deps: AppDeps): Express {
   app.use(cookieParser());
 
   const auth = createAuthService({ env, store: deps.store });
-  const { kyc, docs, extraction, risk } = buildServices(deps);
+  const { kyc, docs, extraction, risk, officer, customerStatus } = buildServices(deps);
   const requireCustomer = [createRequireAuth(env, 'customer'), requireRole('CUSTOMER')];
 
   app.use(createHealthRouter(deps.healthProbe));
@@ -51,6 +53,18 @@ export function createApp(deps: AppDeps): Express {
   app.use('/kyc', createKycRouter({ kyc, requireCustomer }));
   app.use('/kyc', createDocumentsRouter({ docs, requireCustomer }));
   app.use('/kyc', createExtractionRouter({ extraction, requireCustomer }));
+  app.use('/kyc', createCustomerStatusRouter({ status: customerStatus, requireCustomer }));
+  app.use(
+    '/officer',
+    createOfficerRouter({
+      officer,
+      requireStaff: [
+        createRequireAuth(env, 'officer'),
+        requireRole('OFFICER', 'OFFICER_LEAD', 'AUDITOR'),
+      ],
+      requireWriter: [createRequireAuth(env, 'officer'), requireRole('OFFICER', 'OFFICER_LEAD')],
+    }),
+  );
   app.use('/files', createFilesRouter({ docs, env }));
 
   if (env.NODE_ENV !== 'production') {
