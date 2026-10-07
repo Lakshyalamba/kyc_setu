@@ -1,4 +1,5 @@
-import { prisma } from '@kyc-setu/db';
+import { prisma as rawPrisma } from '@kyc-setu/db';
+import { createSafeClient } from './db/safeClient.js';
 import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 import { createApp } from './app.js';
 import { createHttpAiClient } from './modules/extraction/ai-client.js';
@@ -14,6 +15,9 @@ import { createPrismaAuthStore } from './modules/auth/store.js';
 import { createRedis } from './queue/connection.js';
 import { createHealthProbe } from './queue/health.js';
 import { createSystemQueue } from './queue/queues.js';
+
+// Everything the API and the worker do to the database goes through the safe client: no audit_logs update or delete.
+const prisma = createSafeClient(rawPrisma);
 
 const env = loadEnv(); // throws (and the process exits) on bad config
 

@@ -1,4 +1,5 @@
-import type { Prisma, PrismaClient } from '@kyc-setu/db';
+import type { Prisma } from '@kyc-setu/db';
+import type { SafeClient } from '../../db/safeClient.js';
 import type { AuditEntry } from '../auth/store.js';
 
 export interface AssessmentRecord {
@@ -76,7 +77,7 @@ const auditData = (e: AuditEntry) => ({
 });
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
-export function createPrismaRiskStore(prisma: PrismaClient): RiskStore {
+export function createPrismaRiskStore(prisma: SafeClient): RiskStore {
   return {
     latestAssessment: (sessionId) =>
       prisma.riskAssessment.findFirst({ where: { sessionId }, orderBy: { createdAt: 'desc' } }),

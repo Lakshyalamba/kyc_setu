@@ -4,7 +4,8 @@ import type { PrismaClient } from '@kyc-setu/db';
 import type { HealthProbe } from '../routes/health.js';
 
 export function createHealthProbe(deps: {
-  prisma: PrismaClient;
+  /** Only needs to run `SELECT 1`; the raw or the safe client both fit. */
+  prisma: Pick<PrismaClient, '$queryRaw'>;
   redis: Redis;
   queue: Queue;
 }): HealthProbe {

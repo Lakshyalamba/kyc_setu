@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from '@kyc-setu/db';
+import { Prisma } from '@kyc-setu/db';
+import type { SafeClient } from '../../db/safeClient.js';
 import type { DocumentType, ExtractionStatus } from '@kyc-setu/shared';
 import type { AuditEntry } from '../auth/store.js';
 
@@ -89,7 +90,7 @@ const toRecord = (e: Db): ExtractionRecord => ({
 const u8 = (b: Buffer) => new Uint8Array(b);
 const json = (v: unknown) => v as Prisma.InputJsonValue;
 
-export function createPrismaExtractionStore(prisma: PrismaClient): ExtractionStore {
+export function createPrismaExtractionStore(prisma: SafeClient): ExtractionStore {
   return {
     async findByDocumentId(documentId) {
       const row = await prisma.extraction.findUnique({ where: { documentId } });

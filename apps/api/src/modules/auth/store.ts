@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from '@kyc-setu/db';
+import { Prisma } from '@kyc-setu/db';
+import type { SafeClient } from '../../db/safeClient.js';
 import type { Role } from '@kyc-setu/shared';
 
 export interface UserRecord {
@@ -33,7 +34,7 @@ export interface AuthStore {
   writeAudit(entry: AuditEntry): Promise<void>;
 }
 
-export function createPrismaAuthStore(prisma: PrismaClient): AuthStore {
+export function createPrismaAuthStore(prisma: SafeClient): AuthStore {
   const toAuditData = (e: AuditEntry) => ({
     actorId: e.actorId,
     actorType: e.actorType,

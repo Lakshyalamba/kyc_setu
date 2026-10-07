@@ -1,5 +1,6 @@
 import { Worker } from 'bullmq';
-import { prisma } from '@kyc-setu/db';
+import { prisma as rawPrisma } from '@kyc-setu/db';
+import { createSafeClient } from './db/safeClient.js';
 import { createS3Client } from '@kyc-setu/shared/storage';
 import { loadEnv } from './config/env.js';
 import { createPrismaAuthStore } from './modules/auth/store.js';
@@ -20,6 +21,9 @@ import {
 } from './queue/verification.js';
 import { buildServices } from './services.js';
 import { createVerificationWorker } from './workers/verification.js';
+
+// Everything the API and the worker do to the database goes through the safe client: no audit_logs update or delete.
+const prisma = createSafeClient(rawPrisma);
 
 const env = loadEnv();
 const store = createPrismaAuthStore(prisma);

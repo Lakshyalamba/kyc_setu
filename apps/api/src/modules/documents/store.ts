@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from '@kyc-setu/db';
+import { Prisma } from '@kyc-setu/db';
+import type { SafeClient } from '../../db/safeClient.js';
 import type { DocumentType, SignedUrlPurpose } from '@kyc-setu/shared';
 import type { AuditEntry } from '../auth/store.js';
 
@@ -69,7 +70,7 @@ const toRecord = (d: DbDocument): DocumentRecord => ({
   authTag: Buffer.from(d.authTag),
 });
 
-export function createPrismaDocumentStore(prisma: PrismaClient): DocumentStore {
+export function createPrismaDocumentStore(prisma: SafeClient): DocumentStore {
   return {
     async listActive(sessionId) {
       const rows = await prisma.document.findMany({

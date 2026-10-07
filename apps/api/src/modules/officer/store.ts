@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from '@kyc-setu/db';
+import { Prisma } from '@kyc-setu/db';
+import type { SafeClient } from '../../db/safeClient.js';
 import type {
   DecisionTypeName,
   DocumentType,
@@ -212,7 +213,7 @@ const toAssignment = (a: DbAssignment): AssignmentRecord => ({
   assignedAt: a.assignedAt,
 });
 
-export function createPrismaOfficerStore(prisma: PrismaClient): OfficerStore {
+export function createPrismaOfficerStore(prisma: SafeClient): OfficerStore {
   const withOfficer = { officer: { select: { email: true } } } as const;
 
   /** The latest risk assessment and the active assignment of every session, joined once. */

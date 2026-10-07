@@ -1,4 +1,5 @@
-import { Prisma, type PrismaClient } from '@kyc-setu/db';
+import { Prisma } from '@kyc-setu/db';
+import type { SafeClient } from '../../db/safeClient.js';
 import type { DocumentType, KycStatus, KycStep } from '@kyc-setu/shared';
 import type { AuditEntry } from '../auth/store.js';
 
@@ -109,7 +110,7 @@ const auditData = (e: AuditEntry) => ({
 // Prisma's Json input type is stricter than our plain-object JSON; the values are already JSON-safe.
 const asJson = (v: Record<string, unknown>) => v as Prisma.InputJsonObject;
 
-export function createPrismaKycStore(prisma: PrismaClient): KycStore {
+export function createPrismaKycStore(prisma: SafeClient): KycStore {
   return {
     findActiveSession: (userId) =>
       prisma.kycSession.findFirst({ where: { userId, status: { notIn: TERMINAL } } }),

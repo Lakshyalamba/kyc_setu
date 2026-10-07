@@ -10,7 +10,8 @@
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { prisma, type Prisma } from '@kyc-setu/db';
+import { prisma as rawPrisma, type Prisma } from '@kyc-setu/db';
+import { createSafeClient } from '../../db/safeClient.js';
 import {
   verhoeffGenerate,
   type DocumentType,
@@ -32,6 +33,8 @@ import { createPrismaRiskStore } from '../../modules/risk/store.js';
 import type { VerificationEnqueuer } from '../../queue/verification.js';
 import { buildServices } from '../../services.js';
 import { parsePiiKey } from '@kyc-setu/shared/pii';
+
+const prisma = createSafeClient(rawPrisma);
 
 export const SAMPLES = path.resolve(import.meta.dirname, '../../../../../scripts/sample-docs');
 export const SEED_PASSWORD = 'password123'; // local development only
