@@ -301,6 +301,8 @@ export const revealResponseSchema = z.object({
   field: z.literal('AADHAAR'),
   /** `2341 2341 2346`. Returned in this response only: it is never part of the review payload. */
   value: z.string(),
+  /** Marks the value as a deliberate, audited reveal (everything else in the API is masked). */
+  revealed: z.literal(true),
   revealedAt: isoDate,
   revealedBy: z.string(),
 });

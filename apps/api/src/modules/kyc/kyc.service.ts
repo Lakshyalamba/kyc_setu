@@ -28,8 +28,8 @@ import {
   decryptStored,
   encryptForStorage,
   mergeDraft,
-  toPersonalResponse,
 } from './personal-codec.js';
+import { maskForRole } from '../pii/mask.js';
 import { TERMINAL, type KycStore, type SessionPatch, type SessionRecord } from './store.js';
 
 export interface RequestMeta {
@@ -88,7 +88,7 @@ export function createKycService(deps: KycServiceDeps) {
         email: typeof plain['email'] === 'string' ? plain['email'] : null,
         mobileVerified: s.completedSteps.includes('CONTACT'),
       },
-      personalDetails: hasDetails ? toPersonalResponse(plain) : null,
+      personalDetails: hasDetails ? maskForRole(plain, 'CUSTOMER') : null,
     };
   }
 

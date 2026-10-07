@@ -4,11 +4,9 @@ import {
   MAX_RESUBMISSIONS,
   REASON_CODES_BY_DECISION,
   applyTransition,
-  formatAadhaar,
   maskAadhaar,
   maskName,
   maskPan,
-  maskMobile,
   qualitySchema,
   type AssignmentDto,
   type ComparisonRow,
@@ -36,7 +34,8 @@ import type { DocumentsService } from '../documents/documents.service.js';
 import type { DocumentStore } from '../documents/store.js';
 import type { ExtractionStore, ExtractionWithType } from '../extraction/store.js';
 import { patchFrom, toState, type RequestMeta } from '../kyc/kyc.service.js';
-import { decryptStored, toPersonalResponse } from '../kyc/personal-codec.js';
+import { decryptStored } from '../kyc/personal-codec.js';
+import { maskForRole } from '../pii/mask.js';
 import type { KycStore, SessionRecord } from '../kyc/store.js';
 import { buildRiskInput } from '../risk/inputs.js';
 import { toAssessmentDto } from '../risk/risk.service.js';
@@ -629,7 +628,8 @@ export function createOfficerService(deps: OfficerServiceDeps) {
       ]);
 
       const plain = decryptStored(session.personalDetails, piiKey);
-      const { panNumber, mobile, ...personal } = toPersonalResponse(plain);
+      // Serialization is the one place that decides what a role may see: the handler never builds this by hand.
+      const personal = maskForRole(plain, actor.role);
       const resubmitCount = decisions.filter((d) => d.decision === 'REQUEST_RESUBMIT').length;
       const blockers = blockersFor(actor, session, assignmentRow);
 
@@ -660,11 +660,7 @@ export function createOfficerService(deps: OfficerServiceDeps) {
         },
         customer: {
           displayName: maskName(typeof plain['fullName'] === 'string' ? plain['fullName'] : null),
-          personal: {
-            ...personal,
-            ...(panNumber ? { panMasked: maskPan(panNumber) ?? '' } : {}),
-            ...(mobile ? { mobileMasked: maskMobile(mobile) ?? '' } : {}),
-          },
+          personal,
         },
         documents,
         extractions: g.extractions.map(toReviewExtraction),
@@ -712,19 +708,22 @@ export function createOfficerService(deps: OfficerServiceDeps) {
       }
       if (assignment.officerId !== actor.userId) throw heldByOther(assignment);
 
-      const typed = decryptStored(session.personalDetails, piiKey)['aadhaarNumber'];
-      if (typeof typed !== 'string' || typed === '') {
+      const plain = decryptStored(session.personalDetails, piiKey);
+      const revealedAt = now();
+      // The number leaves only through maskForRole, tagged as revealed, and only for a role that may have it.
+      const masked = maskForRole(plain, actor.role, { reveal: { at: revealedAt } });
+      if (!masked.aadhaar) {
         throw new AppError(404, 'NO_AADHAAR', 'No Aadhaar number was entered for this application');
       }
-      const revealedAt = now();
       await store.writeAudit(
         audit(actor, AUDIT_ACTIONS.AADHAAR_REVEALED, sessionId, { revealed: true }),
       );
       const me = await store.findUsers([actor.userId]);
       return {
         field: 'AADHAAR',
-        value: formatAadhaar(typed),
-        revealedAt: revealedAt.toISOString(),
+        value: masked.aadhaar.value,
+        revealed: true,
+        revealedAt: masked.aadhaar.revealedAt,
         revealedBy: displayName(me[0]),
       };
     },

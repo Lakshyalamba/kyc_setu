@@ -62,7 +62,8 @@ export function createDevExtractionRouter(deps: {
   const router = Router();
   router.get(
     '/extractions/:documentId',
-    deps.guard.require('kyc.session.read.any'),
+    // Shows the decrypted PAN for parser tuning, so it is for the roles that may see identifiers, not the auditor.
+    deps.guard.require('kyc.session.reveal_pii'),
     route(
       {
         params: z.object({ documentId: z.string().uuid() }),
