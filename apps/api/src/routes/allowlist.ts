@@ -9,6 +9,12 @@ export const UNGUARDED_ROUTES: Record<string, string> = {
   'GET /readyz': 'Readiness probe: up/down per dependency, no data, no session.',
   'GET /metrics':
     'Prometheus text: counters and histograms with closed-set labels, no personal data. Restrict at the network edge.',
+  'GET /dev/ai-mock/readyz':
+    'Development stand-in for the AI service: not mounted in production, no data.',
+  'POST /dev/ai-mock/extract/pan':
+    'Development stand-in for the AI service: authorised by the shared internal key, as the real one is.',
+  'POST /dev/ai-mock/extract/aadhaar':
+    'Development stand-in for the AI service: authorised by the shared internal key, as the real one is.',
   'POST /auth/customer/signup': 'Creates an account, so there is nobody to authorise yet.',
   'POST /auth/customer/login': 'Signs in; rate-limited and locked out per account instead.',
   'POST /auth/officer/login': 'Signs in; rate-limited and locked out per account instead.',

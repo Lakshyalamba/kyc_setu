@@ -12,6 +12,7 @@ import { createAuthRouter } from './routes/auth.js';
 import { createDocumentsRouter, createFilesRouter } from './routes/documents.js';
 import { createDevExtractionRouter, createExtractionRouter } from './routes/extraction.js';
 import { createAdminRouter } from './routes/admin.js';
+import { createAiMockRouter } from './routes/ai-mock.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createCustomerStatusRouter } from './routes/customer-status.js';
 import { registerDocs } from './routes/docs.js';
@@ -100,6 +101,7 @@ export function createApp(deps: AppDeps): Express {
     // Parser-tuning and signal-injection aids for development. Not registered in production.
     mount('/dev', createDevExtractionRouter({ extraction, guard }));
     mount('/dev', createDevRiskRouter({ risk, guard }));
+    mount('/dev/ai-mock', createAiMockRouter({ env }));
   }
 
   // The API reference. Always on outside production; in production only with API_DOCS_ENABLED=true.

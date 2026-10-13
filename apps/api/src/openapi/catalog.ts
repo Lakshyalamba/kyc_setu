@@ -417,6 +417,33 @@ export const CATALOG: Record<string, OperationDoc> = {
       'Unmasked parser output for tuning. Requires `kyc.session.reveal_pii`. Not mounted in production.',
     tag: 'Development',
   },
+  'GET /dev/ai-mock/readyz': {
+    summary: 'AI service stand-in: readiness (development)',
+    description:
+      'Always ready. Point `AI_SERVICE_URL` at `/dev/ai-mock` to run the stack without the OCR service. Not mounted in production.',
+    tag: 'Development',
+    manual: {
+      response: {
+        contentType: 'application/json',
+        schema: { type: 'object' },
+        description: 'Ready',
+      },
+    },
+  },
+  'POST /dev/ai-mock/extract/pan': {
+    summary: 'AI service stand-in: read a PAN card (development)',
+    description:
+      'Answers with the canned contract response for the document id it is given. Requires the internal key header.',
+    tag: 'Development',
+    errors: { 401: 'Missing or wrong `X-Internal-Key`.' },
+  },
+  'POST /dev/ai-mock/extract/aadhaar': {
+    summary: 'AI service stand-in: read an Aadhaar card side (development)',
+    description:
+      'Answers with the canned front or back response, by `documentType`. Requires the internal key header.',
+    tag: 'Development',
+    errors: { 401: 'Missing or wrong `X-Internal-Key`.' },
+  },
   'GET /dev/risk/preview': {
     summary: 'Risk preview (development)',
     description:
