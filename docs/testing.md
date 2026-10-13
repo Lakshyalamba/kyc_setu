@@ -4,18 +4,18 @@ What is tested, how, and, because it matters more, what is not.
 
 ## The layers
 
-| Layer                         | Tool                                    | What it covers                                                                                                                                                       | Where                                             |
-| ----------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
-| Unit and route tests          | Vitest + supertest                      | Every service and route against in-memory fakes of the stores: permissions, state transitions, masking, lockout, rate limits, exports                                | `apps/api/test`, `packages/*/src`                 |
-| Integration tests             | Vitest, **real** Postgres, Redis, MinIO | Migrations, triggers, queries, the real queue and worker, real encryption into a real bucket. `REQUIRE_INFRA=1` makes a missing service a failure rather than a skip | `apps/api/test/*.integration.test.ts` and friends |
-| One file per state transition | Vitest                                  | Each of the twelve edges of the state machine, driven through the real routes or processors; a meta-test keeps the files and the table in step                       | `apps/api/test/transitions`                       |
-| Conformance and leak tests    | Vitest                                  | Every mounted route is guarded or allowlisted; every guarded route is run as every role; every GET route is scanned for an unmasked identifier                       | `rbac.test.ts`, `pii-leak.test.ts`                |
-| Risk engine snapshots         | Vitest                                  | Ten scenarios run through the engine; the complete result of each is committed. A version lock ties scores to rules                                                  | `packages/risk/test`                              |
-| Documentation drift           | Vitest                                  | The OpenAPI document validates and matches the routes; the data-model diagram matches the schema                                                                     | `openapi.test.ts`, `data-model-doc.test.ts`       |
-| Contrast                      | Vitest                                  | Every text-on-surface colour pair against WCAG AA, light and dark, read from the CSS                                                                                 | `apps/web/src/lib/contrast.test.ts`               |
-| OCR service                   | pytest                                  | Parsers on golden OCR output, the API contract, and (marked `ocr`) the real PaddleOCR models on the synthetic cards                                                  | `services/ai/tests`                               |
-| Browser tests                 | Playwright                              | The real stack through a real browser: 24 specs plus three recorded journeys (customer, officer queue sweep, auditor)                                                | `apps/web/e2e`                                    |
-| Load smoke                    | `scripts/load-smoke.ts`                 | 50 customers, 10 at a time, with budgets ([performance.md](performance.md))                                                                                          | `pnpm load:smoke`                                 |
+| Layer                         | Tool                                    | What it covers                                                                                                                                                        | Where                                             |
+| ----------------------------- | --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------- |
+| Unit and route tests          | Vitest + supertest                      | Every service and route against in-memory fakes of the stores: permissions, state transitions, masking, lockout, rate limits, exports                                 | `apps/api/test`, `packages/*/src`                 |
+| Integration tests             | Vitest, **real** Postgres, Redis, MinIO | Migrations, triggers, queries, the real queue and worker, real encryption into a real bucket. `REQUIRE_INFRA=1` makes a missing service a failure rather than a skip  | `apps/api/test/*.integration.test.ts` and friends |
+| One file per state transition | Vitest                                  | Each of the twelve edges of the state machine, driven through the real routes or processors; a meta-test keeps the files and the table in step                        | `apps/api/test/transitions`                       |
+| Conformance and leak tests    | Vitest                                  | Every mounted route is guarded or allowlisted; every guarded route is run as every role; every GET route is scanned for an unmasked identifier                        | `rbac.test.ts`, `pii-leak.test.ts`                |
+| Risk engine snapshots         | Vitest                                  | Ten scenarios run through the engine; the complete result of each is committed. A version lock ties scores to rules                                                   | `packages/risk/test`                              |
+| Documentation drift           | Vitest                                  | The OpenAPI document validates and matches the routes; the data-model diagram matches the schema                                                                      | `openapi.test.ts`, `data-model-doc.test.ts`       |
+| Contrast                      | Vitest                                  | Every text-on-surface colour pair against WCAG AA, light and dark, read from the CSS                                                                                  | `apps/web/src/lib/contrast.test.ts`               |
+| OCR service                   | pytest                                  | Parsers on golden OCR output, the API contract, and (marked `ocr`) the real PaddleOCR models on the synthetic cards                                                   | `services/ai/tests`                               |
+| Browser tests                 | Playwright                              | The real stack through a real browser: 27 specs plus three journeys (customer, officer queue sweep, auditor): 30 in all, each recorded on video by `pnpm test:e2e:ci` | `apps/web/e2e`                                    |
+| Load smoke                    | `scripts/load-smoke.ts`                 | 50 customers, 10 at a time, with budgets ([performance.md](performance.md))                                                                                           | `pnpm load:smoke`                                 |
 
 ## Counts and coverage, as measured on the last run
 
@@ -26,7 +26,7 @@ What is tested, how, and, because it matters more, what is not.
 | `packages/shared`    |    87 |              81.5% |  80% |
 | `apps/web` (units)   |    73 |          not gated |    - |
 | AI service parsers   |   100 |                96% |  70% |
-| Browser (Playwright) |    27 |                  - |    - |
+| Browser (Playwright) |    30 |                  - |    - |
 
 The API's figure leaves out `src/scripts` (command-line tools exercised by the seed and the browser suite), `server.ts` and
 `worker.ts` (process entry points), and ambient type files. The gates are a floor, enforced by `pnpm test:coverage` and

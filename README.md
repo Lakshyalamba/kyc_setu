@@ -152,16 +152,16 @@ a denial is a 403 that names the missing permission and is audited; a test runs 
 
 ## What is real and what is simulated
 
-| Real                                                                          | Simulated or a stand-in                                                              |
-| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Sign-in, sessions, roles, lockout, rate limits                                | **Selfie, face match, liveness**: a development endpoint injects the signals         |
-| Encrypted uploads, per-file keys, signed expiring links                       | Mobile OTP: shown on screen outside production; no SMS provider                      |
-| OCR with the real PaddleOCR models on the synthetic cards                     | E-mail and notifications: a log line and an audit row                                |
-| Cross-document validation and the risk rules                                  | KMS: a master key from an environment variable; the AWS client is a stub             |
-| The review workflow, the decision snapshot, the customer's follow-up          | The audit-packet signing key: a file in `infra/dev-keys/`                            |
-| The append-only audit log, the hash chain, signed packets that verify offline | Retention: written down and dry-run only; nothing is purged                          |
-| Metrics, structured logs, readiness, an OpenAPI reference                     | The load test: the OCR service is mocked, to measure the pipeline and not the models |
-| Tests: 800+, coverage gates, 27 recorded browser specs, a load smoke          | All people, documents and numbers                                                    |
+| Real                                                                            | Simulated or a stand-in                                                              |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Sign-in, sessions, roles, lockout, rate limits                                  | **Selfie, face match, liveness**: a development endpoint injects the signals         |
+| Encrypted uploads, per-file keys, signed expiring links                         | Mobile OTP: shown on screen outside production; no SMS provider                      |
+| OCR with the real PaddleOCR models on the synthetic cards                       | E-mail and notifications: a log line and an audit row                                |
+| Cross-document validation and the risk rules                                    | KMS: a master key from an environment variable; the AWS client is a stub             |
+| The review workflow, the decision snapshot, the customer's follow-up            | The audit-packet signing key: a file in `infra/dev-keys/`                            |
+| The append-only audit log, the hash chain, signed packets that verify offline   | Retention: written down and dry-run only; nothing is purged                          |
+| Metrics, structured logs, readiness, an OpenAPI reference                       | The load test: the OCR service is mocked, to measure the pipeline and not the models |
+| Tests: 800+, coverage gates, 30 browser tests (recorded on video), a load smoke | All people, documents and numbers                                                    |
 
 ## Working on it
 
