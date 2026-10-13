@@ -84,7 +84,9 @@ def banner(d: ImageDraw.ImageDraw) -> None:
     d.text((W // 2, H - 35), "SAMPLE DOCUMENT - NOT REAL", font=font(LATIN, 36), fill="white", anchor="mm")
 
 
-def make_pan(dob_display: str | None = None, person: dict | None = None, boxes: dict | None = None) -> Image.Image:
+def make_pan(
+    dob_display: str | None = None, person: dict | None = None, boxes: dict | None = None, avatar: Image.Image | None = None
+) -> Image.Image:
     person = person or PERSON
     img = card((205, 220, 235), 1)
     d = ImageDraw.Draw(img)
@@ -101,11 +103,15 @@ def make_pan(dob_display: str | None = None, person: dict | None = None, boxes: 
     d.text((60, 615), "Date of Birth", font=label, fill=(50, 50, 50))
     put(d, boxes, "dob", (60, 660), dob_display or person["dobDisplay"], font=value, fill=(10, 10, 10))
     d.rectangle([1000, 300, 1320, 640], outline=(90, 90, 90), width=3)  # photo placeholder
+    if avatar is not None:
+        img.paste(avatar.resize((314, 334)), (1003, 303))
     banner(d)
     return img
 
 
-def make_aadhaar_front(dob_display: str | None = None, person: dict | None = None, boxes: dict | None = None) -> Image.Image:
+def make_aadhaar_front(
+    dob_display: str | None = None, person: dict | None = None, boxes: dict | None = None, avatar: Image.Image | None = None
+) -> Image.Image:
     person = person or PERSON
     img = card((250, 250, 245), 2)
     d = ImageDraw.Draw(img)
@@ -113,6 +119,8 @@ def make_aadhaar_front(dob_display: str | None = None, person: dict | None = Non
     d.text((60, 60), "Government of India", font=font(LATIN, 52), fill="white", anchor="lm")
     d.text((W - 60, 60), "भारत सरकार", font=font(DEVANAGARI, 52), fill="white", anchor="rm")
     d.rectangle([60, 180, 330, 520], outline=(90, 90, 90), width=3)  # photo placeholder
+    if avatar is not None:
+        img.paste(avatar.resize((264, 334)), (63, 183))
     n = person["aadhaarNumber"]
     put(d, boxes, "name", (380, 190), person["name"].title(), font=font(LATIN, 56), fill=(10, 10, 10))
     put(d, boxes, "dob", (380, 290), "DOB: " + (dob_display or person["dobDisplay"]), font=font(LATIN, 48), fill=(10, 10, 10))
@@ -197,30 +205,101 @@ def _person(name, father, dob, gender, city, state, pincode, pan, aadhaar_prefix
     }
 
 
+# Every number is recognisably fake. PANs start TEST (so they match the real PAN pattern and can still be told apart at a
+# glance); Aadhaar numbers start 9999 0000 and end in a valid Verhoeff check digit, so the form accepts them.
 PERSONAS = {
-    "anita-rao": _person("ANITA RAO", "RAMESH RAO", "1991-03-12", "FEMALE", "Pune", "Maharashtra", "411001", "AKQPR4821L", "52684137905", "14 FC Road, Shivajinagar"),
-    "meera-iyer": _person("MEERA IYER", "KRISHNAN IYER", "1988-07-22", "FEMALE", "Chennai", "Tamil Nadu", "600017", "BMLPI7392C", "38465920174", "7 Usman Road, T Nagar"),
-    "arjun-mehta": _person("ARJUN MEHTA", "DINESH MEHTA", "1985-11-03", "MALE", "Ahmedabad", "Gujarat", "380009", "CRTPM2174H", "74019582631", "22 CG Road, Navrangpura"),
-    "rohan-verma": _person("ROHAN VERMA", "SANJAY VERMA", "1979-01-30", "MALE", "Lucknow", "Uttar Pradesh", "226001", "DVKPV8056N", "91357240863", "5 Hazratganj"),
+    "anita-rao": _person("ANITA RAO", "RAMESH RAO", "1991-03-12", "FEMALE", "Pune", "Maharashtra", "411001", "TESTA1001L", "99990000001", "14 FC Road, Shivajinagar"),
+    "meera-iyer": _person("MEERA IYER", "KRISHNAN IYER", "1988-07-22", "FEMALE", "Chennai", "Tamil Nadu", "600017", "TESTB1002C", "99990000002", "7 Usman Road, T Nagar"),
+    "arjun-mehta": _person("ARJUN MEHTA", "DINESH MEHTA", "1985-11-03", "MALE", "Ahmedabad", "Gujarat", "380009", "TESTC1003H", "99990000003", "22 CG Road, Navrangpura"),
+    "rohan-verma": _person("ROHAN VERMA", "SANJAY VERMA", "1979-01-30", "MALE", "Lucknow", "Uttar Pradesh", "226001", "TESTD1004N", "99990000004", "5 Hazratganj"),
+    "kavita-nair": _person("KAVITA NAIR", "GOPAL NAIR", "1994-09-17", "FEMALE", "Kochi", "Kerala", "682001", "TESTE1005P", "99990000005", "31 MG Road, Ernakulam"),
+    "sanjay-gupta": _person("SANJAY GUPTA", "MOHAN GUPTA", "1982-04-08", "MALE", "Jaipur", "Rajasthan", "302001", "TESTF1006K", "99990000006", "18 MI Road, Panch Batti"),
+    "farah-khan": _person("FARAH KHAN", "IMRAN KHAN", "1990-12-25", "FEMALE", "Hyderabad", "Telangana", "500001", "TESTG1007M", "99990000007", "9 Abids Road, Nampally"),
+}
+
+# Which synthetic face is printed on a persona's cards, and which one "took the selfie". Three avatars, so a swap
+# (card a, selfie c) is the face-mismatch scenario.
+FACES = {
+    "anita-rao": ("a", "a"),
+    "meera-iyer": ("b", "b"),
+    "arjun-mehta": ("c", "a"),  # a different face on the cards than in the selfie
+    "rohan-verma": ("c", "c"),
+    "kavita-nair": ("b", "b"),
+    "sanjay-gupta": ("a", "a"),
+    "farah-khan": ("b", "c"),
+}
+
+AVATARS = {
+    "a": {"seed": 11, "skin": (224, 172, 125), "hair": (40, 28, 22), "bg": (186, 214, 236)},
+    "b": {"seed": 23, "skin": (198, 134, 94), "hair": (20, 18, 18), "bg": (236, 208, 190)},
+    "c": {"seed": 37, "skin": (240, 200, 168), "hair": (120, 70, 36), "bg": (200, 226, 200)},
 }
 
 
+def make_avatar(key: str, size: tuple[int, int] = (360, 440), jitter: int = 0) -> Image.Image:
+    """A cartoon face: an oval, hair, eyes, a mouth and a few random shapes. Obviously not a photograph of anyone."""
+    spec = AVATARS[key]
+    rng = random.Random(spec["seed"] + jitter)
+    w, h = size
+    img = Image.new("RGB", size, spec["bg"])
+    d = ImageDraw.Draw(img)
+    for _ in range(5):  # background confetti: circles and triangles in muted colours
+        x, y, r = rng.randint(0, w), rng.randint(0, h // 2), rng.randint(18, 50)
+        tone = tuple(max(0, min(255, c + rng.randint(-40, 25))) for c in spec["bg"])
+        if rng.random() < 0.5:
+            d.ellipse([x - r, y - r, x + r, y + r], fill=tone)
+        else:
+            d.polygon([(x, y - r), (x - r, y + r), (x + r, y + r)], fill=tone)
+    cx = w // 2 + (jitter * 3 % 9) - 4
+    d.ellipse([cx - w * 0.30, h * 0.14, cx + w * 0.30, h * 0.76], fill=spec["hair"])  # hair behind the face
+    d.rectangle([cx - w * 0.07, h * 0.66, cx + w * 0.07, h * 0.84], fill=spec["skin"])  # neck
+    d.ellipse([cx - w * 0.60 * 0.5, h * 0.60, cx + w * 0.60 * 0.5, h * 1.1], fill=(70, 90, 140))  # shoulders
+    d.ellipse([cx - w * 0.24, h * 0.22, cx + w * 0.24, h * 0.70], fill=spec["skin"])  # face
+    d.pieslice([cx - w * 0.28, h * 0.10, cx + w * 0.28, h * 0.50], 180, 360, fill=spec["hair"])  # fringe
+    ey = h * 0.44
+    for sx in (-1, 1):
+        ex = cx + sx * w * 0.10
+        d.ellipse([ex - 14, ey - 9, ex + 14, ey + 9], fill="white")
+        d.ellipse([ex - 6, ey - 6, ex + 6, ey + 6], fill=(30, 30, 40))
+        d.line([ex - 18, ey - 24, ex + 18, ey - 24 + sx * 3], fill=spec["hair"], width=5)
+    d.line([cx, h * 0.46, cx - 6, h * 0.54, cx + 6, h * 0.54], fill=tuple(int(c * 0.8) for c in spec["skin"]), width=4)
+    d.arc([cx - w * 0.09, h * 0.54, cx + w * 0.09, h * 0.64], 20, 160, fill=(120, 40, 50), width=5)
+    d.rectangle([0, h - 44, w, h], fill=(170, 30, 30))
+    label = f"SYNTHETIC AVATAR {key.upper()}" + ("" if w < 400 else " - NOT A REAL PERSON")
+    d.text((w // 2, h - 22), label, font=font(LATIN, 17), fill="white", anchor="mm")
+    return img
+
+
+def make_avatars() -> None:
+    folder = OUT / "avatars"
+    folder.mkdir(exist_ok=True)
+    for key in AVATARS:
+        make_avatar(key).save(folder / f"avatar-{key}.png", optimize=True)
+        print("wrote", folder / f"avatar-{key}.png")
+
+
 def make_personas() -> None:
+    make_avatars()
     out = OUT / "personas"
     index = {}
     for slug, person in PERSONAS.items():
         folder = out / slug
         folder.mkdir(parents=True, exist_ok=True)
         boxes: dict = {"PAN": {}, "AADHAAR_FRONT": {}, "AADHAAR_BACK": {}}
+        card_face, selfie_face = FACES[slug]
+        card_avatar = make_avatar(card_face, (320, 400))
         cards = {
-            "pan": make_pan(person=person, boxes=boxes["PAN"]),
-            "aadhaar-front": make_aadhaar_front(person=person, boxes=boxes["AADHAAR_FRONT"]),
+            "pan": make_pan(person=person, boxes=boxes["PAN"], avatar=card_avatar),
+            "aadhaar-front": make_aadhaar_front(person=person, boxes=boxes["AADHAAR_FRONT"], avatar=card_avatar),
             "aadhaar-back": make_aadhaar_back(person=person, boxes=boxes["AADHAAR_BACK"]),
         }
+        # The "selfie": the same synthetic face, redrawn a touch differently, as if it were taken today.
+        make_avatar(selfie_face, (540, 660), jitter=1).filter(ImageFilter.GaussianBlur(0.4)).save(folder / "selfie.png", optimize=True)
         for name, img in cards.items():
             img.filter(ImageFilter.GaussianBlur(0.6)).save(folder / f"{name}.png", optimize=True)
         index[slug] = {k: v for k, v in person.items() if k != "addressLines"} | {
             "addressLines": person["addressLines"],
+            "faces": {"card": card_face, "selfie": selfie_face},
             "boxes": boxes,
         }
         print("wrote", folder)

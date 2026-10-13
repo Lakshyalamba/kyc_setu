@@ -4,21 +4,25 @@
     "fatherName": "RAMESH RAO",
     "dobDisplay": "12/03/1991",
     "dob": "1991-03-12",
-    "panNumber": "AKQPR4821L",
-    "aadhaarNumber": "526841379051",
+    "panNumber": "TESTA1001L",
+    "aadhaarNumber": "999900000016",
     "gender": "FEMALE",
     "pincode": "411001",
     "city": "Pune",
     "state": "Maharashtra",
     "line1": "14 FC Road, Shivajinagar",
     "addressLines": ["D/O Ramesh Rao", "14 FC Road, Shivajinagar", "Pune, Maharashtra - 411001"],
+    "faces": {
+      "card": "a",
+      "selfie": "a"
+    },
     "boxes": {
       "PAN": {
         "panNumber": {
           "x": 0.0386,
           "y": 0.2511,
-          "w": 0.3057,
-          "h": 0.0739
+          "w": 0.2921,
+          "h": 0.0705
         },
         "name": {
           "x": 0.0386,
@@ -86,20 +90,24 @@
     "fatherName": "KRISHNAN IYER",
     "dobDisplay": "22/07/1988",
     "dob": "1988-07-22",
-    "panNumber": "BMLPI7392C",
-    "aadhaarNumber": "384659201744",
+    "panNumber": "TESTB1002C",
+    "aadhaarNumber": "999900000028",
     "gender": "FEMALE",
     "pincode": "600017",
     "city": "Chennai",
     "state": "Tamil Nadu",
     "line1": "7 Usman Road, T Nagar",
     "addressLines": ["D/O Krishnan Iyer", "7 Usman Road, T Nagar", "Chennai, Tamil Nadu - 600017"],
+    "faces": {
+      "card": "b",
+      "selfie": "b"
+    },
     "boxes": {
       "PAN": {
         "panNumber": {
           "x": 0.0386,
           "y": 0.2511,
-          "w": 0.29,
+          "w": 0.3,
           "h": 0.0705
         },
         "name": {
@@ -168,20 +176,24 @@
     "fatherName": "DINESH MEHTA",
     "dobDisplay": "03/11/1985",
     "dob": "1985-11-03",
-    "panNumber": "CRTPM2174H",
-    "aadhaarNumber": "740195826318",
+    "panNumber": "TESTC1003H",
+    "aadhaarNumber": "999900000037",
     "gender": "MALE",
     "pincode": "380009",
     "city": "Ahmedabad",
     "state": "Gujarat",
     "line1": "22 CG Road, Navrangpura",
     "addressLines": ["S/O Dinesh Mehta", "22 CG Road, Navrangpura", "Ahmedabad, Gujarat - 380009"],
+    "faces": {
+      "card": "c",
+      "selfie": "a"
+    },
     "boxes": {
       "PAN": {
         "panNumber": {
           "x": 0.0386,
           "y": 0.2511,
-          "w": 0.3164,
+          "w": 0.3029,
           "h": 0.0705
         },
         "name": {
@@ -250,20 +262,24 @@
     "fatherName": "SANJAY VERMA",
     "dobDisplay": "30/01/1979",
     "dob": "1979-01-30",
-    "panNumber": "DVKPV8056N",
-    "aadhaarNumber": "913572408638",
+    "panNumber": "TESTD1004N",
+    "aadhaarNumber": "999900000044",
     "gender": "MALE",
     "pincode": "226001",
     "city": "Lucknow",
     "state": "Uttar Pradesh",
     "line1": "5 Hazratganj",
     "addressLines": ["S/O Sanjay Verma", "5 Hazratganj", "Lucknow, Uttar Pradesh - 226001"],
+    "faces": {
+      "card": "c",
+      "selfie": "c"
+    },
     "boxes": {
       "PAN": {
         "panNumber": {
           "x": 0.0386,
           "y": 0.2511,
-          "w": 0.3086,
+          "w": 0.3029,
           "h": 0.0705
         },
         "name": {
@@ -323,6 +339,264 @@
           "y": 0.4443,
           "w": 0.5436,
           "h": 0.0636
+        }
+      }
+    }
+  },
+  "kavita-nair": {
+    "name": "KAVITA NAIR",
+    "fatherName": "GOPAL NAIR",
+    "dobDisplay": "17/09/1994",
+    "dob": "1994-09-17",
+    "panNumber": "TESTE1005P",
+    "aadhaarNumber": "999900000059",
+    "gender": "FEMALE",
+    "pincode": "682001",
+    "city": "Kochi",
+    "state": "Kerala",
+    "line1": "31 MG Road, Ernakulam",
+    "addressLines": ["D/O Gopal Nair", "31 MG Road, Ernakulam", "Kochi, Kerala - 682001"],
+    "faces": {
+      "card": "b",
+      "selfie": "b"
+    },
+    "boxes": {
+      "PAN": {
+        "panNumber": {
+          "x": 0.0386,
+          "y": 0.2511,
+          "w": 0.2971,
+          "h": 0.0705
+        },
+        "name": {
+          "x": 0.0386,
+          "y": 0.4159,
+          "w": 0.23,
+          "h": 0.0557
+        },
+        "fatherName": {
+          "x": 0.0386,
+          "y": 0.5807,
+          "w": 0.2264,
+          "h": 0.0568
+        },
+        "dob": {
+          "x": 0.0386,
+          "y": 0.7466,
+          "w": 0.1886,
+          "h": 0.0557
+        }
+      },
+      "AADHAAR_FRONT": {
+        "name": {
+          "x": 0.2671,
+          "y": 0.2114,
+          "w": 0.2036,
+          "h": 0.0625
+        },
+        "dob": {
+          "x": 0.2671,
+          "y": 0.3239,
+          "w": 0.2743,
+          "h": 0.0557
+        },
+        "gender": {
+          "x": 0.2671,
+          "y": 0.4159,
+          "w": 0.1457,
+          "h": 0.0534
+        },
+        "aadhaarNumber": {
+          "x": 0.2586,
+          "y": 0.6761,
+          "w": 0.4829,
+          "h": 0.0886
+        }
+      },
+      "AADHAAR_BACK": {
+        "address": {
+          "x": 0.0386,
+          "y": 0.2739,
+          "w": 0.4036,
+          "h": 0.2341
+        },
+        "pincode": {
+          "x": 0.0386,
+          "y": 0.4455,
+          "w": 0.3736,
+          "h": 0.0625
+        }
+      }
+    }
+  },
+  "sanjay-gupta": {
+    "name": "SANJAY GUPTA",
+    "fatherName": "MOHAN GUPTA",
+    "dobDisplay": "08/04/1982",
+    "dob": "1982-04-08",
+    "panNumber": "TESTF1006K",
+    "aadhaarNumber": "999900000063",
+    "gender": "MALE",
+    "pincode": "302001",
+    "city": "Jaipur",
+    "state": "Rajasthan",
+    "line1": "18 MI Road, Panch Batti",
+    "addressLines": ["S/O Mohan Gupta", "18 MI Road, Panch Batti", "Jaipur, Rajasthan - 302001"],
+    "faces": {
+      "card": "a",
+      "selfie": "a"
+    },
+    "boxes": {
+      "PAN": {
+        "panNumber": {
+          "x": 0.0386,
+          "y": 0.2511,
+          "w": 0.2943,
+          "h": 0.0705
+        },
+        "name": {
+          "x": 0.0386,
+          "y": 0.4159,
+          "w": 0.2793,
+          "h": 0.0568
+        },
+        "fatherName": {
+          "x": 0.0386,
+          "y": 0.5807,
+          "w": 0.2743,
+          "h": 0.0568
+        },
+        "dob": {
+          "x": 0.0386,
+          "y": 0.7466,
+          "w": 0.1886,
+          "h": 0.0557
+        }
+      },
+      "AADHAAR_FRONT": {
+        "name": {
+          "x": 0.2671,
+          "y": 0.2114,
+          "w": 0.2507,
+          "h": 0.075
+        },
+        "dob": {
+          "x": 0.2671,
+          "y": 0.3239,
+          "w": 0.2743,
+          "h": 0.0557
+        },
+        "gender": {
+          "x": 0.2671,
+          "y": 0.4159,
+          "w": 0.1021,
+          "h": 0.0534
+        },
+        "aadhaarNumber": {
+          "x": 0.2586,
+          "y": 0.6761,
+          "w": 0.4829,
+          "h": 0.0886
+        }
+      },
+      "AADHAAR_BACK": {
+        "address": {
+          "x": 0.0386,
+          "y": 0.2739,
+          "w": 0.44,
+          "h": 0.2386
+        },
+        "pincode": {
+          "x": 0.0386,
+          "y": 0.4455,
+          "w": 0.44,
+          "h": 0.067
+        }
+      }
+    }
+  },
+  "farah-khan": {
+    "name": "FARAH KHAN",
+    "fatherName": "IMRAN KHAN",
+    "dobDisplay": "25/12/1990",
+    "dob": "1990-12-25",
+    "panNumber": "TESTG1007M",
+    "aadhaarNumber": "999900000071",
+    "gender": "FEMALE",
+    "pincode": "500001",
+    "city": "Hyderabad",
+    "state": "Telangana",
+    "line1": "9 Abids Road, Nampally",
+    "addressLines": ["D/O Imran Khan", "9 Abids Road, Nampally", "Hyderabad, Telangana - 500001"],
+    "faces": {
+      "card": "b",
+      "selfie": "c"
+    },
+    "boxes": {
+      "PAN": {
+        "panNumber": {
+          "x": 0.0386,
+          "y": 0.2511,
+          "w": 0.31,
+          "h": 0.0705
+        },
+        "name": {
+          "x": 0.0386,
+          "y": 0.4159,
+          "w": 0.2379,
+          "h": 0.0557
+        },
+        "fatherName": {
+          "x": 0.0386,
+          "y": 0.5807,
+          "w": 0.2321,
+          "h": 0.0557
+        },
+        "dob": {
+          "x": 0.0386,
+          "y": 0.7466,
+          "w": 0.1886,
+          "h": 0.0557
+        }
+      },
+      "AADHAAR_FRONT": {
+        "name": {
+          "x": 0.2671,
+          "y": 0.2125,
+          "w": 0.2171,
+          "h": 0.0614
+        },
+        "dob": {
+          "x": 0.2671,
+          "y": 0.3239,
+          "w": 0.2743,
+          "h": 0.0557
+        },
+        "gender": {
+          "x": 0.2671,
+          "y": 0.4159,
+          "w": 0.1457,
+          "h": 0.0534
+        },
+        "aadhaarNumber": {
+          "x": 0.2586,
+          "y": 0.6761,
+          "w": 0.4829,
+          "h": 0.0886
+        }
+      },
+      "AADHAAR_BACK": {
+        "address": {
+          "x": 0.0386,
+          "y": 0.2739,
+          "w": 0.5264,
+          "h": 0.2386
+        },
+        "pincode": {
+          "x": 0.0386,
+          "y": 0.4455,
+          "w": 0.5264,
+          "h": 0.067
         }
       }
     }
