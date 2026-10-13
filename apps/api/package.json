@@ -39,7 +39,7 @@
     "@kyc-setu/risk": "workspace:*",
     "@kyc-setu/shared": "workspace:*",
     "@scalar/api-reference": "^1.74.0",
-    "@sentry/node": "^9.47.2",
+    "@sentry/node": "^11.6.0",
     "argon2": "^0.45.1",
     "bullmq": "^6.3.11",
     "busboy": "^1.6.0",
