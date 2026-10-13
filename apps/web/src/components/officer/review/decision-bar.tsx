@@ -20,10 +20,10 @@ import { Dialog } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { ApiError } from '@/lib/api';
 import { officerApi } from '@/lib/officer-api';
 import { cn } from '@/lib/utils';
 import { useReview } from './review-context';
+import { describeError } from '@/lib/errors';
 
 type Kind = 'approve' | 'resubmit' | 'reject';
 type RejectCode = (typeof REJECT_REASON_CODES)[number];
@@ -78,9 +78,9 @@ function ConfirmFooter({
           title={invalid ?? undefined}
           onClick={onConfirm}
           className={cn(
-            tone === 'low' && 'bg-risk-low text-white hover:bg-risk-low/90',
-            tone === 'medium' && 'bg-risk-medium text-white hover:bg-risk-medium/90',
-            tone === 'high' && 'bg-risk-high text-white hover:bg-risk-high/90',
+            tone === 'low' && 'bg-risk-low-solid text-white hover:bg-risk-low-solid/90',
+            tone === 'medium' && 'bg-risk-medium-solid text-white hover:bg-risk-medium-solid/90',
+            tone === 'high' && 'bg-risk-high-solid text-white hover:bg-risk-high-solid/90',
           )}
         >
           {pending ? 'Saving…' : left > 0 ? `${label} (${left})` : label}
@@ -100,9 +100,7 @@ function useSubmit(sessionId: string, onDone: (decision: DecisionRequest['decisi
       await officerApi.decide(sessionId, body);
       onDone(body.decision);
     } catch (err) {
-      setError(
-        err instanceof ApiError ? err.message : 'Could not reach the server. Nothing was recorded.',
-      );
+      setError(describeError(err, 'Could not reach the server. Nothing was recorded.'));
       setPending(false);
     }
   }
@@ -341,13 +339,21 @@ export function DecisionBar({
   };
 
   const buttons: { kind: Kind; label: string; className: string }[] = [
-    { kind: 'approve', label: 'Approve', className: 'bg-risk-low text-white hover:bg-risk-low/90' },
+    {
+      kind: 'approve',
+      label: 'Approve',
+      className: 'bg-risk-low-solid text-white hover:bg-risk-low-solid/90',
+    },
     {
       kind: 'resubmit',
       label: 'Request resubmit',
-      className: 'bg-risk-medium text-white hover:bg-risk-medium/90',
+      className: 'bg-risk-medium-solid text-white hover:bg-risk-medium-solid/90',
     },
-    { kind: 'reject', label: 'Reject', className: 'bg-risk-high text-white hover:bg-risk-high/90' },
+    {
+      kind: 'reject',
+      label: 'Reject',
+      className: 'bg-risk-high-solid text-white hover:bg-risk-high-solid/90',
+    },
   ];
 
   const body: Record<Kind, ReactNode> = {

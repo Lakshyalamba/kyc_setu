@@ -6,9 +6,9 @@ import type { lockoutsResponseSchema } from '@kyc-setu/shared';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiError } from '@/lib/api';
 import { adminApi } from '@/lib/officer-api';
 import { formatDateTime } from '@/lib/format';
+import { describeError } from '@/lib/errors';
 
 type Lockouts = z.infer<typeof lockoutsResponseSchema>['lockouts'];
 
@@ -41,7 +41,7 @@ export function AdminPanel() {
     } catch (err) {
       setMessage({
         ok: false,
-        text: err instanceof ApiError ? err.message : 'Could not reach the server.',
+        text: describeError(err, 'Could not reach the server.'),
       });
     } finally {
       setPending(false);

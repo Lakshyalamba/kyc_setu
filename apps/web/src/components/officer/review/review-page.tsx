@@ -20,6 +20,7 @@ import { PersonalDetailsCard } from './personal-details';
 import { ReviewProvider, type FieldRef, type RevealedAadhaar } from './review-context';
 import { ReviewHeader, type LockView } from './review-header';
 import { RiskBreakdown } from './risk-breakdown';
+import { describeError } from '@/lib/errors';
 
 const HEARTBEAT_MS = 60_000;
 const URL_REFRESH_MS = 4 * 60_000; // signed links last five minutes
@@ -195,7 +196,7 @@ export function ReviewPage({
     } catch (err) {
       const holder = holderFrom(err);
       if (holder) setAssignment(holder);
-      else setLockError(err instanceof ApiError ? err.message : 'Could not claim.');
+      else setLockError(describeError(err, 'Could not claim.'));
     } finally {
       setLockBusy(false);
     }
@@ -210,7 +211,7 @@ export function ReviewPage({
       setIdleReleased(false);
       lastActivity.current = Date.now();
     } catch (err) {
-      setLockError(err instanceof ApiError ? err.message : 'Could not take over.');
+      setLockError(describeError(err, 'Could not take over.'));
     } finally {
       setLockBusy(false);
     }
@@ -222,7 +223,7 @@ export function ReviewPage({
       const res = await officerApi.reveal(sessionId);
       setRevealed({ value: res.value, at: res.revealedAt, by: res.revealedBy });
     } catch (err) {
-      setRevealError(err instanceof ApiError ? err.message : 'Could not reveal the number.');
+      setRevealError(describeError(err, 'Could not reveal the number.'));
     }
   }, [sessionId]);
 

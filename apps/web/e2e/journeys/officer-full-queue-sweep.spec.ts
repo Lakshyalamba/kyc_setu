@@ -47,6 +47,18 @@ test('an officer sweeps the queue: reject HIGH, send MEDIUM back, approve LOW', 
   expect(at('high')).toBeLessThan(at('medium'));
   expect(at('medium')).toBeLessThan(at('low'));
 
+  // From the keyboard: j and k move the highlighted row, and the page says which one it is.
+  await page.locator('body').click({ position: { x: 5, y: 400 } });
+  const highlighted = page.locator('[data-testid="queue-row"][data-focused="true"]');
+  await expect(highlighted).toHaveAttribute('data-row-index', '0');
+  await page.keyboard.press('j');
+  await expect(highlighted).toHaveAttribute('data-row-index', '1');
+  await page.keyboard.press('j');
+  await page.keyboard.press('k');
+  await expect(highlighted).toHaveAttribute('data-row-index', '1');
+  await page.keyboard.press('k');
+  await expect(highlighted).toHaveAttribute('data-row-index', '0');
+
   // Each customer is watching their own status page.
   const watchers = new Map<string, Page>();
   for (const k of ['high', 'medium', 'low']) {

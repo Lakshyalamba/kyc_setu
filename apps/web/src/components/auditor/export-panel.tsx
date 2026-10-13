@@ -5,9 +5,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { ExportStatusResponse } from '@kyc-setu/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ApiError } from '@/lib/api';
 import { auditorApi } from '@/lib/auditor-api';
 import { formatDateTime } from '@/lib/format';
+import { describeError } from '@/lib/errors';
 
 const POLL_MS = 1500;
 
@@ -30,8 +30,7 @@ export function ExportPanel({ sessionId }: { sessionId: string }) {
         if (s.status === 'QUEUED' || s.status === 'RUNNING')
           timer.current = setTimeout(tick, POLL_MS);
       } catch (err) {
-        if (!stopped)
-          setError(err instanceof ApiError ? err.message : 'Could not check the export.');
+        if (!stopped) setError(describeError(err, 'Could not check the export.'));
       }
     };
     void tick();
@@ -48,7 +47,7 @@ export function ExportPanel({ sessionId }: { sessionId: string }) {
     try {
       setExportId((await auditorApi.requestExport(sessionId)).exportId);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Could not start the export.');
+      setError(describeError(err, 'Could not start the export.'));
     } finally {
       setStarting(false);
     }

@@ -47,7 +47,9 @@ function Preview({ doc, label }: { doc: DocumentDto; label: string }) {
   if (doc.mimeType === 'application/pdf') {
     return (
       <div className="flex h-32 flex-col items-center justify-center gap-2 rounded-md bg-secondary">
-        <span className="rounded bg-destructive px-2 py-0.5 text-xs font-bold text-white">PDF</span>
+        <span className="rounded bg-risk-high-solid px-2 py-0.5 text-xs font-bold text-white">
+          PDF
+        </span>
         <a
           href={url}
           target="_blank"
@@ -124,9 +126,9 @@ export function DocumentSlot({
         <span
           className={cn(
             'shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium',
-            status === 'uploaded' && 'bg-green-100 text-green-800',
-            status === 'uploading' && 'bg-blue-100 text-blue-800',
-            status === 'failed' && 'bg-red-100 text-red-800',
+            status === 'uploaded' && 'bg-success-soft text-success-foreground',
+            status === 'uploading' && 'bg-info-soft text-info-foreground',
+            status === 'failed' && 'bg-danger-soft text-danger-foreground',
             status === 'empty' && 'bg-secondary text-secondary-foreground',
           )}
         >

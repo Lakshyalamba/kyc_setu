@@ -5,6 +5,7 @@ import { LogoutButton } from '@/components/logout-button';
 import { Badge } from '@/components/ui/badge';
 import { OfficerNav } from '@/components/officer/officer-nav';
 import { canManage, requireOfficer } from '@/lib/officer-server';
+import { Logo } from '@/components/logo';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
     <div className="min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-border bg-card">
         <div className="mx-auto flex h-12 w-full max-w-[1600px] items-center gap-4 px-4">
-          <p className="text-sm font-semibold tracking-widest text-primary uppercase">KYC Setu</p>
+          <Logo className="text-primary" />
           <OfficerNav
             canManage={canManage(user.role)}
             canAudit={hasPermission(user.role, 'audit.read')}

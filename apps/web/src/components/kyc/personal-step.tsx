@@ -21,10 +21,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
-import { ApiError } from '@/lib/api';
 import { kycClient } from '@/lib/kyc-api';
 import { stepPath } from '@/lib/kyc-steps';
 import { GENDER_LABEL, INCOME_LABEL, OCCUPATION_LABEL } from '@/lib/personal-labels';
+import { describeError, fieldErrors } from '@/lib/errors';
 
 type FormValues = z.input<typeof personalDetailsSchema>;
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
@@ -196,17 +196,14 @@ export function PersonalStep({ session }: { session: KycSessionDto }) {
       router.push(stepPath(next.currentStep));
       router.refresh();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 422 && Array.isArray(err.details)) {
-        for (const issue of err.details as { path?: string; message?: string }[]) {
-          if (issue.path) form.setError(issue.path as never, { message: issue.message });
-        }
+      const fields = fieldErrors(err);
+      if (Object.keys(fields).length > 0) {
+        // Each message goes under its own field; the sentence at the top says where to look.
+        for (const [path, message] of Object.entries(fields))
+          form.setError(path as never, { message });
         setFormError('Please fix the highlighted fields.');
       } else {
-        setFormError(
-          err instanceof ApiError && err.status < 500
-            ? err.message
-            : 'Something went wrong. Please try again.',
-        );
+        setFormError(describeError(err));
       }
     }
   }

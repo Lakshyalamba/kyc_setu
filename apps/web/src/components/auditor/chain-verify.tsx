@@ -6,9 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiError } from '@/lib/api';
 import { auditorApi } from '@/lib/auditor-api';
 import { formatDateTime, timeAgo } from '@/lib/format';
+import { describeError } from '@/lib/errors';
 
 const REASON_TEXT: Record<string, string> = {
   MODIFIED: 'a row was changed',
@@ -48,7 +48,7 @@ export function ChainVerify({ initialLast }: { initialLast: CheckpointDto | null
       setResult(await auditorApi.verifyChain({ from, to }));
     } catch (err) {
       setResult(null);
-      setError(err instanceof ApiError ? err.message : 'Could not reach the server.');
+      setError(describeError(err, 'Could not reach the server.'));
     } finally {
       setPending(false);
     }

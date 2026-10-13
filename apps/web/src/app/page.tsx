@@ -1,11 +1,12 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
+import { Logo } from '@/components/logo';
 
 export default function LandingPage() {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-8 px-5 py-10">
       <div className="space-y-3">
-        <p className="text-sm font-semibold tracking-widest text-primary uppercase">KYC Setu</p>
+        <Logo className="text-primary" />
         <h1 className="text-4xl leading-tight font-bold tracking-tight">
           Verify your identity in minutes, from your phone.
         </h1>

@@ -15,11 +15,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { DocumentSlot, type SlotStatus } from '@/components/kyc/document-slot';
 import { SignaturePad } from '@/components/kyc/signature-pad';
-import { ApiError } from '@/lib/api';
 import { documentsClient } from '@/lib/documents-api';
 import { checkFileBasics, checkImage } from '@/lib/file-checks';
 import { stepPath } from '@/lib/kyc-steps';
 import { cn } from '@/lib/utils';
+import { describeError } from '@/lib/errors';
 
 const SLOTS: { type: DocumentType; label: string; hint: string; camera: boolean }[] = [
   { type: 'PAN', label: 'PAN card', hint: 'JPG, PNG or PDF · up to 5 MB', camera: true },
@@ -80,10 +80,7 @@ export function DocumentsStep({
       setSlot(type, {});
     } catch (err) {
       setSlot(type, {
-        error:
-          err instanceof ApiError && err.status < 500
-            ? err.message
-            : 'Upload failed. Please check your connection and try again.',
+        error: describeError(err, 'Upload failed. Please check your connection and try again.'),
       });
     }
   }
@@ -108,11 +105,7 @@ export function DocumentsStep({
       router.push(resubmit ? '/kyc/status' : stepPath(next.currentStep));
       router.refresh();
     } catch (err) {
-      setSubmitError(
-        err instanceof ApiError && err.status < 500
-          ? err.message
-          : 'Something went wrong. Please try again.',
-      );
+      setSubmitError(describeError(err));
       setSubmitting(false);
     }
   }

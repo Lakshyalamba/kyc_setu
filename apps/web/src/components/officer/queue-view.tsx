@@ -16,6 +16,8 @@ import { ApiError } from '@/lib/api';
 import { formatDateTime, formatDuration, humanize } from '@/lib/format';
 import { officerApi, type QueueParams } from '@/lib/officer-api';
 import { cn } from '@/lib/utils';
+import { describeError } from '@/lib/errors';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type Chip = 'all' | RiskBandDto | 'me' | 'unassigned';
 
@@ -137,11 +139,9 @@ export function QueueView({
       open(item.sessionId);
     } catch (err) {
       setError(
-        err instanceof ApiError
-          ? err.status === 409
-            ? err.message
-            : `Could not ${kind}: ${err.message}`
-          : 'Could not reach the server.',
+        err instanceof ApiError && err.status === 409
+          ? err.message
+          : `Could not ${kind}: ${describeError(err)}`,
       );
       setBusy(null);
       void load({ quiet: true });
@@ -280,8 +280,20 @@ export function QueueView({
           <tbody>
             {items.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-3 py-10 text-center text-muted-foreground">
-                  {loading ? 'Loading…' : 'Nothing here. New submissions appear automatically.'}
+                <td colSpan={8} className="px-3 py-3 text-center text-muted-foreground">
+                  {loading ? (
+                    <div
+                      role="status"
+                      aria-label="Loading the queue"
+                      className="flex flex-col gap-2"
+                    >
+                      {[0, 1, 2, 3].map((i) => (
+                        <Skeleton key={i} className="h-9 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="py-7">Nothing here. New submissions appear automatically.</p>
+                  )}
                 </td>
               </tr>
             )}

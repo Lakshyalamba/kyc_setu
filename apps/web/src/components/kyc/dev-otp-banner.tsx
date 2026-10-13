@@ -9,7 +9,7 @@ export function DevOtpBanner({ code }: { code: string | undefined }) {
   return (
     <div
       data-testid="dev-otp-banner"
-      className="flex items-start justify-between gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"
+      className="flex items-start justify-between gap-3 rounded-md border border-warning-foreground/30 bg-warning-soft p-3 text-sm text-warning-foreground"
     >
       <p>
         <span className="font-semibold">Dev only:</span> your OTP is{' '}

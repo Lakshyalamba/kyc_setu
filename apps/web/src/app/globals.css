@@ -17,8 +17,53 @@
   --radius: 0.75rem;
   /* The officer workbench is neutral; only risk severity is allowed to shout. */
   --risk-high: oklch(0.52 0.21 27);
-  --risk-medium: oklch(0.62 0.15 70);
-  --risk-low: oklch(0.52 0.12 150);
+  --risk-medium: oklch(0.5 0.12 70);
+  --risk-low: oklch(0.47 0.12 150);
+  /* Filled buttons and dots keep one colour in both themes and always carry white text. */
+  --risk-high-solid: oklch(0.52 0.21 27);
+  --risk-medium-solid: oklch(0.5 0.12 70);
+  --risk-low-solid: oklch(0.47 0.12 150);
+  /* Status chips and banners: a text colour and the soft surface it sits on. */
+  --success-soft: oklch(0.95 0.05 150);
+  --success-foreground: oklch(0.35 0.09 150);
+  --info-soft: oklch(0.95 0.03 250);
+  --info-foreground: oklch(0.35 0.12 255);
+  --warning-soft: oklch(0.96 0.06 90);
+  --warning-foreground: oklch(0.38 0.08 70);
+  --danger-soft: oklch(0.95 0.04 25);
+  --danger-foreground: oklch(0.4 0.16 27);
+  color-scheme: light;
+}
+
+/* Dark follows the visitor's system setting. Every colour in the app comes from these tokens, and
+   src/lib/contrast.test.ts checks every text-on-surface pair in both themes against WCAG AA. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.17 0.02 260);
+    --foreground: oklch(0.95 0.01 255);
+    --card: oklch(0.21 0.02 260);
+    --secondary: oklch(0.27 0.02 260);
+    --secondary-foreground: oklch(0.92 0.01 255);
+    --muted-foreground: oklch(0.74 0.02 260);
+    --primary: oklch(0.74 0.13 265);
+    --primary-foreground: oklch(0.18 0.03 265);
+    --destructive: oklch(0.72 0.17 25);
+    --border: oklch(0.32 0.02 260);
+    --input: oklch(0.38 0.02 260);
+    --ring: oklch(0.7 0.13 265);
+    --risk-high: oklch(0.77 0.15 27);
+    --risk-medium: oklch(0.8 0.13 75);
+    --risk-low: oklch(0.76 0.13 150);
+    --success-soft: oklch(0.28 0.05 150);
+    --success-foreground: oklch(0.86 0.1 150);
+    --info-soft: oklch(0.28 0.05 255);
+    --info-foreground: oklch(0.86 0.08 255);
+    --warning-soft: oklch(0.3 0.05 80);
+    --warning-foreground: oklch(0.88 0.1 85);
+    --danger-soft: oklch(0.28 0.06 25);
+    --danger-foreground: oklch(0.86 0.09 25);
+    color-scheme: dark;
+  }
 }
 
 @theme inline {
@@ -38,6 +83,17 @@
   --color-risk-high: var(--risk-high);
   --color-risk-medium: var(--risk-medium);
   --color-risk-low: var(--risk-low);
+  --color-risk-high-solid: var(--risk-high-solid);
+  --color-risk-medium-solid: var(--risk-medium-solid);
+  --color-risk-low-solid: var(--risk-low-solid);
+  --color-success-soft: var(--success-soft);
+  --color-success-foreground: var(--success-foreground);
+  --color-info-soft: var(--info-soft);
+  --color-info-foreground: var(--info-foreground);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-foreground: var(--danger-foreground);
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
 }
@@ -53,4 +109,35 @@ body {
     Roboto,
     sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+/* A placeholder for something that is on its way. It stays invisible for the first 300 ms, because a flash of grey for
+   something that arrives at once is worse than nothing. */
+.skeleton {
+  opacity: 0;
+  animation: skeleton 1.4s ease-in-out 300ms infinite backwards;
+}
+@keyframes skeleton {
+  0% {
+    opacity: 0;
+  }
+  1% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: skeleton-still 1ms linear 300ms forwards;
+  }
+  @keyframes skeleton-still {
+    to {
+      opacity: 1;
+    }
+  }
 }

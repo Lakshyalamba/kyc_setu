@@ -16,18 +16,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Field } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { DevOtpBanner } from '@/components/kyc/dev-otp-banner';
-import { ApiError } from '@/lib/api';
 import { kycClient } from '@/lib/kyc-api';
 import { stepPath } from '@/lib/kyc-steps';
+import { describeError } from '@/lib/errors';
 
 const detailsSchema = z.object({ mobile: mobileSchema, email: emailSchema });
 type DetailsValues = z.infer<typeof detailsSchema>;
 type CodeValues = z.infer<typeof otpVerifyRequestSchema>;
 
-const messageFor = (err: unknown): string =>
-  err instanceof ApiError && err.status < 500
-    ? err.message
-    : 'Something went wrong. Please try again.';
+const messageFor = (err: unknown): string => describeError(err);
 
 export function ContactStep({ session }: { session: KycSessionDto }) {
   const router = useRouter();

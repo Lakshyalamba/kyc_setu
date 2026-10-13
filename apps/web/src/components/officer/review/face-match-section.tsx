@@ -6,6 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { useReview } from './review-context';
+import { useState } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 function FaceCard({
   title,
@@ -22,16 +24,25 @@ function FaceCard({
   banner?: ReactNode;
   children?: ReactNode;
 }) {
+  const [loaded, setLoaded] = useState(false);
   return (
     <figure className="flex w-44 min-w-0 flex-col gap-1.5">
       <figcaption className="text-xs font-medium text-muted-foreground uppercase">
         {title}
       </figcaption>
       {banner}
-      <div className="flex aspect-[4/5] items-center justify-center overflow-hidden rounded border border-border bg-secondary/60">
+      <div className="relative flex aspect-[4/5] items-center justify-center overflow-hidden rounded border border-border bg-secondary/60">
         {src ? (
-          // A short-lived, per-officer signed URL: next/image can't optimise it.
-          <img src={src.url} alt={alt} className="h-full w-full object-cover" />
+          <>
+            {!loaded && <Skeleton className="absolute inset-0" />}
+            {/* A short-lived, per-officer signed URL: next/image can't optimise it. */}
+            <img
+              src={src.url}
+              alt={alt}
+              onLoad={() => setLoaded(true)}
+              className="h-full w-full object-cover"
+            />
+          </>
         ) : (
           <span className="px-3 text-center text-xs text-muted-foreground">{empty}</span>
         )}

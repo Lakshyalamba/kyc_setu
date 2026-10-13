@@ -4,6 +4,7 @@ import { AuditorNav } from '@/components/auditor/auditor-nav';
 import { Badge } from '@/components/ui/badge';
 import { requireAuditor } from '@/lib/auditor-server';
 import { canWrite } from '@/lib/officer-server';
+import { LogoMark } from '@/components/logo';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,8 @@ export default async function AuditorLayout({ children }: { children: ReactNode 
     <div className="min-h-dvh">
       <header className="sticky top-0 z-30 border-b border-border bg-card">
         <div className="mx-auto flex h-12 w-full max-w-[1600px] items-center gap-4 px-4">
-          <p className="text-sm font-semibold tracking-widest text-primary uppercase">
+          <p className="flex items-center gap-2 text-sm font-semibold tracking-widest text-primary uppercase">
+            <LogoMark />
             KYC Setu · Audit
           </p>
           <AuditorNav canOfficer={canWrite(user.role)} />

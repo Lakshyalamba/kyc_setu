@@ -8,7 +8,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ApiError, apiFetch } from '@/lib/api';
+import { apiFetch } from '@/lib/api';
+import { describeError } from '@/lib/errors';
+import { Logo } from '@/components/logo';
 
 type Mode = 'signup' | 'customer-login' | 'officer-login';
 
@@ -72,17 +74,14 @@ export function AuthForm({ mode }: { mode: Mode }) {
       router.push(cfg.redirect);
       router.refresh();
     } catch (err) {
-      setError(
-        err instanceof ApiError && err.status < 500
-          ? err.message
-          : 'Something went wrong. Please try again.',
-      );
+      setError(describeError(err, 'Something went wrong. Please try again.'));
       setPending(false);
     }
   }
 
   return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center gap-5 px-5 py-10">
+      <Logo className="text-primary" />
       <Card>
         <CardHeader>
           <CardTitle>{cfg.title}</CardTitle>

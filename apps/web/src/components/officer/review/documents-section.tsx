@@ -12,6 +12,7 @@ import { formatDateTime, humanize } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { useReview } from './review-context';
 import { ZoomPanViewer } from './zoom-pan-viewer';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const ORDER: DocumentType[] = ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK', 'SIGNATURE'];
 const FIELD_LABEL: Record<string, string> = {
@@ -60,6 +61,7 @@ function DocumentCard({ doc, extraction }: { doc: ReviewDocument; extraction?: R
   const { payload, selected, select, refresh } = useReview();
   const [boxes, setBoxes] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [loaded, setLoaded] = useState(false);
   const isPdf = doc.mimeType === 'application/pdf';
   const fields = extraction?.fields ?? [];
   const drawn = boxes && !isPdf ? fields.filter((f) => f.bbox) : [];
@@ -100,8 +102,12 @@ function DocumentCard({ doc, extraction }: { doc: ReviewDocument; extraction?: R
       ) : (
         <ZoomPanViewer label={DOCUMENT_TYPE_LABELS[doc.type]}>
           <div className="relative">
+            {!loaded && !failed && (
+              <Skeleton className="absolute inset-0 aspect-[3/2] min-h-40 w-full" />
+            )}
             {/* A short-lived, per-officer signed URL, so next/image can't optimise it. */}
             <img
+              onLoad={() => setLoaded(true)}
               src={doc.previewUrl.url}
               alt={`${DOCUMENT_TYPE_LABELS[doc.type]} as uploaded`}
               draggable={false}

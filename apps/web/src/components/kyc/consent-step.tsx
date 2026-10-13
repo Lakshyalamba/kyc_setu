@@ -6,9 +6,9 @@ import Markdown from 'react-markdown';
 import type { ConsentVersionDto, KycSessionDto } from '@kyc-setu/shared';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ApiError } from '@/lib/api';
 import { kycClient } from '@/lib/kyc-api';
 import { stepPath } from '@/lib/kyc-steps';
+import { describeError } from '@/lib/errors';
 
 // react-markdown does not render raw HTML by default, so the DB-provided text can't inject markup.
 const components = {
@@ -42,11 +42,7 @@ export function ConsentStep({
       router.push(stepPath(next.currentStep));
       router.refresh();
     } catch (err) {
-      setError(
-        err instanceof ApiError && err.status < 500
-          ? err.message
-          : 'Something went wrong. Please try again.',
-      );
+      setError(describeError(err, 'Something went wrong. Please try again.'));
       setPending(false);
     }
   }

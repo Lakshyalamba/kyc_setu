@@ -5,9 +5,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { DECISION_TYPES, KYC_STATUSES, type AuditSessionItem } from '@kyc-setu/shared';
 import { Badge, RiskPill } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ApiError } from '@/lib/api';
 import { auditorApi, type SessionFilters } from '@/lib/auditor-api';
 import { formatDateTime, humanize } from '@/lib/format';
+import { describeError } from '@/lib/errors';
 
 const STATUS_TONE = { APPROVED: 'low', REJECTED: 'high', UNDER_REVIEW: 'info' } as const;
 
@@ -35,7 +35,7 @@ export function SessionsList() {
         setCursor(res.nextCursor);
         setError(null);
       } catch (err) {
-        setError(err instanceof ApiError ? err.message : 'Could not load the sessions.');
+        setError(describeError(err, 'Could not load the sessions.'));
       } finally {
         setLoading(false);
       }
