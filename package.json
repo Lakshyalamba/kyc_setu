@@ -22,6 +22,7 @@
     "db:validate": "pnpm --filter @kyc-setu/db run validate",
     "seed": "pnpm --filter @kyc-setu/api run seed:demo",
     "e2e": "pnpm --filter @kyc-setu/web run e2e",
+    "test:e2e:ci": "bash scripts/e2e-ci.sh",
     "demo:docs": "pnpm --filter @kyc-setu/api run demo:docs --",
     "test:ai:ocr": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m ocr",
     "test:coverage": "pnpm build:libs && pnpm -r --workspace-concurrency=1 --if-present run test:coverage && pnpm coverage:ai",

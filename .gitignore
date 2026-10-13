@@ -16,3 +16,6 @@ playwright-report/
 test-results/
 # Development signing key for audit packets (never committed)
 infra/dev-keys/
+
+# Playwright videos, traces and the CI e2e run's output
+test-artifacts/
