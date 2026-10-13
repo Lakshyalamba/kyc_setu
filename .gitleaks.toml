@@ -1,0 +1,15 @@
+title = "KYC Setu"
+
+[extend]
+useDefault = true
+
+# Three values are meant to be public: the development and test placeholders that .env.example, the test helpers and CI use.
+# They decode to readable text ("dev-only-kms-master-key-...", "dev-only-pii-key-change-me-...") and protect nothing. Each is
+# allowed by its exact value, not by file, so a real secret in the same file would still be caught.
+[allowlist]
+description = "development and test placeholders"
+regexes = [
+  '''ZGV2LW9ubHkta21zLW1hc3Rlci1rZXktMDEyMzQ1Njc=''',
+  '''ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDEyMzQ=''',
+  '''test-internal-key-0123456789abcdef''',
+]

@@ -25,6 +25,17 @@ env:
   PII_ENCRYPTION_KEY: ZGV2LW9ubHktcGlpLWtleS1jaGFuZ2UtbWUtMDEyMzQ=
 
 jobs:
+  secrets:
+    name: no secrets in the history
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history, not only the tip
+      - name: gitleaks
+        run: docker run --rm -v "$PWD":/repo zricethezav/gitleaks:latest detect --source=/repo --no-banner --redact
+
   verify:
     name: typecheck · lint · prisma validate · tests · coverage · build
     runs-on: ubuntu-latest

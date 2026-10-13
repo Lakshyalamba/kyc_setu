@@ -169,6 +169,7 @@ a denial is a 403 that names the missing permission and is audited; a test runs 
 make verify          # the pre-push gauntlet: install, prisma validate, typecheck, lint, every test with coverage gates, build
 pnpm test:e2e:ci     # Docker Compose stack, seed, all browser specs headless with video -> test-artifacts/
 pnpm load:smoke      # 50 customers, 10 at a time, with budgets
+make secrets         # gitleaks over the whole git history, in Docker
 pnpm demo:record     # re-record docs/media/full-flow.gif
 ```
 

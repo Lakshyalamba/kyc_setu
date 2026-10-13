@@ -1,4 +1,4 @@
-.PHONY: up down seed test reset ai ai-down keys verify
+.PHONY: up down seed test reset ai ai-down keys verify secrets
 
 DEV_KEYS := infra/dev-keys
 AUDIT_KEY := $(DEV_KEYS)/audit-export-ed25519.pem
@@ -48,3 +48,8 @@ verify: up
 	REQUIRE_INFRA=1 pnpm test:coverage
 	pnpm build
 	@echo "verify: all green"
+
+# Scans the whole git history for secrets with gitleaks (in Docker, nothing to install). The only allowed findings are the
+# public development placeholders listed in .gitleaks.toml. Prints nothing but a summary when clean.
+secrets:
+	docker run --rm -v "$$PWD":/repo zricethezav/gitleaks:latest detect --source=/repo --no-banner --redact
