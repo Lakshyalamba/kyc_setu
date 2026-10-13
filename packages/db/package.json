@@ -9,6 +9,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./erd": {
+      "types": "./dist/erd.d.ts",
+      "default": "./dist/erd.js"
     }
   },
   "scripts": {
@@ -18,7 +22,8 @@
     "migrate": "dotenv -e ../../.env -- prisma migrate dev",
     "migrate:deploy": "dotenv -e ../../.env -- prisma migrate deploy",
     "seed": "tsx --env-file=../../.env src/seed.ts",
-    "test": "echo 'no tests in @kyc-setu/db'"
+    "test": "echo 'no tests in @kyc-setu/db'",
+    "docs:erd": "tsx src/erd-cli.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",
