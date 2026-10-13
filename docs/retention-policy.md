@@ -1,7 +1,8 @@
 # Retention policy
 
 This page says, in plain English, what KYC Setu keeps, for how long, why, and how a person can ask for something to be
-deleted. The periods below are configuration in `packages/shared/src/retention.ts`; if a period changes there it must change
+deleted. It describes this project's design; it is not legal advice, and which retention rules apply to a real bank is a question
+for that bank's compliance team. The periods below are configuration in `packages/shared/src/retention.ts`; if a period changes there it must change
 here too.
 
 > **Status.** The periods are written down and a **dry run** reports what each would remove (`POST /admin/retention/dry-run`,
@@ -35,8 +36,9 @@ decision yet, so its documents are not yet counting down.
 You can ask your bank (the data controller) to delete your data. What happens next depends on what you ask about:
 
 - **Raw OCR text** can be deleted on request at any time; it does not affect your decision record.
-- **Documents and face data** are kept for the period above because the law asks the bank to keep KYC records. A request
-  inside that period is answered with the date it becomes deletable, unless the law allows earlier deletion.
+- **Documents and face data** are kept for the period above because banks are generally obliged to keep their KYC records.
+  A request inside that period is answered with the date it becomes deletable, unless the bank's own obligations allow earlier
+  deletion.
 - **The audit log** is not deleted: it is evidence, it holds no documents or typed details, and rewriting it would break the
   hash chain that proves it has not been tampered with. Where it names you, it does so by an identifier.
 
