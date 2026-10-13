@@ -26,7 +26,7 @@
     "docs:erd": "tsx src/erd-cli.ts"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3",
+    "@prisma/client": "^7.10.0",
     "argon2": "^0.45.1"
   },
   "devDependencies": {
