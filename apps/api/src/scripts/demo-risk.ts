@@ -53,7 +53,7 @@ const BIOMETRICS: Record<string, { score: number; live: boolean }> = {
 async function officerClient(): Promise<Client> {
   const officer = createClient();
   await officer('POST', '/auth/officer/login', {
-    email: 'officer@kycsetu.dev',
+    email: 'priya.officer@kycsetu.dev',
     password: 'password123',
   });
   return officer;

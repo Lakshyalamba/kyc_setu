@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test';
 
 /**
  * End-to-end tests drive the real stack: web (:3000) + api (:4000) + Postgres/Redis/MinIO.
- * Prereqs: `make up && pnpm db:migrate && pnpm seed` (the consent text comes from the seed).
+ * Prereqs: `make up && pnpm db:migrate && pnpm seed --yes` (the consent text comes from the seed).
  * The web and api servers and the queue worker are started here if they aren't already running.
  * The OCR specs (kyc-extraction) also need the AI service: `make ai` (Docker) or `pnpm dev:ai`.
  */

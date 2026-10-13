@@ -12,6 +12,7 @@ const personas = JSON.parse(readFileSync(path.join(SAMPLES, 'personas.json'), 'u
     dob: string;
     panNumber: string;
     aadhaarNumber: string;
+    faces: { card: string; selfie: string };
     boxes: Record<string, Record<string, { x: number; y: number; w: number; h: number }>>;
   }
 >;
@@ -28,6 +29,13 @@ describe('the demo people behind `pnpm seed`', () => {
     }
     expect(pans.size).toBe(Object.keys(personas).length);
     expect(aadhaars.size).toBe(Object.keys(personas).length);
+  });
+
+  it('are visibly invented: every PAN starts TEST and every Aadhaar number starts 9999 0000', () => {
+    for (const [slug, p] of Object.entries(personas)) {
+      expect(p.panNumber.startsWith('TEST'), `${slug} PAN`).toBe(true);
+      expect(p.aadhaarNumber.startsWith('99990000'), `${slug} Aadhaar`).toBe(true);
+    }
   });
 
   it('never share an identity with the sample cards the other tests upload', () => {
@@ -70,18 +78,51 @@ describe('the demo people behind `pnpm seed`', () => {
 });
 
 describe('the scenarios', () => {
-  it('cover the five states the workbench opens with, one customer each', () => {
+  it('cover every state the product has to handle, one customer each', () => {
     expect(DEFAULT_SCENARIOS.map((s) => s.key)).toEqual([
       'fresh',
+      'draft',
+      'docs',
       'low',
       'medium',
       'high',
       'approved',
+      'approved2',
+      'rejected',
     ]);
-    expect(new Set(DEFAULT_SCENARIOS.map((s) => s.email)).size).toBe(5);
-    for (const s of DEFAULT_SCENARIOS.filter((x) => x.key !== 'fresh'))
+    expect(new Set(DEFAULT_SCENARIOS.map((s) => s.email)).size).toBe(9);
+    for (const s of DEFAULT_SCENARIOS.filter((x) => x.persona))
       expect(personas[s.persona ?? ''], s.key).toBeDefined();
     expect(DEFAULT_SCENARIOS.find((s) => s.key === 'medium')?.typedName).toBe('Mira Iyar');
+    // Every row of the table the seed prints says what the login is for.
+    for (const s of DEFAULT_SCENARIOS) expect(s.blurb, s.key).toBeTruthy();
+  });
+
+  it('gives the HIGH customer a face mismatch and a failed liveness check, and the LOW one neither', () => {
+    const by = (k: string) => DEFAULT_SCENARIOS.find((s) => s.key === k)!;
+    expect(by('high')).toMatchObject({ liveness: false });
+    expect(by('high').face).toBeLessThan(0.5);
+    expect(by('low')).toMatchObject({ liveness: true });
+    expect(by('low').face).toBeGreaterThan(0.9);
+    // The face on the cards and the face in the selfie are the same for LOW and MEDIUM, and swapped for HIGH.
+    for (const k of ['low', 'medium'])
+      expect(personas[by(k).persona!]!.faces).toSatisfy(
+        (f: { card: string; selfie: string }) => f.card === f.selfie,
+      );
+    const swapped = personas[by('high').persona!]!.faces;
+    expect(swapped.card).not.toBe(swapped.selfie);
+  });
+
+  it('decide the earlier applications: two approvals and one rejection with a reason', () => {
+    const decided = DEFAULT_SCENARIOS.filter((s) => s.decide);
+    expect(decided.map((s) => s.decide!.decision).sort()).toEqual(['APPROVE', 'APPROVE', 'REJECT']);
+    for (const s of decided.filter((x) => x.decide!.decision === 'REJECT'))
+      expect(s.decide).toMatchObject({ reasonCode: expect.any(String) });
+  });
+
+  it('leave the DRAFT and DOCS customers where the demo needs them', () => {
+    expect(DEFAULT_SCENARIOS.find((s) => s.key === 'draft')?.persona).toBeUndefined();
+    expect(DEFAULT_SCENARIOS.find((s) => s.key === 'docs')?.decide).toBeUndefined();
   });
 
   it('generate identities that pass the same validation as the real form', () => {

@@ -64,7 +64,7 @@ test('good documents: all extracted within 60 s, values match, session is DOCS_E
   // An officer (dev debug route) sees what was read, and it matches the document.
   const officer = await browser.newContext();
   const login = await officer.request.post(`${API_URL}/auth/officer/login`, {
-    data: { email: 'officer@kycsetu.dev', password: 'password123' },
+    data: { email: 'priya.officer@kycsetu.dev', password: 'password123' },
   });
   expect(login.ok()).toBe(true);
   type Debug = { fields: Record<string, { value: string; confidence: number }> };

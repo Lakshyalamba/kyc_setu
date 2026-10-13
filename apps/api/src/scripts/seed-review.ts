@@ -1,11 +1,11 @@
 /**
  * Creates the applications the officer workbench opens with.
  *
- *   pnpm seed                          (run as part of the root seed, after the users exist)
+ *   tsx seed-review.ts                 (the demo customers only, on a database that already has the staff)
  *   tsx seed-review.ts --scenarios low,medium,high --unique abc123 --json
  *
- * With no flags it creates the five demo customers (customer1..5@kycsetu.dev) and skips any that already have an
- * application, so running it twice is harmless. With `--unique <suffix>` it creates brand-new customers
+ * With no flags it creates the demo customers (the same list `pnpm seed` uses) and skips any that already have an
+ * application, so running it twice is harmless. `pnpm seed` itself is `seed-demo.ts`, which also resets everything first. With `--unique <suffix>` it creates brand-new customers
  * (review-<scenario>-<suffix>@example.com) with identity numbers nobody else has: the end-to-end tests use that to get
  * fresh applications on every run without colliding with earlier approvals.
  */
@@ -31,7 +31,7 @@ const asJson = args.includes('--json');
 let scenarios = DEFAULT_SCENARIOS.filter((s) => !wanted || wanted.includes(s.key));
 if (unique) {
   scenarios = scenarios
-    .filter((s) => s.key !== 'fresh')
+    .filter((s) => s.key !== 'fresh' && s.key !== 'draft')
     .map((s): Scenario => ({
       ...s,
       email: `review-${s.key}-${unique}@example.com`,
@@ -49,7 +49,7 @@ const seeder = await createSeeder();
 try {
   const out = [];
   for (const s of scenarios) {
-    const r = await seeder.seed(s, { createUser: !!unique });
+    const r = await seeder.seed(s, { createUser: true });
     out.push(r);
     if (!asJson) {
       console.log(

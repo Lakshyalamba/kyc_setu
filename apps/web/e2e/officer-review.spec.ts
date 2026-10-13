@@ -15,8 +15,8 @@ import { prisma } from './db';
 import { PASSWORD, aiIsUp, sample } from './helpers';
 
 const ROOT = path.resolve(__dirname, '../../..');
-const OFFICER = 'officer@kycsetu.dev';
-const OFFICER_TWO = 'officer2@kycsetu.dev';
+const OFFICER = 'priya.officer@kycsetu.dev';
+const OFFICER_TWO = 'arjun.officer@kycsetu.dev';
 
 // The workbench is a desktop tool; the rest of the suite runs a phone-sized viewport.
 test.use({ viewport: { width: 1440, height: 900 }, isMobile: false, hasTouch: false });
@@ -458,7 +458,7 @@ test('two officers: the second sees who holds it, takes over, and the first can 
 
   await review(two.page, id);
   await expect(two.page.getByTestId('lock-banner')).toContainText(
-    'Being reviewed by officer@kycsetu.dev',
+    'Being reviewed by priya.officer@kycsetu.dev',
   );
   await expect(two.page.getByTestId('lock-state')).toHaveAttribute('data-lock', 'other');
   for (const b of ['approve', 'resubmit', 'reject'] as const)
@@ -473,7 +473,7 @@ test('two officers: the second sees who holds it, takes over, and the first can 
   await bar(one.page, 'approve').click();
   await confirm(one.page, 'approve');
   await expect(dialog(one.page, 'approve').getByTestId('decision-error')).toContainText(
-    'officer2@kycsetu.dev',
+    'arjun.officer@kycsetu.dev',
   );
   expect(await statusOf(id)).toBe('UNDER_REVIEW');
 

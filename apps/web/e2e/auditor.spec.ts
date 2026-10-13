@@ -275,7 +275,7 @@ test('an export is built, downloaded, checked offline with verify.sh and the sig
 });
 
 test('an officer cannot build a packet or open the audit pages', async ({ browser }) => {
-  const { context, page } = await signIn(browser, 'officer@kycsetu.dev');
+  const { context, page } = await signIn(browser, 'priya.officer@kycsetu.dev');
   await page.goto('/auditor');
   await expect(page).toHaveURL(/\/officer\/login$/);
   const res = await context.request.post(`${API_URL}/audit/sessions/${s['low']!.sessionId}/export`);

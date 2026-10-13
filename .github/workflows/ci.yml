@@ -97,7 +97,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:libs
       - run: pnpm --filter @kyc-setu/db run migrate:deploy
-      - run: pnpm seed
+      - run: pnpm seed --yes
       - run: pnpm --filter @kyc-setu/web exec playwright install --with-deps chromium
       - run: pnpm e2e
       - uses: actions/upload-artifact@v4
@@ -169,7 +169,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build:libs
       - run: pnpm --filter @kyc-setu/db run migrate:deploy
-      - run: pnpm seed
+      - run: pnpm seed --yes
       - name: Build and start the AI service (models are baked into the image)
         run: docker compose --profile ai up -d --build --wait ai
       - run: pnpm --filter @kyc-setu/web exec playwright install --with-deps chromium

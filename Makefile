@@ -16,7 +16,7 @@ down:
 	docker compose down
 
 seed:
-	pnpm seed
+	pnpm seed --yes
 
 test:
 	REQUIRE_INFRA=1 pnpm test
@@ -26,7 +26,7 @@ reset:
 	docker compose down -v
 	$(MAKE) up
 	pnpm db:migrate
-	pnpm seed
+	pnpm seed --yes
 
 # The OCR/extraction service in Docker (first build downloads Paddle + the model weights: slow, ~GBs).
 ai:

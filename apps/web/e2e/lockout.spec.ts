@@ -90,7 +90,7 @@ test('five wrong passwords lock the account, the sixth is refused with 423, and 
   const other = await browser.newContext({ viewport: { width: 1440, height: 900 } });
   const p2 = await other.newPage();
   await p2.goto('/officer/login');
-  await p2.getByLabel('Email').fill('officer@kycsetu.dev');
+  await p2.getByLabel('Email').fill('priya.officer@kycsetu.dev');
   await p2.getByLabel('Password').fill(PASSWORD);
   await p2.getByRole('button', { name: 'Log in' }).click();
   await expect(p2).toHaveURL(/\/officer$/);

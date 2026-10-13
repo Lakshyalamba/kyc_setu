@@ -17,6 +17,7 @@ import {
   type DocumentType,
   type ExtractionDocumentType,
   type ExtractResponse,
+  type REJECT_REASON_CODES,
 } from '@kyc-setu/shared';
 import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 import { loadEnv } from '../../config/env.js';
@@ -59,6 +60,8 @@ interface Persona {
   city: string;
   state: string;
   line1: string;
+  /** Which synthetic avatar is printed on the cards and which one is in the selfie (see make_samples.py). */
+  faces?: { card: string; selfie: string };
   boxes: { PAN: Boxes; AADHAAR_FRONT: Boxes; AADHAAR_BACK: Boxes };
 }
 const personas = JSON.parse(readFileSync(path.join(SAMPLES, 'personas.json'), 'utf8')) as Record<
@@ -66,11 +69,22 @@ const personas = JSON.parse(readFileSync(path.join(SAMPLES, 'personas.json'), 'u
   Persona
 >;
 
-export type ScenarioKey = 'fresh' | 'low' | 'medium' | 'high' | 'approved';
+export type ScenarioKey =
+  'fresh' | 'draft' | 'docs' | 'low' | 'medium' | 'high' | 'approved' | 'approved2' | 'rejected';
+
+export type Decision = {
+  /** The officer who decided, by e-mail. */
+  by: string;
+  note: string;
+} & (
+  { decision: 'APPROVE' } | { decision: 'REJECT'; reasonCode: (typeof REJECT_REASON_CODES)[number] }
+);
 
 export interface Scenario {
   key: ScenarioKey;
   email: string;
+  /** What this login is for, printed in the table at the end of the seed. */
+  blurb?: string;
   persona?: keyof typeof personas;
   /** What the customer typed, when it differs from the documents. */
   typedName?: string;
@@ -78,47 +92,105 @@ export interface Scenario {
   liveness?: boolean;
   /** How long ago the application was submitted. */
   waitingMinutes?: number;
-  /** Approve it (as the lead) so it stands as a prior approved customer. */
-  approve?: boolean;
+  /** Decide it (as an officer) so it stands as an earlier, finished application. */
+  decide?: Decision;
   /** Replace the persona's PAN and Aadhaar with these (so repeated runs never collide as duplicates). */
   identity?: { panNumber: string; aadhaarNumber: string };
 }
 
-/** What `pnpm seed` creates: one of each state the workbench has to handle. */
+const DAY = 24 * 60;
+
+/**
+ * What `pnpm seed` creates: one customer in each state the product has to handle, then earlier, finished applications
+ * so the auditor's search and the duplicate rules have something to look at.
+ */
 export const DEFAULT_SCENARIOS: Scenario[] = [
-  { key: 'fresh', email: 'customer1@kycsetu.dev' },
+  {
+    key: 'fresh',
+    email: 'customer1@kycsetu.dev',
+    blurb: 'Just signed up, nothing started: walk the whole customer flow',
+  },
+  {
+    key: 'draft',
+    email: 'customer2@kycsetu.dev',
+    blurb: 'DRAFT: mobile verified and consent accepted, personal details next',
+  },
+  {
+    key: 'docs',
+    email: 'customer3@kycsetu.dev',
+    persona: 'kavita-nair',
+    blurb: 'DOCS_UPLOADED: OCR still pending, so run `pnpm dev` and watch the pipeline tick',
+  },
   {
     key: 'low',
-    email: 'customer2@kycsetu.dev',
+    email: 'customer4@kycsetu.dev',
     persona: 'anita-rao',
     face: 0.93,
     liveness: true,
     waitingMinutes: 25,
+    blurb: 'UNDER_REVIEW, LOW risk, everything clean: the one to approve',
   },
   {
     key: 'medium',
-    email: 'customer3@kycsetu.dev',
+    email: 'customer5@kycsetu.dev',
     persona: 'meera-iyer',
     typedName: 'Mira Iyar', // the form says one thing, both cards say another
     face: 0.9,
     liveness: true,
     waitingMinutes: 95,
+    blurb: 'UNDER_REVIEW, MEDIUM risk: the name typed on the form differs from both cards',
   },
   {
     key: 'high',
-    email: 'customer4@kycsetu.dev',
+    email: 'customer6@kycsetu.dev',
     persona: 'arjun-mehta',
     face: 0.22,
     liveness: false,
     waitingMinutes: 190,
+    blurb: 'UNDER_REVIEW, HIGH risk: a different face on the cards, and the liveness check failed',
   },
   {
     key: 'approved',
-    email: 'customer5@kycsetu.dev',
+    email: 'history.approved1@kycsetu.dev',
     persona: 'rohan-verma',
     face: 0.95,
     liveness: true,
-    approve: true,
+    waitingMinutes: 5 * DAY,
+    decide: {
+      by: 'priya.officer@kycsetu.dev',
+      decision: 'APPROVE',
+      note: 'Seeded: an earlier, approved application.',
+    },
+    blurb: 'APPROVED a few days ago: an earlier application (auditor and duplicate-rule history)',
+  },
+  {
+    key: 'approved2',
+    email: 'history.approved2@kycsetu.dev',
+    persona: 'sanjay-gupta',
+    face: 0.91,
+    liveness: true,
+    waitingMinutes: 3 * DAY,
+    decide: {
+      by: 'arjun.officer@kycsetu.dev',
+      decision: 'APPROVE',
+      note: 'Seeded: an earlier, approved application.',
+    },
+    blurb: 'APPROVED a few days ago: a second earlier application',
+  },
+  {
+    key: 'rejected',
+    email: 'history.rejected@kycsetu.dev',
+    persona: 'farah-khan',
+    face: 0.31,
+    liveness: true,
+    waitingMinutes: 4 * DAY,
+    decide: {
+      by: 'priya.officer@kycsetu.dev',
+      decision: 'REJECT',
+      reasonCode: 'FACE_MISMATCH',
+      note: 'Seeded: the selfie does not match the photo on the documents.',
+    },
+    blurb: 'REJECTED (face mismatch) a few days ago: an earlier, rejected application',
   },
 ];
 
@@ -227,7 +299,7 @@ export interface Seeded {
 }
 
 /** Everything a seeding run needs: the same service graph the API builds, on the real database and bucket. */
-export async function createSeeder() {
+export async function createSeeder(deps: { enqueuer?: VerificationEnqueuer } = {}) {
   const env = loadEnv();
   if (env.NODE_ENV === 'production') {
     throw new Error('Refusing to seed review data with NODE_ENV=production');
@@ -267,6 +339,7 @@ export async function createSeeder() {
       enqueuer: { enqueueExport: async () => undefined },
       signer: createEphemeralSigner(),
     },
+    // Only the scenario that is meant to still be waiting for OCR uses the real queue (see `docs`).
     enqueuer: nothingToQueue,
     aiClient: cannedAi((id) => bySession.get(id)),
   });
@@ -277,6 +350,53 @@ export async function createSeeder() {
     return u;
   };
   const meta = { ip: null, userAgent: 'seed' };
+
+  /** DRAFT with the mobile verified and the consent accepted: the customer is about to fill in personal details. */
+  async function seedDraft(
+    s: Scenario,
+    userId: string,
+    sessionId: string,
+    status: string,
+  ): Promise<Seeded> {
+    const consent = await kycStore.latestConsent(new Date());
+    if (!consent) throw new Error('No consent version. Run `pnpm seed` first.');
+    const mobile = `98${String(Math.floor(Math.random() * 1e8)).padStart(8, '0')}`;
+    await prisma.kycSession.update({
+      where: { id: sessionId },
+      data: {
+        currentStep: 'PERSONAL',
+        completedSteps: ['CONTACT', 'CONSENT'],
+        consentVersionId: consent.id,
+        consentAcceptedAt: new Date(),
+        personalDetails: encryptForStorage(
+          { mobile, email: s.email },
+          piiKey,
+        ) as Prisma.InputJsonObject,
+      },
+    });
+    for (const [action, metadata] of [
+      ['kyc.otp.verified', { seeded: true }],
+      ['kyc.consent.accepted', { versionId: consent.id, version: consent.version, seeded: true }],
+    ] as const) {
+      await authStore.writeAudit({
+        actorId: userId,
+        actorType: 'USER',
+        action,
+        entityType: 'KycSession',
+        entityId: sessionId,
+        metadata,
+      });
+    }
+    return {
+      key: s.key,
+      email: s.email,
+      sessionId,
+      status,
+      band: null,
+      score: null,
+      created: true,
+    };
+  }
 
   async function seed(s: Scenario, opts: { createUser?: boolean } = {}): Promise<Seeded> {
     let user = await prisma.user.findUnique({ where: { email: s.email } });
@@ -304,8 +424,21 @@ export async function createSeeder() {
       };
     }
 
+    // A customer who has only just signed up has no application at all: the first screen creates it.
+    if (s.key === 'fresh') {
+      return {
+        key: s.key,
+        email: s.email,
+        sessionId: '',
+        status: 'NO_APPLICATION',
+        band: null,
+        score: null,
+        created: true,
+      };
+    }
     const { session: started } = await services.kyc.createOrGet(user.id, meta);
-    if (s.key === 'fresh' || !s.persona) {
+    if (s.key === 'draft') return seedDraft(s, user.id, started.id, started.status);
+    if (!s.persona) {
       return {
         key: s.key,
         email: s.email,
@@ -397,11 +530,32 @@ export async function createSeeder() {
       docIds.set(type, res.documentId);
     }
     await services.docs.submit(user.id, started.id, meta);
+    if (s.key === 'docs') {
+      // Left exactly as a customer would leave it the moment they press "submit": extractions PENDING. With a real queue
+      // (the demo seed) the worker picks them up as soon as `pnpm dev` runs, and the application moves on by itself.
+      if (deps.enqueuer) {
+        const rows = await prisma.extraction.findMany({
+          where: { document: { sessionId: started.id } },
+          select: { documentId: true },
+        });
+        await deps.enqueuer.enqueueExtractions(rows.map((r) => r.documentId));
+      }
+      const waiting = await prisma.kycSession.findUniqueOrThrow({ where: { id: started.id } });
+      return {
+        key: s.key,
+        email: s.email,
+        sessionId: waiting.id,
+        status: waiting.status,
+        band: null,
+        score: null,
+        created: true,
+      };
+    }
     for (const type of ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK'] as const) {
       await services.extraction.process(docIds.get(type)!, { attempt: 1, maxAttempts: 1 });
     }
 
-    const officer = await must('officer@kycsetu.dev');
+    const officer = await must('priya.officer@kycsetu.dev');
     await services.risk.injectBiometrics(officer.id, started.id, {
       faceMatch: { score: s.face ?? 0.9, modelVersion: 'seed-facenet-0' },
       liveness: { passed: s.liveness ?? true },
@@ -415,14 +569,17 @@ export async function createSeeder() {
       });
     }
 
-    if (s.approve) {
-      const lead = await must('lead@kycsetu.dev');
-      const actor = { userId: lead.id, role: lead.role };
+    if (s.decide) {
+      const decider = await must(s.decide.by);
+      const actor = { userId: decider.id, role: decider.role };
       await services.officer.claim(actor, started.id);
-      await services.officer.decide(actor, started.id, {
-        decision: 'APPROVE',
-        reasonNote: 'Seeded: an earlier, approved application.',
-      });
+      await services.officer.decide(
+        actor,
+        started.id,
+        s.decide.decision === 'APPROVE'
+          ? { decision: 'APPROVE', reasonNote: s.decide.note }
+          : { decision: 'REJECT', reasonCode: s.decide.reasonCode, reasonNote: s.decide.note },
+      );
     }
 
     const done = await prisma.kycSession.findUniqueOrThrow({

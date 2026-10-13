@@ -12,7 +12,7 @@ test.beforeAll(requireAiService);
 async function officerContext(browser: Browser) {
   const context = await browser.newContext();
   const login = await context.request.post(`${API_URL}/auth/officer/login`, {
-    data: { email: 'officer@kycsetu.dev', password: 'password123' },
+    data: { email: 'priya.officer@kycsetu.dev', password: 'password123' },
   });
   expect(login.ok()).toBe(true);
   return context;
