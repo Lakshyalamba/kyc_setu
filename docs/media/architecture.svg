@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" role="img" aria-labelledby="t d">
+  <title id="t">KYC Setu architecture</title>
+  <desc id="d">Customer, officer and auditor browsers talk to the Next.js web app, which calls the Express API. The API reads and writes Postgres and MinIO and puts jobs in Redis. The worker takes jobs from Redis, writes to Postgres, and calls the stateless FastAPI AI service, which fetches documents back from the API through short-lived signed links.</desc>
+  <style>
+    :root { --bg:#ffffff; --ink:#1b2236; --muted:#5a6479; --line:#8a93a8; --web:#e8eefc; --api:#e6f4ee; --ai:#fdf1de; --store:#f1f2f6; --accent:#1e41a8; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg:#14161d; --ink:#e8eaf2; --muted:#a3abbd; --line:#6b7388; --web:#1f2a4d; --api:#183428; --ai:#3a2b14; --store:#232733; --accent:#82a8fd; }
+    }
+    text { font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; fill: var(--ink); font-size: 14px; }
+    .bg { fill: var(--bg); }
+    .box { stroke: var(--line); stroke-width: 1.5; rx: 10; }
+    .web { fill: var(--web); } .api { fill: var(--api); } .ai { fill: var(--ai); } .store { fill: var(--store); }
+    .t { font-weight: 700; font-size: 15px; }
+    .m { fill: var(--muted); font-size: 12px; }
+    .edge { stroke: var(--line); stroke-width: 1.6; fill: none; marker-end: url(#a); }
+    .edge2 { stroke: var(--accent); stroke-width: 1.8; fill: none; marker-end: url(#b); stroke-dasharray: 6 4; }
+    .lbl { fill: var(--muted); font-size: 11.5px; }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8a93a8"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#1e41a8"/></marker>
+  </defs>
+  <rect class="bg" width="960" height="560"/>
+
+  <!-- browsers -->
+  <rect class="box web" x="30" y="40" width="190" height="64"/><text class="t" x="125" y="68" text-anchor="middle">Customer</text><text class="m" x="125" y="88" text-anchor="middle">phone browser</text>
+  <rect class="box web" x="30" y="130" width="190" height="64"/><text class="t" x="125" y="158" text-anchor="middle">Officer</text><text class="m" x="125" y="178" text-anchor="middle">review queue and page</text>
+  <rect class="box web" x="30" y="220" width="190" height="64"/><text class="t" x="125" y="248" text-anchor="middle">Auditor</text><text class="m" x="125" y="268" text-anchor="middle">read-only, chain, export</text>
+
+  <!-- web -->
+  <rect class="box web" x="290" y="110" width="170" height="104"/><text class="t" x="375" y="148" text-anchor="middle">Web</text><text class="m" x="375" y="168" text-anchor="middle">Next.js 15</text><text class="m" x="375" y="186" text-anchor="middle">one app, three doors</text>
+
+  <!-- api -->
+  <rect class="box api" x="540" y="90" width="190" height="144"/><text class="t" x="635" y="124" text-anchor="middle">API</text><text class="m" x="635" y="144" text-anchor="middle">Express 5, TypeScript</text>
+  <text class="m" x="635" y="168" text-anchor="middle">permissions · state machine</text><text class="m" x="635" y="186" text-anchor="middle">uploads · signed downloads</text><text class="m" x="635" y="204" text-anchor="middle">/healthz /readyz /metrics /docs</text>
+
+  <!-- stores -->
+  <rect class="box store" x="790" y="40" width="140" height="64"/><text class="t" x="860" y="68" text-anchor="middle">Postgres</text><text class="m" x="860" y="88" text-anchor="middle">state, audit chain</text>
+  <rect class="box store" x="790" y="130" width="140" height="64"/><text class="t" x="860" y="158" text-anchor="middle">MinIO / S3</text><text class="m" x="860" y="178" text-anchor="middle">encrypted documents</text>
+  <rect class="box store" x="540" y="330" width="190" height="64"/><text class="t" x="635" y="358" text-anchor="middle">Redis</text><text class="m" x="635" y="378" text-anchor="middle">BullMQ queues · rate limits</text>
+
+  <!-- worker + ai -->
+  <rect class="box api" x="290" y="320" width="170" height="84"/><text class="t" x="375" y="352" text-anchor="middle">Worker</text><text class="m" x="375" y="372" text-anchor="middle">OCR calls · risk engine</text><text class="m" x="375" y="388" text-anchor="middle">notifications · audit chain</text>
+  <rect class="box ai" x="30" y="320" width="190" height="84"/><text class="t" x="125" y="352" text-anchor="middle">AI service</text><text class="m" x="125" y="372" text-anchor="middle">FastAPI · PaddleOCR</text><text class="m" x="125" y="388" text-anchor="middle">stateless: no DB, no keys</text>
+
+  <!-- edges -->
+  <path class="edge" d="M220 72 C255 72 255 140 290 140"/>
+  <path class="edge" d="M220 162 L290 162"/>
+  <path class="edge" d="M220 252 C255 252 255 188 290 188"/>
+  <path class="edge" d="M460 162 L540 162"/>
+  <path class="edge" d="M730 112 C760 112 760 72 790 72"/>
+  <path class="edge" d="M730 176 C760 176 760 162 790 162"/>
+  <path class="edge" d="M635 234 L635 330"/>
+  <path class="edge" d="M540 362 L460 362"/>
+  <path class="edge" d="M290 362 L220 362"/>
+  <path class="edge2" d="M125 320 C125 270 330 250 540 205"/>
+
+  <!-- labels -->
+  <text class="lbl" x="498" y="154" text-anchor="middle">JSON, cookie</text>
+  <text class="lbl" x="655" y="290">enqueue jobs</text>
+  <text class="lbl" x="500" y="382" text-anchor="middle">take jobs</text>
+  <text class="lbl" x="255" y="352" text-anchor="middle">POST extract</text>
+    <text class="lbl" x="250" y="272">fetch the document: a 60-second signed link</text>
+  <text class="lbl" x="860" y="214" text-anchor="middle">ciphertext only</text>
+  <text class="lbl" x="860" y="122" text-anchor="middle">written by the API and the worker</text>
+
+  <!-- legend -->
+  <text class="m" x="30" y="470">Solid arrows: calls and data. Dashed: the AI service pulling one document back through the API's signed-link proxy.</text>
+  <text class="m" x="30" y="492">Only the API and the worker touch Postgres. The selfie and face-match steps are not built; a development endpoint stands in for them.</text>
+</svg>
