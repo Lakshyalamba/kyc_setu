@@ -26,7 +26,7 @@
     "load:smoke": "pnpm build:libs && pnpm --filter @kyc-setu/api exec tsx ../../scripts/load-smoke.ts",
     "demo:docs": "pnpm --filter @kyc-setu/api run demo:docs --",
     "test:ai:ocr": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m ocr",
-    "test:coverage": "pnpm build:libs && pnpm -r --workspace-concurrency=1 --if-present run test:coverage && pnpm coverage:ai",
+    "test:coverage": "pnpm build:libs && pnpm -r --workspace-concurrency=1 --if-present run test:coverage && pnpm --filter @kyc-setu/web run test && pnpm coverage:ai",
     "coverage:ai": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m \"not ocr\" --cov=app/vision/parsers --cov-report=term --cov-fail-under=70",
     "consent:revise": "pnpm --filter @kyc-setu/api run consent:revise --",
     "audit:chain": "pnpm --filter @kyc-setu/api run audit:chain",

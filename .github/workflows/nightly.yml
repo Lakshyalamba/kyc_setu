@@ -1,0 +1,94 @@
+name: Nightly
+
+# The slow checks: the whole stack from Docker Compose (including the real OCR service), every browser spec with video,
+# and the load smoke. Runs every night on main, by hand, or on a pull request carrying the `full-e2e` label. When it fails
+# it says so where somebody will see it: a comment on the pull request, or an issue for a scheduled run.
+on:
+  schedule:
+    - cron: '17 21 * * *' # 02:47 IST, after the audit chain's own 00:05 run has long finished
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-stack:
+    name: compose stack · browser tests with video · load smoke · real OCR tests
+    if: github.event_name != 'pull_request' || github.event.label.name == 'full-e2e'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: services/ai/uv.lock
+      - run: cp .env.example .env
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @kyc-setu/web exec playwright install --with-deps chromium
+
+      # Compose (Postgres, Redis, MinIO, the OCR service), migrate, seed, run every spec headless with video.
+      - name: Browser tests against the Compose stack
+        id: e2e
+        run: pnpm test:e2e:ci
+
+      - name: Load smoke (50 customers, AI service mocked)
+        id: load
+        if: ${{ !cancelled() }} # run it even if the browser tests failed, so one run says everything that is wrong
+        run: pnpm load:smoke
+
+      - name: Real-OCR tests
+        id: ocr
+        if: ${{ !cancelled() }}
+        working-directory: services/ai
+        env:
+          PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK: 'True'
+        run: uv run pytest -q -m ocr
+
+      - name: Compose logs
+        if: failure()
+        run: docker compose --profile ai logs --tail 150
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-artifacts
+          path: test-artifacts
+          retention-days: 14
+
+      - name: Report a failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          E2E: ${{ steps.e2e.outcome }}
+          LOAD: ${{ steps.load.outcome }}
+          OCR: ${{ steps.ocr.outcome }}
+        run: |
+          body="**Nightly checks failed** on \`${GITHUB_SHA::7}\` ([run, with videos and traces attached]($RUN_URL)).
+
+          | Step | Result |
+          | --- | --- |
+          | Browser tests (Compose stack) | $E2E |
+          | Load smoke | $LOAD |
+          | Real-OCR tests | $OCR |"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            gh pr comment "${{ github.event.pull_request.number }}" --repo "$GITHUB_REPOSITORY" --body "$body"
+          else
+            gh issue create --repo "$GITHUB_REPOSITORY" --title "Nightly checks failed ($(date -u +%F))" --body "$body"
+          fi

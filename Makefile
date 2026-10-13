@@ -1,4 +1,4 @@
-.PHONY: up down seed test reset ai ai-down keys
+.PHONY: up down seed test reset ai ai-down keys verify
 
 DEV_KEYS := infra/dev-keys
 AUDIT_KEY := $(DEV_KEYS)/audit-export-ed25519.pem
@@ -34,3 +34,17 @@ ai:
 
 ai-down:
 	docker compose --profile ai stop ai
+
+# The whole pre-push gauntlet, the same steps as the PR workflow (.github/workflows/pr.yml): install exactly what the
+# lockfile says, validate the Prisma schema, typecheck, lint and check formatting, run every unit and integration test
+# against the local Postgres, Redis and MinIO with the coverage gates (80% in the API, the risk engine and the shared
+# package, 70% in the OCR parsers), and build everything. The browser tests are separate: `pnpm test:e2e:ci`.
+verify: up
+	pnpm install --frozen-lockfile
+	pnpm db:generate
+	pnpm db:validate
+	pnpm typecheck
+	pnpm lint
+	REQUIRE_INFRA=1 pnpm test:coverage
+	pnpm build
+	@echo "verify: all green"

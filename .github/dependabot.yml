@@ -1,0 +1,38 @@
+# One pull request a week per ecosystem, with every minor and patch update grouped together. Major versions arrive on their
+# own so each one can be read. Nothing here bumps anything by itself: a person merges.
+version: 2
+updates:
+  - package-ecosystem: npm # pnpm workspaces are read through this ecosystem
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: uv
+    directory: /services/ai
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directory: /services/ai
+    schedule:
+      interval: weekly
+      day: monday
