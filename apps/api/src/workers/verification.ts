@@ -1,5 +1,6 @@
 import { UnrecoverableError, Worker, type Job } from 'bullmq';
 import type { Redis } from 'ioredis';
+import { runWithContext } from '../observability/context.js';
 import type { ExtractionService } from '../modules/extraction/extraction.service.js';
 import type { NotificationService } from '../modules/officer/notify.js';
 import type { RiskService } from '../modules/risk/risk.service.js';
@@ -8,6 +9,9 @@ import {
   maxAttemptsFor,
   type VerificationJobData,
 } from '../queue/verification.js';
+import { loggerFor } from '../observability/logger.js';
+
+const log = loggerFor('verification');
 
 /** Delay before retry N (N = attempts already made), from EXTRACTION_BACKOFF_SECONDS. */
 export const backoffDelayMs = (backoffSeconds: number[], attemptsMade: number): number =>
@@ -21,7 +25,7 @@ export function createVerificationProcessor(
   notifier?: NotificationService,
 ) {
   const maxAttempts = maxAttemptsFor(backoffSeconds);
-  return async (job: Job<VerificationJobData>) => {
+  const run = async (job: Job<VerificationJobData>) => {
     if (job.data.kind === 'notify') {
       if (!notifier)
         throw new UnrecoverableError('notifications are not configured on this worker');
@@ -62,6 +66,14 @@ export function createVerificationProcessor(
         throw new UnrecoverableError(outcome.error.message);
     }
   };
+  return (job: Job<VerificationJobData>) =>
+    runWithContext(
+      {
+        requestId: job.data.requestId ?? `job-${job.id}`,
+        ...(job.data.kind === 'risk' ? { sessionId: job.data.sessionId } : {}),
+      },
+      () => run(job),
+    );
 }
 
 export function createVerificationWorker(opts: {
@@ -86,9 +98,9 @@ export function createVerificationWorker(opts: {
       },
     },
   );
-  worker.on('completed', (job) => console.log(`[verification] ${job.id} done`));
+  worker.on('completed', (job) => log.info({ jobId: job.id, job: job.name }, 'job done'));
   worker.on('failed', (job, err) =>
-    console.error(`[verification] ${job?.id} attempt ${job?.attemptsMade} failed: ${err.message}`),
+    log.error({ jobId: job?.id, attempt: job?.attemptsMade, err }, 'job attempt failed'),
   );
   return worker;
 }

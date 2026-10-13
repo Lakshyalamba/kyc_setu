@@ -4,6 +4,9 @@ import type { AuditChainService } from '../modules/audit/chain.service.js';
 import type { ExportService } from '../modules/audit/export.service.js';
 import type { RetentionService } from '../modules/retention/retention.service.js';
 import { AUDIT_QUEUE, type AuditJobData } from '../queue/audit.js';
+import { loggerFor } from '../observability/logger.js';
+
+const log = loggerFor('audit');
 
 export interface AuditProcessorDeps {
   chain: AuditChainService;
@@ -18,11 +21,12 @@ export function createAuditProcessor(deps: AuditProcessorDeps) {
     switch (job.data.kind) {
       case 'audit-chain-build': {
         const result = await deps.chain.build();
-        console.log(
-          `[audit] chain: ${result.built.length} day(s) chained through ${result.throughDay}` +
-            (result.built.length
-              ? ` (${result.built.map((b) => `${b.day}: ${b.rows} rows`).join(', ')})`
-              : ''),
+        log.info(
+          {
+            throughDay: result.throughDay,
+            built: result.built.map((b) => ({ day: b.day, rows: b.rows })),
+          },
+          'audit chain built',
         );
         return { built: result.built.map((b) => b.day), throughDay: result.throughDay };
       }
@@ -30,7 +34,7 @@ export function createAuditProcessor(deps: AuditProcessorDeps) {
         if (!deps.exporter)
           throw new UnrecoverableError('exports are not configured on this worker');
         const out = await deps.exporter.process(job.data.exportId);
-        console.log(`[audit] export ${job.data.exportId}: ${out.status}`);
+        log.info({ exportId: job.data.exportId, status: out.status }, 'audit export processed');
         return out;
       }
       case 'retention-sweep': {
@@ -57,6 +61,6 @@ export function createAuditWorker(
       concurrency: 1,
     },
   );
-  worker.on('failed', (job, err) => console.error(`[audit] ${job?.name} failed: ${err.message}`));
+  worker.on('failed', (job, err) => log.error({ job: job?.name, err }, 'audit job failed'));
   return worker;
 }

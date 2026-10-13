@@ -3,6 +3,8 @@ import { prisma as rawPrisma } from '@kyc-setu/db';
 import { createSafeClient } from './db/safeClient.js';
 import { createS3Client } from '@kyc-setu/shared/storage';
 import { loadEnv } from './config/env.js';
+import { loggerFor } from './observability/logger.js';
+import { initSentry } from './observability/sentry.js';
 import { createPrismaAuthStore } from './modules/auth/store.js';
 import { createS3ObjectStore } from './modules/documents/object-store.js';
 import { createPrismaDocumentStore } from './modules/documents/store.js';
@@ -32,6 +34,8 @@ import { createVerificationWorker } from './workers/verification.js';
 const prisma = createSafeClient(rawPrisma);
 
 const env = loadEnv();
+initSentry({ dsn: env.SENTRY_DSN, environment: env.NODE_ENV });
+const log = loggerFor('worker');
 const store = createPrismaAuthStore(prisma);
 const connection = createRedis(env.REDIS_URL);
 
@@ -48,9 +52,9 @@ const worker = new Worker(
   },
   { connection, concurrency: 5 },
 );
-worker.on('completed', (job) => console.log(`[worker] ${job.name}#${job.id} completed`));
-worker.on('failed', (job, err) => console.error(`[worker] ${job?.name}#${job?.id} failed:`, err));
-console.log(`[worker] listening on queue "${SYSTEM_QUEUE}"`);
+worker.on('completed', (job) => log.info({ job: job.name, jobId: job.id }, 'job completed'));
+worker.on('failed', (job, err) => log.error({ job: job?.name, jobId: job?.id, err }, 'job failed'));
+log.info({ queue: SYSTEM_QUEUE }, 'listening');
 
 // --- verification queue: OCR extraction ----------------------------------------------------------
 const verificationQueue = createVerificationQueue(
@@ -96,8 +100,9 @@ const verificationWorker = createVerificationWorker({
   backoffSeconds: env.EXTRACTION_BACKOFF_SECONDS,
   concurrency: 2,
 });
-console.log(
-  `[worker] listening on queue "verification" (concurrency 2, retries after ${env.EXTRACTION_BACKOFF_SECONDS.join('s, ')}s)`,
+log.info(
+  { queue: 'verification', concurrency: 2, retryAfterSeconds: env.EXTRACTION_BACKOFF_SECONDS },
+  'listening',
 );
 
 // --- audit queue: the nightly hash chain (00:05 IST) and signed session packets -------------------------
@@ -108,18 +113,18 @@ const auditWorker = createAuditWorker({
   exporter: auditExport,
   retention,
 });
-console.log('[worker] listening on queue "audit" (chain build at 00:05 IST, session packets)');
+log.info({ queue: 'audit' }, 'listening (chain build at 00:05 IST, session packets)');
 
 // Re-queue anything committed as PENDING whose job never reached Redis.
 const requeued = await requeueStalePending(extractionStore, enqueuer);
-if (requeued > 0) console.log(`[worker] re-queued ${requeued} stale pending extraction(s)`);
+if (requeued > 0) log.info({ requeued }, 're-queued stale pending extractions');
 
 // Smoke test on boot so `pnpm dev` visibly proves the system queue works.
 const queue = createSystemQueue(createRedis(env.REDIS_URL));
 await queue.add(PING_JOB, { message: 'worker boot' });
 
 async function shutdown(signal: string): Promise<void> {
-  console.log(`[worker] ${signal} received, shutting down`);
+  log.info({ signal }, 'shutting down');
   await Promise.all([worker.close(), verificationWorker.close(), auditWorker.close()]);
   await Promise.all([queue.close(), verificationQueue.close(), auditQueue.close()]);
   connection.disconnect();

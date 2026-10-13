@@ -1,23 +1,34 @@
 import { Queue } from 'bullmq';
 import type { Redis } from 'ioredis';
 import type { ExtractionStore } from '../modules/extraction/store.js';
+import { currentContext } from '../observability/context.js';
+
+const trace = (): JobTrace => {
+  const requestId = currentContext()?.requestId;
+  return requestId ? { requestId } : {};
+};
 
 export const VERIFICATION_QUEUE = 'verification';
 export const EXTRACT_JOB = 'extract';
 export const RISK_JOB = 'risk';
 export const NOTIFY_JOB = 'notify';
 
-export interface ExtractJobData {
+/** Every job remembers the request that caused it, so one id follows a customer's action through the worker and the AI service. */
+interface JobTrace {
+  requestId?: string;
+}
+
+export interface ExtractJobData extends JobTrace {
   documentId: string;
   kind: 'extract';
 }
 
-export interface RiskJobData {
+export interface RiskJobData extends JobTrace {
   sessionId: string;
   kind: 'risk';
 }
 
-export interface NotifyJobData {
+export interface NotifyJobData extends JobTrace {
   decisionId: string;
   kind: 'notify';
 }
@@ -64,19 +75,23 @@ export function createBullEnqueuer(queue: Queue<VerificationJobData>): Verificat
     async enqueueNotification(decisionId) {
       await queue.add(
         NOTIFY_JOB,
-        { decisionId, kind: 'notify' },
+        { decisionId, kind: 'notify', ...trace() },
         { jobId: notifyJobId(decisionId) },
       );
     },
     async enqueueRisk(sessionId, run) {
-      await queue.add(RISK_JOB, { sessionId, kind: 'risk' }, { jobId: riskJobId(sessionId, run) });
+      await queue.add(
+        RISK_JOB,
+        { sessionId, kind: 'risk', ...trace() },
+        { jobId: riskJobId(sessionId, run) },
+      );
     },
     async enqueueExtractions(documentIds) {
       if (documentIds.length === 0) return;
       await queue.addBulk(
         documentIds.map((documentId) => ({
           name: EXTRACT_JOB,
-          data: { documentId, kind: 'extract' as const },
+          data: { documentId, kind: 'extract' as const, ...trace() },
           opts: { jobId: extractJobId(documentId) },
         })),
       );

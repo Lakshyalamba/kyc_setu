@@ -34,6 +34,9 @@ import {
   type ParsedToken,
 } from './signed-token.js';
 import type { DocumentRecord, DocumentStore, SignedUrlIssueRecord } from './store.js';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('documents');
 
 export type UploadFailureReason = (typeof UPLOAD_FAILURE_REASONS)[number];
 
@@ -291,7 +294,7 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
         if (stored) await objects.remove(storageKey).catch(() => undefined); // don't leave orphans
         if (failure) throw failure;
         if (err instanceof AppError) throw err;
-        console.error('[documents] upload failed', (err as Error).message);
+        log.error({ err }, 'upload failed');
         throw new UploadFailure(
           502,
           'STORAGE_ERROR',
@@ -384,15 +387,12 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
         await enqueuer.enqueueExtractions(toQueue.map((d) => d.id));
       } catch (err) {
         // The rows are committed as PENDING; the worker's recovery sweep re-queues them.
-        console.error(
-          '[documents] could not enqueue extraction jobs; the recovery sweep will retry',
-          (err as Error).message,
-        );
+        log.error({ err }, 'could not enqueue extraction jobs; the recovery sweep will retry');
       }
       try {
         await deps.afterSubmit?.(s.id);
       } catch (err) {
-        console.error('[documents] post-submit step failed', (err as Error).message);
+        log.error({ err }, 'post-submit step failed');
       }
       return kyc.toDto(updated);
     },
@@ -606,7 +606,7 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
           throw new Error('stored hash mismatch');
         }
       } catch (err) {
-        console.error('[documents] integrity failure', doc.id, (err as Error).message);
+        log.error({ err, documentId: doc.id }, 'document integrity failure');
         await store.writeAudit(
           audit(viewerUserId, 'document.integrity_failed', 'Document', doc.id, {
             documentId: doc.id,

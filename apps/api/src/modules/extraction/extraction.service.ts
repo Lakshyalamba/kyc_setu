@@ -23,6 +23,10 @@ import type { KycStore } from '../kyc/store.js';
 import { AiServiceError, type AiClient } from './ai-client.js';
 import { last4FromMasked, panBlindIndex, redactAadhaar } from './pii.js';
 import type { CompleteInput, ExtractionRecord, ExtractionStore } from './store.js';
+import { loggerFor } from '../../observability/logger.js';
+import { annotateContext } from '../../observability/context.js';
+
+const log = loggerFor('extraction');
 
 /** What the queue must do after one run of the processor. */
 export type ProcessOutcome =
@@ -193,6 +197,7 @@ export function createExtractionService(deps: ExtractionServiceDeps) {
         return { kind: 'skipped', reason: `already ${extraction.status}` };
       const doc = await documentStore.findById(documentId);
       if (!doc) return { kind: 'skipped', reason: 'document not found' };
+      annotateContext({ sessionId: doc.sessionId });
       if (doc.type === 'SIGNATURE') return { kind: 'skipped', reason: 'nothing to extract' };
 
       try {
@@ -266,8 +271,9 @@ export function createExtractionService(deps: ExtractionServiceDeps) {
             retryable,
           }),
         );
-        console.error(
-          `[verification] extraction FAILED for document ${doc.id} after ${info.attempt} attempt(s): ${message}`,
+        log.error(
+          { documentId: doc.id, attempts: info.attempt, error: message },
+          'extraction failed for good',
         );
         await flagSession(doc.sessionId, EXTRACTION_FLAG_BY_STATUS.ERROR);
         return { kind: 'failed', error };

@@ -74,7 +74,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
     await prisma.$disconnect();
   });
 
-  it('signup + officer login write audit rows to the real DB; healthz is 200', async () => {
+  it('signup + officer login write audit rows to the real DB; healthz and readyz are 200', async () => {
     const app = createApp({
       env: testEnv(),
       store,
@@ -110,7 +110,8 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
     );
     expect(actions).toEqual(['auth.customer.signup', 'auth.officer.login_failed']);
 
-    const health = await request(app).get('/healthz');
+    expect((await request(app).get('/healthz')).status).toBe(200);
+    const health = await request(app).get('/readyz');
     expect(health.status).toBe(200);
     expect(health.body.checks).toMatchObject({ database: 'up', redis: 'up' });
   });

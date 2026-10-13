@@ -2,6 +2,7 @@ import { Prisma } from '@kyc-setu/db';
 import type { SafeClient } from '../../db/safeClient.js';
 import type { DocumentType, KycStatus, KycStep } from '@kyc-setu/shared';
 import type { AuditEntry } from '../auth/store.js';
+import { stateTransitions } from '../../observability/metrics.js';
 
 export interface SessionRecord {
   id: string;
@@ -136,8 +137,8 @@ export function createPrismaKycStore(prisma: SafeClient): KycStore {
       }
     },
 
-    updateSession: (id, expected, patch, audits, markOtpVerified, extractions) =>
-      prisma.$transaction(async (tx) => {
+    updateSession: async (id, expected, patch, audits, markOtpVerified, extractions) => {
+      const updated = await prisma.$transaction(async (tx) => {
         const { personalDetails, ...rest } = patch;
         const result = await tx.kycSession.updateMany({
           where: { id, status: expected },
@@ -165,7 +166,11 @@ export function createPrismaKycStore(prisma: SafeClient): KycStore {
         }
         if (audits.length > 0) await tx.auditLog.createMany({ data: audits.map(auditData) });
         return tx.kycSession.findUniqueOrThrow({ where: { id } });
-      }),
+      });
+      if (updated && patch.status && patch.status !== expected)
+        stateTransitions.inc({ from: expected, to: patch.status });
+      return updated;
+    },
 
     latestConsent: (now) =>
       prisma.consentVersion.findFirst({

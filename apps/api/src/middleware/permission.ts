@@ -6,6 +6,7 @@ import { cookieName, type Realm } from '../lib/cookies.js';
 import { AppError, unauthorized } from '../lib/errors.js';
 import { verifyToken } from '../lib/jwt.js';
 import type { AuditEntry } from '../modules/auth/store.js';
+import { noteCaller } from './requestContext.js';
 
 /** A guard remembers what it demands, so the conformance test can read it back off the router. */
 export type PermissionGuard = RequestHandler & { permissions: readonly Permission[] };
@@ -43,6 +44,7 @@ export function createPermissionGuards(deps: PermissionGuardDeps) {
           firstValid ??= claims;
           if (permissions.some((p) => hasPermission(claims.role, p))) {
             req.auth = { ...claims, realm };
+            noteCaller(claims);
             return next();
           }
         }

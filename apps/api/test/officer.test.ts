@@ -1037,27 +1037,24 @@ describe('notifications', () => {
       reasonCode: 'FACE_MISMATCH',
       reasonNote: 'PRIVATE NOTE',
     });
-    const lines: string[] = [];
-    const original = console.log;
-    console.log = (...a: unknown[]) => void lines.push(a.join(' '));
-    try {
-      const notifier = createNotificationService({
-        store: h.officerStore,
-        kycStore: h.kycStore,
-        auth: h.store,
-      });
-      const out = await notifier.send(h.officerStore.decisions[0]!.id);
-      expect(out).toEqual({ sent: true, template: 'KYC_REJECTED' });
-    } finally {
-      console.log = original;
-    }
+    const lines: Record<string, unknown>[] = [];
+    const notifier = createNotificationService({
+      store: h.officerStore,
+      kycStore: h.kycStore,
+      auth: h.store,
+      log: { info: ((obj: Record<string, unknown>) => void lines.push(obj)) as never },
+    });
+    const out = await notifier.send(h.officerStore.decisions[0]!.id);
+    expect(out).toEqual({ sent: true, template: 'KYC_REJECTED' });
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toContain('to=a***@kycsetu.dev');
-    expect(lines[0]).toContain('template=KYC_REJECTED');
-    expect(lines[0]).toContain(sessionId);
-    expect(lines[0]).toContain('Face does not match');
-    expect(lines[0]).not.toContain('PRIVATE NOTE');
-    expect(lines[0]).not.toContain('a@kycsetu.dev');
+    expect(lines[0]).toMatchObject({
+      to: 'a***@kycsetu.dev',
+      template: 'KYC_REJECTED',
+      sessionId,
+      reason: 'Face does not match the ID photo',
+    });
+    expect(JSON.stringify(lines[0])).not.toContain('PRIVATE NOTE');
+    expect(JSON.stringify(lines[0])).not.toContain('a@kycsetu.dev');
     expect(h.audits.find((a) => a.action === 'notification.sent')?.metadata).toEqual({
       decisionId: h.officerStore.decisions[0]?.id,
       channel: 'stdout',

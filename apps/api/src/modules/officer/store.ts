@@ -9,6 +9,7 @@ import type {
 } from '@kyc-setu/shared';
 import type { AuditEntry } from '../auth/store.js';
 import type { SessionPatch } from '../kyc/store.js';
+import { decisionOutcomes, stateTransitions } from '../../observability/metrics.js';
 
 export type Band = 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -558,60 +559,70 @@ export function createPrismaOfficerStore(prisma: SafeClient): OfficerStore {
 
     async recordDecision(input) {
       try {
-        return await prisma.$transaction(async (tx): Promise<RecordDecisionResult> => {
-          // 1. The compare-and-set: only one decision can ever move a session out of UNDER_REVIEW.
-          const { personalDetails, ...patch } = input.sessionPatch;
-          const moved = await tx.kycSession.updateMany({
-            where: { id: input.sessionId, status: input.fromStatus },
-            data: {
-              ...patch,
-              ...(personalDetails ? { personalDetails: json(personalDetails) } : {}),
-            },
-          });
-          if (moved.count === 0) throw new Rollback('session-changed');
-
-          // 2. The officer must still hold the assignment (take-over ends the previous holder's).
-          const released = await tx.officerAssignment.updateMany({
-            where: { sessionId: input.sessionId, officerId: input.officerId, isActive: true },
-            data: { isActive: false, releasedAt: new Date() },
-          });
-          if (released.count === 0) throw new Rollback('not-assignee');
-
-          // 3. A resubmission request empties the requested slots. Soft delete, like every document removal:
-          //    the row and the ciphertext stay, and the previous snapshot still points at them.
-          let cleared: { id: string; type: DocumentType }[] = [];
-          if (input.clearDocumentTypes.length > 0) {
-            cleared = await tx.document.findMany({
-              where: {
-                sessionId: input.sessionId,
-                type: { in: input.clearDocumentTypes },
-                replacedById: null,
+        return await prisma
+          .$transaction(async (tx): Promise<RecordDecisionResult> => {
+            // 1. The compare-and-set: only one decision can ever move a session out of UNDER_REVIEW.
+            const { personalDetails, ...patch } = input.sessionPatch;
+            const moved = await tx.kycSession.updateMany({
+              where: { id: input.sessionId, status: input.fromStatus },
+              data: {
+                ...patch,
+                ...(personalDetails ? { personalDetails: json(personalDetails) } : {}),
               },
-              select: { id: true, type: true },
             });
-            if (cleared.length > 0) {
-              await tx.$executeRaw(
-                Prisma.sql`UPDATE documents SET "replacedById" = id
-                           WHERE id IN (${Prisma.join(cleared.map((d) => Prisma.sql`${d.id}::uuid`))})`,
-              );
-            }
-          }
+            if (moved.count === 0) throw new Rollback('session-changed');
 
-          const row = await tx.decision.create({
-            data: {
-              sessionId: input.sessionId,
-              officerId: input.officerId,
-              decision: input.decision,
-              reasonCode: input.reasonCode,
-              reasonNote: input.reasonNote,
-              resubmitDocumentTypes: input.resubmitDocumentTypes,
-              snapshot: json(input.snapshot),
-            },
+            // 2. The officer must still hold the assignment (take-over ends the previous holder's).
+            const released = await tx.officerAssignment.updateMany({
+              where: { sessionId: input.sessionId, officerId: input.officerId, isActive: true },
+              data: { isActive: false, releasedAt: new Date() },
+            });
+            if (released.count === 0) throw new Rollback('not-assignee');
+
+            // 3. A resubmission request empties the requested slots. Soft delete, like every document removal:
+            //    the row and the ciphertext stay, and the previous snapshot still points at them.
+            let cleared: { id: string; type: DocumentType }[] = [];
+            if (input.clearDocumentTypes.length > 0) {
+              cleared = await tx.document.findMany({
+                where: {
+                  sessionId: input.sessionId,
+                  type: { in: input.clearDocumentTypes },
+                  replacedById: null,
+                },
+                select: { id: true, type: true },
+              });
+              if (cleared.length > 0) {
+                await tx.$executeRaw(
+                  Prisma.sql`UPDATE documents SET "replacedById" = id
+                           WHERE id IN (${Prisma.join(cleared.map((d) => Prisma.sql`${d.id}::uuid`))})`,
+                );
+              }
+            }
+
+            const row = await tx.decision.create({
+              data: {
+                sessionId: input.sessionId,
+                officerId: input.officerId,
+                decision: input.decision,
+                reasonCode: input.reasonCode,
+                reasonNote: input.reasonNote,
+                resubmitDocumentTypes: input.resubmitDocumentTypes,
+                snapshot: json(input.snapshot),
+              },
+            });
+            const decision = toDecision(row);
+            await tx.auditLog.createMany({ data: input.audits(decision, cleared).map(auditData) });
+            return { kind: 'ok', decision };
+          })
+          .then((out) => {
+            // Counted after the commit, so a rolled-back attempt is not a decision.
+            if (out.kind === 'ok') {
+              decisionOutcomes.inc({ decision: out.decision.decision });
+              if (input.sessionPatch.status)
+                stateTransitions.inc({ from: input.fromStatus, to: input.sessionPatch.status });
+            }
+            return out;
           });
-          const decision = toDecision(row);
-          await tx.auditLog.createMany({ data: input.audits(decision, cleared).map(auditData) });
-          return { kind: 'ok', decision };
-        });
       } catch (err) {
         if (err instanceof Rollback) return { kind: err.result };
         throw err;

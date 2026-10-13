@@ -1,5 +1,10 @@
 import type { ErrorRequestHandler, RequestHandler } from 'express';
 import { AppError } from '../lib/errors.js';
+import { currentContext } from '../observability/context.js';
+import { loggerFor } from '../observability/logger.js';
+import { captureException } from '../observability/sentry.js';
+
+const log = loggerFor('http');
 
 export const notFoundHandler: RequestHandler = (_req, res) => {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } });
@@ -17,6 +22,13 @@ export const errorHandler: ErrorRequestHandler = (err: unknown, _req, res, _next
     res.status(400).json({ error: { code: 'INVALID_JSON', message: 'Malformed JSON body' } });
     return;
   }
-  console.error('[unhandled]', err);
-  res.status(500).json({ error: { code: 'INTERNAL', message: 'Internal server error' } });
+  log.error({ err }, 'unhandled error');
+  captureException(err, currentContext()?.requestId);
+  res.status(500).json({
+    error: {
+      code: 'INTERNAL',
+      message: 'Something went wrong on our side. Please try again.',
+      requestId: currentContext()?.requestId,
+    },
+  });
 };

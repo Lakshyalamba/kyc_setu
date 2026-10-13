@@ -14,7 +14,9 @@ import { createDevExtractionRouter, createExtractionRouter } from './routes/extr
 import { createAdminRouter } from './routes/admin.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createCustomerStatusRouter } from './routes/customer-status.js';
-import { createHealthRouter, type HealthProbe } from './routes/health.js';
+import { requestContext } from './middleware/requestContext.js';
+import type { QueueDepthSource } from './observability/metrics.js';
+import { createHealthRouter, type DependencyProbes, type HealthProbe } from './routes/health.js';
 import { createOfficerRouter } from './routes/officer.js';
 import { createKycRouter } from './routes/kyc.js';
 import { createDevRiskRouter, createRiskRouter } from './routes/risk.js';
@@ -27,6 +29,10 @@ export interface MountedRouter {
 
 export interface AppDeps extends ServiceDeps {
   healthProbe: HealthProbe;
+  /** Object storage and AI-service checks for /readyz. Only tests leave them out. */
+  dependencyProbes?: DependencyProbes;
+  /** Where the queue-depth gauge reads from when /metrics is scraped. */
+  queueDepth?: QueueDepthSource;
   /** Request limits. Absent means none (unit tests); the server turns them on and backs them with Redis. */
   rateLimit?: RateLimitConfig;
   /** How many wrong passwords lock an account, and for how long (defaults: 5 within 30 minutes, locked for 15). */
@@ -38,6 +44,7 @@ export function createApp(deps: AppDeps): Express {
   const app = express();
   app.disable('x-powered-by');
   app.set('etag', false);
+  app.use(requestContext); // first: every later log line, error and outbound call carries the request id
   app.use(helmet());
   // Credentials + a single explicit origin; cookies are SameSite=Lax so cross-site POSTs carry none.
   app.use(cors({ origin: env.WEB_ORIGIN, credentials: true }));
@@ -74,7 +81,7 @@ export function createApp(deps: AppDeps): Express {
   };
   app.locals['mounts'] = mounts;
 
-  mount('', createHealthRouter(deps.healthProbe));
+  mount('', createHealthRouter(deps.healthProbe, deps.dependencyProbes, deps.queueDepth));
   mount('/auth', createAuthRouter({ env, auth, requireAuth: createRequireAuth(env), limiters }));
   // The risk routes serve officers AND customers, so they must come BEFORE the customer-only routers below:
   // each of those does `router.use(requireCustomer)`, which would otherwise reject officers on any /kyc path.

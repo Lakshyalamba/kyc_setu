@@ -4,6 +4,7 @@ import type { Env } from '../config/env.js';
 import { cookieName, type Realm } from '../lib/cookies.js';
 import { forbidden, unauthorized } from '../lib/errors.js';
 import { verifyToken } from '../lib/jwt.js';
+import { noteCaller } from './requestContext.js';
 
 /**
  * Verifies the JWT cookie and sets `req.auth`. If `?realm=officer|customer` is given only that
@@ -23,6 +24,7 @@ export function createRequireAuth(env: Env, fixedRealm?: Realm): RequestHandler 
       const claims = await verifyToken(token, env.JWT_SECRET);
       if (claims) {
         req.auth = { ...claims, realm };
+        noteCaller(claims);
         return next();
       }
     }

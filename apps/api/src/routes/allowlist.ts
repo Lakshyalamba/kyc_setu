@@ -6,6 +6,9 @@
  */
 export const UNGUARDED_ROUTES: Record<string, string> = {
   'GET /healthz': 'Liveness probe for load balancers: no data, no session.',
+  'GET /readyz': 'Readiness probe: up/down per dependency, no data, no session.',
+  'GET /metrics':
+    'Prometheus text: counters and histograms with closed-set labels, no personal data. Restrict at the network edge.',
   'POST /auth/customer/signup': 'Creates an account, so there is nobody to authorise yet.',
   'POST /auth/customer/login': 'Signs in; rate-limited and locked out per account instead.',
   'POST /auth/officer/login': 'Signs in; rate-limited and locked out per account instead.',

@@ -4,6 +4,8 @@ import {
   type ExtractResponse,
 } from '@kyc-setu/shared';
 import type { Env } from '../../config/env.js';
+import { currentContext } from '../../observability/context.js';
+import { extractLatency } from '../../observability/metrics.js';
 
 /** Why a call to the AI service failed, and whether trying again could help. */
 export class AiServiceError extends Error {
@@ -34,7 +36,7 @@ export function createHttpAiClient(
   env: Pick<Env, 'AI_SERVICE_URL' | 'AI_INTERNAL_KEY' | 'AI_REQUEST_TIMEOUT_MS'>,
   fetchImpl: typeof fetch = fetch,
 ): AiClient {
-  return {
+  const client: AiClient = {
     async extract(req) {
       const aadhaar = req.type !== 'PAN';
       let res: Response;
@@ -45,6 +47,7 @@ export function createHttpAiClient(
             'Content-Type': 'application/json',
             'X-Internal-Key': env.AI_INTERNAL_KEY,
             'X-Fetch-Authorization': `Bearer ${req.serviceToken}`,
+            ...(currentContext() ? { 'X-Request-Id': currentContext()!.requestId } : {}),
           },
           body: JSON.stringify({
             documentId: req.documentId,
@@ -72,6 +75,21 @@ export function createHttpAiClient(
         throw new AiServiceError('AI service answered for a different document', false, res.status);
       }
       return parsed.data;
+    },
+  };
+  // Wall time of the call as the worker sees it (includes the service fetching the document).
+  return {
+    async extract(req) {
+      const started = process.hrtime.bigint();
+      const seconds = () => Number(process.hrtime.bigint() - started) / 1e9;
+      try {
+        const out = await client.extract(req);
+        extractLatency.observe({ outcome: 'ok' }, seconds());
+        return out;
+      } catch (err) {
+        extractLatency.observe({ outcome: 'error' }, seconds());
+        throw err;
+      }
     },
   };
 }

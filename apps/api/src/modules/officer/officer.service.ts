@@ -53,6 +53,9 @@ import type {
   QueueCursor,
   UserSummary,
 } from './store.js';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('officer');
 
 export interface Actor {
   userId: string;
@@ -913,10 +916,7 @@ export function createOfficerService(deps: OfficerServiceDeps) {
           }),
         );
       } catch (err) {
-        console.error(
-          '[officer] could not queue the customer notification',
-          (err as Error).message,
-        );
+        log.error({ err }, 'could not queue the customer notification');
         await store.writeAudit(
           audit(null, AUDIT_ACTIONS.NOTIFICATION_ENQUEUE_FAILED, sessionId, {
             decisionId: result.decision.id,

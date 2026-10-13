@@ -1,6 +1,9 @@
 import type { Request, RequestHandler, Response } from 'express';
 import type { z } from 'zod';
 import { AppError } from './errors.js';
+import { loggerFor } from '../observability/logger.js';
+
+const log = loggerFor('route');
 
 type Schema = z.ZodType;
 
@@ -64,7 +67,7 @@ export function route<
     const parsed = spec.response.safeParse(data);
     if (!parsed.success) {
       // Never leak details of our own contract violations to the client.
-      console.error('[route] response failed validation', parsed.error.issues);
+      log.error({ issues: parsed.error.issues }, 'response failed validation');
       throw new AppError(500, 'RESPONSE_VALIDATION_FAILED', 'Internal server error');
     }
     res.status(spec.status ?? res.statusCode).json(parsed.data);

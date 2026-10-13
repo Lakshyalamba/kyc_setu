@@ -66,6 +66,10 @@ export const envSchema = z
      * into infra/dev-keys/ on first use. In production it is required, and belongs in an HSM or behind a KMS.
      */
     AUDIT_SIGNING_KEY_FILE: z.string().min(1).optional(),
+    /** Error reporting. Unset means Sentry is off and silent. Request bodies on /kyc/* never leave the process. */
+    SENTRY_DSN: z.string().url().optional(),
+    /** pino level: trace|debug|info|warn|error|silent. Default info (silent under test). */
+    LOG_LEVEL: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'silent']).optional(),
     /** Signs the short-lived /files/<token> URLs. */
     FILE_URL_SECRET: z.string().min(32, 'FILE_URL_SECRET must be at least 32 characters'),
   })

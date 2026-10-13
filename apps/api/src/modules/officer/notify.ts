@@ -2,6 +2,10 @@ import { AUDIT_ACTIONS, REASON_CODE_LABELS, maskEmail } from '@kyc-setu/shared';
 import type { AuditEntry, AuthStore } from '../auth/store.js';
 import type { KycStore } from '../kyc/store.js';
 import type { OfficerStore } from './store.js';
+import type { Logger } from 'pino';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('notify');
 
 const TEMPLATE = {
   APPROVE: 'KYC_APPROVED',
@@ -13,6 +17,8 @@ export interface NotificationServiceDeps {
   store: Pick<OfficerStore, 'findDecision' | 'writeAudit'>;
   kycStore: Pick<KycStore, 'findSession'>;
   auth: Pick<AuthStore, 'findUserById'>;
+  /** Where the stand-in "e-mail" goes. Tests pass a collector. */
+  log?: Pick<Logger, 'info'>;
 }
 
 export type NotifyOutcome = { sent: true; template: string } | { sent: false; reason: string };
@@ -32,11 +38,14 @@ export function createNotificationService(deps: NotificationServiceDeps) {
       if (!session || !user) return { sent: false, reason: 'customer not found' };
 
       const template = TEMPLATE[decision.decision];
-      const reason = decision.reasonCode
-        ? ` reason="${REASON_CODE_LABELS[decision.reasonCode]}"`
-        : '';
-      console.log(
-        `[notify] to=${maskEmail(user.email)} template=${template} session=${session.id}${reason}`,
+      (deps.log ?? log).info(
+        {
+          sessionId: session.id,
+          to: maskEmail(user.email),
+          template,
+          reason: decision.reasonCode ? REASON_CODE_LABELS[decision.reasonCode] : undefined,
+        },
+        'notification (stdout stand-in for e-mail)',
       );
       const entry: AuditEntry = {
         actorId: null,

@@ -9,6 +9,9 @@ import { AppError } from '../../lib/errors.js';
 import type { AuditEntry } from '../auth/store.js';
 import type { ExtractionStore } from '../extraction/store.js';
 import type { OfficerStore } from '../officer/store.js';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('retention');
 
 export interface RetentionLine {
   id: RetentionClassId;
@@ -92,8 +95,9 @@ export function createRetentionService(deps: RetentionServiceDeps) {
         lines,
         totalWouldPurge: lines.reduce((n, l) => n + l.wouldPurge, 0),
       };
-      console.log(
-        `[retention] dry run: ${lines.map((l) => `${l.id} ${l.wouldPurge}`).join(', ')} (nothing purged)`,
+      log.info(
+        { wouldPurge: Object.fromEntries(lines.map((l) => [l.id, l.wouldPurge])) },
+        'retention dry run (nothing purged)',
       );
       await deps.audit({
         actorId: opts.requestedBy ?? null,

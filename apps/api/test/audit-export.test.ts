@@ -129,9 +129,8 @@ describe('the packet', () => {
     expect(ready.body.downloadUrl).toBe(
       `https://exports.test/exports/${sessionId}/${exportId}.zip?expires=3600`,
     );
-    expect(
-      Date.parse(ready.body.downloadExpiresAt) - Date.parse(ready.body.createdAt),
-    ).toBeGreaterThan(3_500_000);
+    // The link lives for an hour from the service's clock (the harness's fixed one), not from the wall clock.
+    expect(ready.body.downloadExpiresAt).toBe('2026-10-09T11:00:00.000Z');
     expect(ex().bucket.objects.has(`exports/${sessionId}/${exportId}.zip`)).toBe(true);
   });
 

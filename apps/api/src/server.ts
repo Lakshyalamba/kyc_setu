@@ -19,13 +19,17 @@ import { loadEnv } from './config/env.js';
 import { createPrismaKycStore } from './modules/kyc/store.js';
 import { createPrismaAuthStore } from './modules/auth/store.js';
 import { createRedis } from './queue/connection.js';
-import { createHealthProbe } from './queue/health.js';
+import { countQueues, createDependencyProbes, createHealthProbe } from './queue/health.js';
+import { loggerFor } from './observability/logger.js';
+import { initSentry } from './observability/sentry.js';
 import { createSystemQueue } from './queue/queues.js';
 
 // Everything the API and the worker do to the database goes through the safe client: no audit_logs update or delete.
 const prisma = createSafeClient(rawPrisma);
 
 const env = loadEnv(); // throws (and the process exits) on bad config
+initSentry({ dsn: env.SENTRY_DSN, environment: env.NODE_ENV });
+const log = loggerFor('api');
 
 const s3 = createS3Client({
   endpoint: env.S3_ENDPOINT,
@@ -35,11 +39,14 @@ const s3 = createS3Client({
 });
 const bucketState = await ensureBucket(s3, env.S3_BUCKET);
 await assertBucketPrivate(s3, env.S3_BUCKET); // objects are reachable only through the API
-console.log(`[api] bucket "${env.S3_BUCKET}" ${bucketState}, no public access`);
+log.info({ bucket: env.S3_BUCKET, state: bucketState }, 'bucket ready, no public access');
 
 const exportsBucketState = await ensureBucket(s3, env.AUDIT_EXPORT_BUCKET);
 await assertBucketPrivate(s3, env.AUDIT_EXPORT_BUCKET);
-console.log(`[api] bucket "${env.AUDIT_EXPORT_BUCKET}" ${exportsBucketState}, no public access`);
+log.info(
+  { bucket: env.AUDIT_EXPORT_BUCKET, state: exportsBucketState },
+  'bucket ready, no public access',
+);
 const signer = loadSigner({
   keyFile: env.AUDIT_SIGNING_KEY_FILE,
   production: env.NODE_ENV === 'production',
@@ -71,22 +78,30 @@ const app = createApp({
   enqueuer: createBullEnqueuer(verificationQueue),
   aiClient: createHttpAiClient(env),
   healthProbe: createHealthProbe({ prisma, redis, queue }),
+  dependencyProbes: createDependencyProbes({
+    s3,
+    buckets: [env.S3_BUCKET, env.AUDIT_EXPORT_BUCKET],
+    aiUrl: env.AI_SERVICE_URL,
+  }),
+  queueDepth: () =>
+    countQueues({ system: queue, verification: verificationQueue, audit: auditQueue }),
   rateLimit: {
     enabled: rateLimitsOn,
     // One count per limiter, in the same Redis the queues use: shared by every API instance, kept across restarts.
     makeStore: redisStoreFactory(redis),
   },
 });
-console.log(
-  `[api] rate limits ${rateLimitsOn ? 'on' : 'off (set RATE_LIMIT_ENABLED=true to try them)'}`,
+log.info(
+  { enabled: rateLimitsOn },
+  rateLimitsOn ? 'rate limits on' : 'rate limits off (set RATE_LIMIT_ENABLED=true to try them)',
 );
 
 const server = app.listen(env.API_PORT, () =>
-  console.log(`[api] listening on http://localhost:${env.API_PORT}`),
+  log.info({ port: env.API_PORT }, `listening on http://localhost:${env.API_PORT}`),
 );
 
 async function shutdown(signal: string): Promise<void> {
-  console.log(`[api] ${signal} received, shutting down`);
+  log.info({ signal }, 'shutting down');
   server.close();
   await queue.close();
   await verificationQueue.close();

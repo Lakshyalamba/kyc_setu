@@ -9,6 +9,9 @@ import {
 } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('signing');
 
 /**
  * Signs the hash list of an export packet with Ed25519.
@@ -63,7 +66,7 @@ export function loadSigner(opts: {
     const { privateKey } = generateKeyPairSync('ed25519');
     writeFileSync(file, privateKey.export({ type: 'pkcs8', format: 'pem' }), { mode: 0o600 });
     chmodSync(file, 0o600);
-    console.log(`[audit] generated a development export signing key at ${file}`);
+    log.info({ file }, 'generated a development export signing key');
   }
   return signerFromKey(createPrivateKey(readFileSync(file)));
 }

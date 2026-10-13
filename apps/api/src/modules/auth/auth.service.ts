@@ -5,6 +5,9 @@ import { signToken } from '../../lib/jwt.js';
 import { burnPasswordCheck, hashPassword, verifyPassword } from '../../lib/password.js';
 import type { Realm } from '../../lib/cookies.js';
 import type { AuthStore, UserRecord } from './store.js';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('auth');
 
 export interface RequestMeta {
   ip: string | null;
@@ -191,8 +194,9 @@ export function createAuthService(deps: {
         }),
       );
       // No e-mail yet: the "notification" is a line on stdout, with the address masked.
-      console.log(
-        `[auth] account locked until ${lockedUntil.toISOString()} after ${failures} failed attempts (${maskEmail(user.email)})`,
+      log.warn(
+        { lockedUntil: lockedUntil.toISOString(), failures, account: maskEmail(user.email) },
+        'account locked after repeated wrong passwords',
       );
       return true;
     },

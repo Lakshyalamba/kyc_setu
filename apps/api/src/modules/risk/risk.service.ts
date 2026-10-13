@@ -22,6 +22,9 @@ import type { KycStore } from '../kyc/store.js';
 import { buildRiskInput } from './inputs.js';
 import type { OfficerStore } from '../officer/store.js';
 import type { AssessmentRecord, NewAssessment, RiskStore } from './store.js';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('risk');
 
 export type RiskRunOutcome =
   | { kind: 'assessed'; assessment: AssessmentRecord; finalStatus: KycStatus }
@@ -165,7 +168,7 @@ export function createRiskService(deps: RiskServiceDeps) {
       try {
         await deps.enqueuer.enqueueRisk(sessionId, n);
       } catch (err) {
-        console.error('[risk] could not enqueue the risk job', (err as Error).message);
+        log.error({ err }, 'could not enqueue the risk job');
         return false;
       }
       await store.writeAudit(

@@ -32,7 +32,7 @@ export default defineConfig({
       // The queue worker has no HTTP port, so wait for its log line instead of a URL.
       command: 'pnpm --filter @kyc-setu/api run dev:worker',
       cwd: '../..',
-      wait: { stdout: /listening on queue "verification"/ },
+      wait: { stdout: /"queue":"verification"[^\n]*"msg":"listening"/ },
       timeout: 120_000,
     },
     {

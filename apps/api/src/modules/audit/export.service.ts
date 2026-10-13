@@ -28,6 +28,9 @@ import type { ExportBucket } from './export.bucket.js';
 import type { AuditExportStore, ExportRecord } from './export.store.js';
 import { buildPacket, type PacketContent } from './packet.js';
 import type { ExportSigner } from './signing.js';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('export');
 
 /** Puts a job on the audit queue. */
 export interface AuditEnqueuer {
@@ -317,7 +320,7 @@ export function createExportService(deps: ExportServiceDeps) {
             reason: 'ENQUEUE_FAILED',
           }),
         );
-        console.error('[audit] could not queue an export', (err as Error).message);
+        log.error({ err }, 'could not queue an export');
         throw new AppError(
           503,
           'EXPORT_UNAVAILABLE',

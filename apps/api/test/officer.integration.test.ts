@@ -7,7 +7,7 @@ import type { Worker } from 'bullmq';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@kyc-setu/db';
-import { AI_SERVICE_EMAIL } from '@kyc-setu/shared';
+import { AI_SERVICE_EMAIL, AUDIT_ACTIONS } from '@kyc-setu/shared';
 import { createS3Client, ensureBucket } from '@kyc-setu/shared/storage';
 import { parsePiiKey } from '@kyc-setu/shared/pii';
 import { createApp } from '../src/app.js';
@@ -57,7 +57,6 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
   let officerOne: Agent;
   let officerTwo: Agent;
   let ids: { one: string; two: string; ai: string };
-  const stdout: string[] = [];
 
   beforeAll(async () => {
     await ensureBucket(s3, bucket);
@@ -600,20 +599,18 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
   it('a notification that cannot be sent does not undo the decision, and the worker keeps going', async () => {
     const { sessionId } = await underReview();
     await claim(officerOne, sessionId);
-    const lines: string[] = [];
-    const original = console.log;
-    console.log = (...a: unknown[]) => void (stdout.push(a.join(' ')), lines.push(a.join(' ')));
-    try {
-      await decide(officerOne, sessionId, { decision: 'APPROVE' });
-      await until(
-        async () => lines.some((l) => l.includes('[notify]') && l.includes(sessionId)),
-        'the stdout notification',
-      );
-    } finally {
-      console.log = original;
-    }
-    const line = lines.find((l) => l.includes('[notify]') && l.includes(sessionId)) ?? '';
-    expect(line).toMatch(/to=c\*\*\*@example\.com template=KYC_APPROVED/);
+    await decide(officerOne, sessionId, { decision: 'APPROVE' });
+    await until(
+      async () =>
+        (await prisma.auditLog.count({
+          where: { entityId: sessionId, action: AUDIT_ACTIONS.NOTIFICATION_SENT },
+        })) === 1,
+      'the stdout notification',
+    );
+    const sent = await prisma.auditLog.findFirstOrThrow({
+      where: { entityId: sessionId, action: AUDIT_ACTIONS.NOTIFICATION_SENT },
+    });
+    expect(sent.metadata).toMatchObject({ template: 'KYC_APPROVED', channel: 'stdout' });
     expect(await statusOf(sessionId)).toBe('APPROVED');
   });
 });

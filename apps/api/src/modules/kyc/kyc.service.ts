@@ -31,6 +31,9 @@ import {
 } from './personal-codec.js';
 import { maskForRole } from '../pii/mask.js';
 import { TERMINAL, type KycStore, type SessionPatch, type SessionRecord } from './store.js';
+import { loggerFor } from '../../observability/logger.js';
+
+const log = loggerFor('kyc');
 
 export interface RequestMeta {
   ip: string | null;
@@ -247,7 +250,8 @@ export function createKycService(deps: KycServiceDeps) {
 
       const dev = env.NODE_ENV !== 'production';
       // Dev stand-in for an SMS provider. Masked destination; never logged in production.
-      if (dev) console.log(`[dev-otp] session=${id} to=${maskMobile(input.mobile)} code=${code}`);
+      if (dev)
+        log.info({ to: maskMobile(input.mobile), code }, 'dev-otp (stand-in for an SMS provider)');
       return {
         challengeId: challenge.id,
         channel: challenge.channel,
