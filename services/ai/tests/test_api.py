@@ -35,17 +35,36 @@ H = {"X-Internal-Key": KEY}
 BODY = {"documentId": DOC, "signedUrl": URL, "sessionId": SESSION}
 
 
-def test_healthz_reports_model_status(client):
-    body = client.get("/healthz").json()
+def test_healthz_is_liveness_and_needs_no_models(client):
+    app.state.engine = None
+    res = client.get("/healthz")
+    assert res.status_code == 200
+    assert res.json() == {"status": "ok", "service": "ai"}
+
+
+def test_readyz_reports_model_status(client):
+    res = client.get("/readyz")
+    body = res.json()
+    assert res.status_code == 200
     assert body["status"] == "ok" and body["service"] == "ai"
     assert body["models"] == {"detector": "loaded", "en": "loaded", "hi": "loaded"}
     assert {"paddleocr", "opencv"} <= set(body["versions"])
 
 
-def test_healthz_says_loading_until_the_models_are_ready(client):
+def test_readyz_is_503_until_the_models_are_ready(client):
     app.state.engine = None
-    body = client.get("/healthz").json()
+    res = client.get("/readyz")
+    body = res.json()
+    assert res.status_code == 503
     assert body["status"] == "loading" and body["models"]["en"] == "pending"
+
+
+def test_readyz_is_503_and_says_error_when_loading_failed(client):
+    app.state.engine = None
+    app.state.load_error = "weights missing"
+    res = client.get("/readyz")
+    assert res.status_code == 503 and res.json()["status"] == "error"
+    app.state.load_error = None
 
 
 def test_extract_requires_the_internal_key(client):

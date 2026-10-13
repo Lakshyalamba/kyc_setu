@@ -12,6 +12,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="AI_")
 
     env: str = "development"
+    # Error reporting. Unset = Sentry off and silent.
+    sentry_dsn: str | None = None
+    log_level: str = "INFO"
     # Shared secret the Node worker sends in `X-Internal-Key`. The service can be made to fetch
     # documents, so it must only answer callers that hold this.
     internal_key: str = DEV_INTERNAL_KEY

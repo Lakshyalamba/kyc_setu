@@ -32,5 +32,5 @@ USER app
 EXPOSE 8000
 # Ready only once the models are loaded (the first minute is "loading").
 HEALTHCHECK --interval=10s --timeout=5s --start-period=120s --retries=12 \
-    CMD curl -sf http://localhost:8000/healthz | grep -q '"status":"ok"' || exit 1
+    CMD curl -sf http://localhost:8000/readyz | grep -q '"status":"ok"' || exit 1
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

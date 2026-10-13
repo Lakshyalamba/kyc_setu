@@ -16,6 +16,9 @@ dependencies = [
     "paddleocr>=3.0",
     # PDF page rasterisation (Apache-2.0/BSD; PyMuPDF is AGPL so it is deliberately not used).
     "pypdfium2>=4",
+    "structlog>=26.1.0",
+    "prometheus-client>=0.26.0",
+    "sentry-sdk>=2.72.0",
 ]
 
 [dependency-groups]
