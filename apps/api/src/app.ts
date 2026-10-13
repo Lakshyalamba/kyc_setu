@@ -14,6 +14,7 @@ import { createDevExtractionRouter, createExtractionRouter } from './routes/extr
 import { createAdminRouter } from './routes/admin.js';
 import { createAuditRouter } from './routes/audit.js';
 import { createCustomerStatusRouter } from './routes/customer-status.js';
+import { registerDocs } from './routes/docs.js';
 import { requestContext } from './middleware/requestContext.js';
 import type { QueueDepthSource } from './observability/metrics.js';
 import { createHealthRouter, type DependencyProbes, type HealthProbe } from './routes/health.js';
@@ -100,6 +101,13 @@ export function createApp(deps: AppDeps): Express {
     mount('/dev', createDevExtractionRouter({ extraction, guard }));
     mount('/dev', createDevRiskRouter({ risk, guard }));
   }
+
+  // The API reference. Always on outside production; in production only with API_DOCS_ENABLED=true.
+  registerDocs(app, {
+    enabled: env.NODE_ENV !== 'production' || env.API_DOCS_ENABLED === 'true',
+    version: '0.1.0',
+    serverUrl: env.API_PUBLIC_URL,
+  });
 
   app.use(notFoundHandler);
   app.use(errorHandler);

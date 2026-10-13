@@ -19,6 +19,7 @@
     "demo:risk": "tsx --env-file=../../.env src/scripts/demo-risk.ts"
   },
   "devDependencies": {
+    "@apidevtools/swagger-parser": "^13.1.0",
     "@types/busboy": "^1.5.4",
     "@types/cookie-parser": "^1.4.10",
     "@types/cors": "^2.8.19",
@@ -35,6 +36,7 @@
     "@kyc-setu/db": "workspace:*",
     "@kyc-setu/risk": "workspace:*",
     "@kyc-setu/shared": "workspace:*",
+    "@scalar/api-reference": "^1.74.0",
     "@sentry/node": "^9.47.2",
     "argon2": "^0.45.1",
     "bullmq": "^6.3.11",

@@ -24,6 +24,8 @@ export const errorResponseSchema = z.object({
     code: z.string(),
     message: z.string(),
     details: z.unknown().optional(),
+    /** Quote this when reporting a problem: it finds the request in the logs. Present on unexpected errors. */
+    requestId: z.string().optional(),
   }),
 });
 export type ErrorResponse = z.infer<typeof errorResponseSchema>;

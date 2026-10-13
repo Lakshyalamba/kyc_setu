@@ -55,7 +55,7 @@ export function route<
   spec: RouteSpec<B, Q, R, P>,
   handler: (ctx: RouteContext<B, Q, P>) => Promise<z.input<R>>,
 ): RequestHandler {
-  return async (req, res) => {
+  const wrapped: RequestHandler = async (req, res) => {
     const body = (spec.body ? parseInput(spec.body, req.body, 'body') : undefined) as z.output<B>;
     const query = (
       spec.query ? parseInput(spec.query, req.query, 'query') : undefined
@@ -72,4 +72,6 @@ export function route<
     }
     res.status(spec.status ?? res.statusCode).json(parsed.data);
   };
+  // Kept on the handler so the OpenAPI document is built from the same schemas that validate requests.
+  return Object.assign(wrapped, { routeSpec: spec as RouteSpec<Schema, Schema, Schema, Schema> });
 }

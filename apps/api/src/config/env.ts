@@ -66,6 +66,8 @@ export const envSchema = z
      * into infra/dev-keys/ on first use. In production it is required, and belongs in an HSM or behind a KMS.
      */
     AUDIT_SIGNING_KEY_FILE: z.string().min(1).optional(),
+    /** Serves /docs and /openapi.json. Always on outside production; in production only when this is `true`. */
+    API_DOCS_ENABLED: z.enum(['true', 'false']).optional(),
     /** Error reporting. Unset means Sentry is off and silent. Request bodies on /kyc/* never leave the process. */
     SENTRY_DSN: z.string().url().optional(),
     /** pino level: trace|debug|info|warn|error|silent. Default info (silent under test). */

@@ -9,3 +9,5 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: true
   prisma: true
+  # Decided: its script only prints a Vue 2/3 compatibility notice; the API reference viewer does not need it.
+  vue-demi: false
