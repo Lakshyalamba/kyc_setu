@@ -13,6 +13,12 @@ export function createS3Client(config: StorageConfig): S3Client {
     region: config.region,
     credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
     forcePathStyle: true, // required for MinIO
+    // Without these a request that is accepted and never answered waits for the operating system to give up (about 70 s
+    // on macOS, seen under load as one 5 MB upload in ten stalling for a minute). With them the attempt fails after a few
+    // idle seconds and the SDK retries. `socketTimeout` is idle time, not total time, so a slow transfer is unaffected.
+    // The cause of the stall itself was not found; Docker Desktop's disk under parallel writes is the suspect.
+    requestHandler: { connectionTimeout: 3_000, socketTimeout: 8_000 },
+    maxAttempts: 4,
   });
 }
 
