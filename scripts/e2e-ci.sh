@@ -15,7 +15,8 @@ echo "==> starting the stack"
 make up
 docker compose --profile ai up -d --build --wait ai
 
-echo "==> migrating and seeding"
+echo "==> building the libraries, migrating and seeding"
+pnpm build:libs
 pnpm --filter @kyc-setu/db run migrate:deploy
 pnpm seed --yes
 
