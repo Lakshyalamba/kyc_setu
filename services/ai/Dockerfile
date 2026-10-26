@@ -1,4 +1,4 @@
-FROM python:3.11-slim AS base
+FROM python:3.12-slim AS base
 
 # OpenCV and Paddle need these shared libraries even for headless use.
 RUN apt-get update \
