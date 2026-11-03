@@ -1,6 +1,6 @@
 # Data model
 
-Postgres, through Prisma ([`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma), 15 tables, 11 hand-written
+Postgres, through Prisma ([`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma), 18 tables, 14 hand-written
 migrations in `packages/db/prisma/migrations/`). This page is the map; the schema file has a comment on every table
 that is not obvious. The diagram below is **generated from the schema** (`pnpm docs:erd`) and a test fails if it is stale.
 
@@ -98,6 +98,26 @@ erDiagram
     string requestedById FK
     AuditExportStatus status
   }
+  selfie_captures {
+    string id PK
+    string sessionId FK
+    LivenessMethod livenessMethod
+    string replacedById UK,FK
+  }
+  liveness_results {
+    string id PK
+    string selfieCaptureId UK,FK
+    LivenessMethod method
+    LivenessOutcome result
+    LivenessFailureReason failureReason
+  }
+  face_matches {
+    string id PK
+    string sessionId FK
+    string selfieCaptureId UK,FK
+    string idDocumentId FK
+    FaceMatchDecision decision
+  }
   users ||--o{ kyc_sessions : "user"
   consent_versions |o--o{ kyc_sessions : "consentVersion"
   users ||--o{ otp_challenges : "user"
@@ -115,6 +135,12 @@ erDiagram
   users ||--o{ officer_assignments : "officer"
   users ||--o{ auth_lockouts : "user"
   users ||--o{ audit_exports : "requestedBy"
+  kyc_sessions ||--o{ selfie_captures : "session"
+  selfie_captures |o--o{ selfie_captures : "replacedBy"
+  selfie_captures ||--o{ liveness_results : "selfieCapture"
+  kyc_sessions ||--o{ face_matches : "session"
+  selfie_captures ||--o{ face_matches : "selfieCapture"
+  documents ||--o{ face_matches : "idDocument"
 ```
 
 <!-- erd:end -->
@@ -146,15 +172,18 @@ only; **none** = nothing about a person. Retention periods are those of [retenti
 
 ### The application
 
-| Table               | What a row is                                           | PII  | Notes                                                                                                                                                                                                                                                                                                                                |
-| ------------------- | ------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `kyc_sessions`      | One KYC application                                     | high | `status` and `currentStep` are the state machine ([state-machine.md](state-machine.md)). `personalDetails` is a JSON object whose fields (PAN, Aadhaar, name, date of birth, address, mobile, e-mail) are individually AES-256-GCM encrypted. `expiresAt` is 24 hours after creation and applies until the application is submitted. |
-| `consent_versions`  | One published consent text                              | none | Immutable. A session points at the row it accepted, so the text a customer saw can always be shown. Kept indefinitely.                                                                                                                                                                                                               |
-| `otp_challenges`    | One mobile verification attempt                         | low  | The destination number and a hash of the code (never the code). Five wrong tries or five minutes end it.                                                                                                                                                                                                                             |
-| `documents`         | One uploaded file (PAN, Aadhaar front, back, signature) | high | The file is **not** in the database: it is AES-256-GCM encrypted in the object store, and this row holds the wrapped data key, IV, tag and a SHA-256 of the plaintext. Kept 7 years after the decision.                                                                                                                              |
-| `extractions`       | What OCR read from one document                         | high | `fields` has the structured result with the PAN encrypted inside; `rawTextEncrypted` is the full OCR text, envelope-encrypted; `panNumberHmac` (keyed hash) and `aadhaarNumberLast4` allow duplicate checks without storing the numbers. Raw text kept 90 days.                                                                      |
-| `signed_url_issues` | One grant of a short-lived link to a document           | low  | The row id is the public part of the link; the proxy recomputes a MAC from the row, so a link cannot be reused for another document, purpose or person. Every issue is also audited.                                                                                                                                                 |
-| `biometric_signals` | A face-match score and a liveness result                | low  | Today only the development injector writes these (`source = DEV_INJECTED`); the selfie step that would write real ones is not built. No images or embeddings are stored.                                                                                                                                                             |
+| Table               | What a row is                                           | PII  | Notes                                                                                                                                                                                                                                                                                                                                                              |
+| ------------------- | ------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `kyc_sessions`      | One KYC application                                     | high | `status` and `currentStep` are the state machine ([state-machine.md](state-machine.md)). `personalDetails` is a JSON object whose fields (PAN, Aadhaar, name, date of birth, address, mobile, e-mail) are individually AES-256-GCM encrypted. `expiresAt` is 24 hours after creation and applies until the application is submitted.                               |
+| `consent_versions`  | One published consent text                              | none | Immutable. A session points at the row it accepted, so the text a customer saw can always be shown. Kept indefinitely.                                                                                                                                                                                                                                             |
+| `otp_challenges`    | One mobile verification attempt                         | low  | The destination number and a hash of the code (never the code). Five wrong tries or five minutes end it.                                                                                                                                                                                                                                                           |
+| `documents`         | One uploaded file (PAN, Aadhaar front, back, signature) | high | The file is **not** in the database: it is AES-256-GCM encrypted in the object store, and this row holds the wrapped data key, IV, tag and a SHA-256 of the plaintext. Kept 7 years after the decision.                                                                                                                                                            |
+| `extractions`       | What OCR read from one document                         | high | `fields` has the structured result with the PAN encrypted inside; `rawTextEncrypted` is the full OCR text, envelope-encrypted; `panNumberHmac` (keyed hash) and `aadhaarNumberLast4` allow duplicate checks without storing the numbers. Raw text kept 90 days.                                                                                                    |
+| `signed_url_issues` | One grant of a short-lived link to a document           | low  | The row id is the public part of the link; the proxy recomputes a MAC from the row, so a link cannot be reused for another document, purpose or person. Every issue is also audited.                                                                                                                                                                               |
+| `selfie_captures`   | A selfie: three frames and the best (middle) one        | high | Each picture is its own AES-256-GCM envelope in the object store; the row holds the keys' envelopes. One active capture per session (a partial unique index); a retake keeps the old row via `replacedById`. `livenessMethod = NONE` marks the file-upload fallback. `deviceMeta` is the user agent and screen size, nothing else. Never returned to the customer. |
+| `liveness_results`  | The motion check on one capture                         | low  | `PASSED`, `FAILED` or `INCONCLUSIVE`, a failure reason and the metrics behind it (per-pair SSIM inside the face box, box overlap, sharpness). It is a motion check, not production liveness, and is labelled so everywhere.                                                                                                                                        |
+| `face_matches`      | A selfie compared with the face on the Aadhaar front    | high | The cosine score (0..1), both thresholds in force, the decision, the embedding version, the two aligned 112x112 crops (encrypted, shown to officers) and the embeddings (encrypted, a biometric template). A resubmitted Aadhaar front is compared again; the old row stays.                                                                                       |
+| `biometric_signals` | A face-match score and a liveness result                | low  | Today only the development injector writes these (`source = DEV_INJECTED`); the selfie step that would write real ones is not built. No images or embeddings are stored.                                                                                                                                                                                           |
 
 ### Review
 

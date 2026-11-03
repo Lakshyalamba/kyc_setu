@@ -5,3 +5,4 @@ export * from './verhoeff.js';
 export * from './mask.js';
 export * from './rbac/permissions.js';
 export * from './retention.js';
+export * from './face/thresholds.js';

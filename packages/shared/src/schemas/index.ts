@@ -10,3 +10,4 @@ export * from './risk.js';
 export * from './officer.js';
 export * from './audit.js';
 export * from './admin.js';
+export * from './face.js';

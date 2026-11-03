@@ -94,6 +94,32 @@ enum BiometricSource {
   DEV_INJECTED
 }
 
+/// How the customer proved they were present. NONE = they used the file-upload fallback, so no motion check was possible.
+enum LivenessMethod {
+  MOTION_CHECK
+  NONE
+}
+
+enum LivenessOutcome {
+  PASSED
+  FAILED
+  INCONCLUSIVE
+}
+
+enum LivenessFailureReason {
+  FRAMES_TOO_SIMILAR
+  NO_FACE_IN_FRAME
+  FACE_MOVED_OUT
+  QUALITY_TOO_LOW
+}
+
+/// From the face-match thresholds in packages/shared (the same config the risk engine reads).
+enum FaceMatchDecision {
+  AUTO_PASS
+  REVIEW
+  AUTO_FAIL
+}
+
 enum DecisionType {
   APPROVE
   REJECT
@@ -176,6 +202,8 @@ model KycSession {
   documents      Document[]
   riskAssessments  RiskAssessment[]
   biometricSignals BiometricSignal[]
+  selfieCaptures   SelfieCapture[]
+  faceMatches      FaceMatch[]
   decisions        Decision[]
   assignments      OfficerAssignment[]
 
@@ -250,6 +278,7 @@ model Document {
   replaces        Document[]       @relation("DocumentReplacement")
   signedUrlIssues SignedUrlIssue[]
   extraction      Extraction?
+  faceMatches     FaceMatch[]
 
   // Partial unique index (sessionId, type) WHERE replacedById IS NULL and a DEFERRABLE self-FK
   // live in the migration SQL; Prisma can't express them.
@@ -480,4 +509,84 @@ model AuditExport {
   @@index([sessionId, createdAt])
   @@index([requestedById])
   @@map("audit_exports")
+}
+
+/// A customer's selfie: three frames shot 300 ms apart and a "best" frame (the middle one: chosen by position, not by a
+/// model), each envelope-encrypted like a document. Old rows are kept: a retake sets `replacedById` on the old one.
+/// `livenessMethod = NONE` marks the file-upload fallback (one image, no motion check possible).
+/// Sensitive: a face is as identifying as a document. The frames are never returned to the customer.
+model SelfieCapture {
+  id               String         @id @default(uuid()) @db.Uuid
+  sessionId        String         @db.Uuid
+  /// Object keys of the encrypted frames, in capture order. The best frame is also one of these, stored again under its own key.
+  framesStorageKeys String[]
+  bestFrameKey     String
+  /// One entry per key in framesStorageKeys, in the same order: { wrappedKey, iv, authTag, kmsKeyId } (base64).
+  frameEnvelopes   Json           @db.JsonB
+  livenessMethod   LivenessMethod @default(MOTION_CHECK)
+  /// User agent and screen size, as the browser reports them. Nothing else: no fingerprinting.
+  deviceMeta       Json           @default("{}") @db.JsonB
+  capturedAt       DateTime       @default(now())
+  replacedById     String?        @unique @db.Uuid
+
+  session    KycSession      @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  replacedBy SelfieCapture?  @relation("SelfieReplacement", fields: [replacedById], references: [id], onDelete: Restrict)
+  replaces   SelfieCapture?  @relation("SelfieReplacement")
+  liveness   LivenessResult?
+  faceMatch  FaceMatch[]
+
+  // A partial unique index (sessionId) WHERE replacedById IS NULL lives in the migration SQL.
+  @@index([sessionId, capturedAt])
+  @@map("selfie_captures")
+}
+
+/// The result of the motion check on one capture. Written once, by the worker. It is a motion check, not production
+/// liveness: it catches a photo held up to the camera and little else, and every label that shows it says so.
+model LivenessResult {
+  id              String                 @id @default(uuid()) @db.Uuid
+  selfieCaptureId String                 @unique @db.Uuid
+  method          LivenessMethod         @default(MOTION_CHECK)
+  result          LivenessOutcome
+  failureReason   LivenessFailureReason?
+  /// Per-frame-pair SSIM inside the face box, box overlap between frames, sharpness and brightness of the best frame.
+  metrics         Json                   @db.JsonB
+  modelVersion    String
+  computedAt      DateTime               @default(now())
+
+  selfieCapture SelfieCapture @relation(fields: [selfieCaptureId], references: [id], onDelete: Restrict)
+
+  @@map("liveness_results")
+}
+
+/// The comparison of a selfie with the face on the Aadhaar front. The aligned 112x112 crops are stored encrypted (the
+/// officer review page shows them); so are the embeddings, tagged with `embeddingVersion` so a model upgrade can recompute
+/// old rows. `score` is cosine similarity clamped to 0..1, `threshold` the AUTO_PASS value in force when it was decided.
+model FaceMatch {
+  id               String            @id @default(uuid()) @db.Uuid
+  sessionId        String            @db.Uuid
+  selfieCaptureId  String            @unique @db.Uuid
+  idDocumentId     String            @db.Uuid
+  score            Float
+  threshold        Float
+  /// The AUTO_FAIL boundary in force at the time (below it: AUTO_FAIL; between the two: REVIEW).
+  failThreshold    Float
+  decision         FaceMatchDecision
+  /// Why there is no real comparison, when there is none: no_face_in_id, no_face_in_selfie, ambiguous_selfie.
+  reason           String?
+  /// Detector, recogniser and weights, e.g. "yunet-2023mar+sface-2021dec".
+  embeddingVersion String
+  selfieEmbedding  Bytes?
+  idEmbedding      Bytes?
+  idFaceCropKey    String?
+  selfieFaceCropKey String?
+  /// { idCrop, selfieCrop }: each { wrappedKey, iv, authTag, kmsKeyId } (base64).
+  cropEnvelopes    Json?             @db.JsonB
+  computedAt       DateTime          @default(now())
+
+  session       KycSession    @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  selfieCapture SelfieCapture @relation(fields: [selfieCaptureId], references: [id], onDelete: Restrict)
+  idDocument    Document      @relation(fields: [idDocumentId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, computedAt])
+  @@map("face_matches")
 }
