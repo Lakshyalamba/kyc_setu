@@ -19,3 +19,6 @@ infra/dev-keys/
 
 # Playwright videos, traces and the CI e2e run's output
 test-artifacts/
+
+# Face-model weights are downloaded, not committed (services/ai/scripts/download_face_models.py)
+services/ai/models/

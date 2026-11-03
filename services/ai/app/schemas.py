@@ -93,3 +93,53 @@ class Health(CamelModel):
     service: Literal["ai"] = "ai"
     models: dict[str, str]
     versions: dict[str, str]
+
+
+# ---- faces: mirror of packages/shared/src/schemas/face.ts -------------------------------------------------------------
+
+LivenessOutcome = Literal["PASSED", "FAILED", "INCONCLUSIVE"]
+LivenessFailureReason = Literal["FRAMES_TOO_SIMILAR", "NO_FACE_IN_FRAME", "FACE_MOVED_OUT", "QUALITY_TOO_LOW"]
+FaceMatchReason = Literal["no_face_in_id", "no_face_in_selfie", "ambiguous_selfie"]
+
+
+class MotionCheckRequest(CamelModel):
+    capture_id: str
+    frame_urls: list[str] = Field(min_length=3, max_length=3)
+    best_frame_url: str
+
+
+class MotionCheckMetrics(CamelModel):
+    ssim_pairs: list[float]
+    mean_ssim: float | None
+    box_iou_pairs: list[float]
+    faces_per_frame: list[int]
+    sharpness: float | None
+    brightness: float | None
+
+
+class MotionCheckResponse(CamelModel):
+    capture_id: str
+    method: Literal["MOTION_CHECK"]
+    result: LivenessOutcome
+    failure_reason: LivenessFailureReason | None
+    metrics: MotionCheckMetrics
+    model_version: str
+
+
+class FaceMatchRequest(CamelModel):
+    selfie_capture_id: str
+    selfie_best_url: str
+    id_document_id: str
+    id_document_url: str
+
+
+class FaceMatchResponse(CamelModel):
+    selfie_capture_id: str
+    id_document_id: str
+    score: float = Field(ge=0, le=1)
+    embedding_version: str
+    reason: FaceMatchReason | None
+    id_face_crop_png: str | None
+    selfie_face_crop_png: str | None
+    id_embedding: str | None
+    selfie_embedding: str | None

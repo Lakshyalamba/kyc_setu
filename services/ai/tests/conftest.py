@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -52,3 +53,24 @@ class FakeEngine:
     def read(self, image, *, with_hindi: bool = False) -> list[Line]:  # noqa: ANN001
         self.calls.append(with_hindi)
         return self.lines
+
+
+class FakeFace:
+    """Stands in for the loaded face models where a test is about something else (readiness, routing)."""
+
+    status = {"face-detector": "loaded", "face-recognizer": "loaded"}
+    versions = {"face-embedding": "fake"}
+
+
+@pytest.fixture(scope="session")
+def face_models():
+    """The real YuNet and SFace models. Skipped when the weights are not downloaded, unless REQUIRE_FACE_MODELS=1."""
+    from app.face.models import FaceModelError, load_face_models
+
+    folder = Path(__file__).resolve().parents[1] / "models"
+    try:
+        return load_face_models(os.environ.get("AI_FACE_MODEL_DIR", folder))
+    except FaceModelError as err:
+        if os.environ.get("REQUIRE_FACE_MODELS") == "1":
+            raise
+        pytest.skip(f"face weights not downloaded ({err}); run scripts/download_face_models.py")

@@ -80,6 +80,39 @@ Environment (`AI_*`, see `app/config.py`): `AI_INTERNAL_KEY`, `AI_FETCH_ALLOWED_
   parsers were developed against them. These tests prove the pipeline works; they do not measure accuracy on
   real scans, which have glare, holograms, creases and many more layouts. Never add real documents here.
 
+## Face models (Phase 4)
+
+Two small ONNX files from the OpenCV Zoo, run through the `cv2` that PaddleOCR already installs (`FaceDetectorYN`,
+`FaceRecognizerSF`): no second inference runtime. They are **not committed**. `scripts/download_face_models.py` fetches them,
+checks the SHA-256 below and refuses a file that does not match; the Docker build runs it, so the weights are baked into the image.
+Locally they go in `services/ai/models/` (git-ignored). Checked on 2026-11-03.
+
+| File                                  | What                                              | Size     | SHA-256 (first 16)    | Licence    | Evidence                                                                                          |
+| ------------------------------------- | ------------------------------------------------- | -------- | --------------------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| `face_detection_yunet_2023mar.onnx`   | YuNet: face detector with five landmarks          | 232,589  | `8f2383e4dd3cfbb4`    | MIT        | the OpenCV Zoo directory says "All files in this directory are licensed under MIT License"        |
+| `face_recognition_sface_2021dec.onnx` | SFace: 128-d face embedding, aligned 112x112 input | 38,696,353 | `0ba9fbfa01b5270c`  | Apache-2.0 | the OpenCV Zoo directory says "All files in this directory are licensed under Apache 2.0 License" |
+
+**What is not known.** Neither page states what data the models were trained on. For SFace in particular, face-recognition
+training sets are often scraped from the web, and their own terms (not the weights' licence) may restrict commercial use. For
+anything a bank would deploy, that provenance has to be established first; this repository does not establish it.
+
+**Why not insightface (SCRFD, buffalo_sc, ArcFace).** Its model zoo states that "ALL models are available for non-commercial
+research purposes only". AdaFace and facenet-pytorch ship MIT code but no licence for their weights (trained on WebFace and
+VGGFace2), which would have to be cleared separately. If a weight card changes licence between the date above and the day you pull it,
+update this table; do not ignore it.
+
+**Score convention.** Cosine similarity of two L2-normalised 128-d embeddings, clamped to 0..1 as `max(0, cosine)` (not
+rescaled with `(cosine + 1) / 2`). SFace's own published same-person operating point is a cosine of 0.363. The service returns
+the score and the evidence; the API's worker decides using `packages/shared/src/face/thresholds.ts`.
+
+**What the tests do and do not show.** The face tests run the real models on the synthetic cartoon avatars. A real detector
+finds those, so the plumbing is exercised, but the embedding does not separate cartoons (different avatars score 0.4 to 0.8
+against each other), so no test here says anything about telling real people apart. See `docs/calibration.md`.
+
+**Motion check, not liveness.** `POST /face/liveness` compares three frames shot 300 ms apart inside the face box (SSIM) and
+checks the face stays in frame. It catches a photograph held still in front of the camera. It does not catch a replayed
+video, a mask or a deepfake. Passive liveness models (MiniFASNet and similar) are deliberately out of scope for this phase.
+
 ## Licences
 
 Checked on 2026-10-06 against the installed package metadata (`importlib.metadata`) and, for the models,
@@ -97,6 +130,7 @@ the `license:` field of each downloaded model card.
 | Pillow 12.x                                 | MIT-CMU                                   | package metadata                         |
 | pypdfium2 5.x (PDFium)                      | BSD-3-Clause, Apache-2.0 (plus bundled dependency licences) | package metadata |
 | NumPy 2.x                                   | BSD-3-Clause (and other permissive licences for bundled code) | package metadata |
+| YuNet / SFace weights (see above)            | MIT / Apache-2.0                          | OpenCV Zoo directory READMEs             |
 | FastAPI / Starlette / Pydantic / httpx      | MIT / BSD-3-Clause / MIT / BSD-3-Clause   | package metadata                         |
 
 PyMuPDF (AGPL) was deliberately avoided. Re-check against `uv.lock` and the model cards before

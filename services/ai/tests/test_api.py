@@ -1,5 +1,5 @@
 import pytest
-from conftest import FakeEngine, load_golden, sample_bytes
+from conftest import FakeEngine, FakeFace, load_golden, sample_bytes
 from fastapi.testclient import TestClient
 
 from app import fetch as fetching
@@ -18,6 +18,8 @@ def client(monkeypatch):
     app.dependency_overrides[get_settings] = lambda: Settings(load_models=False, internal_key=KEY)
     app.state.engine = FakeEngine(load_golden("pan"))
     app.state.load_error = None
+    app.state.face = FakeFace()
+    app.state.face_error = None
     seen: dict = {}
 
     def fake_fetch(url, bearer, settings):  # noqa: ANN001
@@ -47,7 +49,13 @@ def test_readyz_reports_model_status(client):
     body = res.json()
     assert res.status_code == 200
     assert body["status"] == "ok" and body["service"] == "ai"
-    assert body["models"] == {"detector": "loaded", "en": "loaded", "hi": "loaded"}
+    assert body["models"] == {
+        "detector": "loaded",
+        "en": "loaded",
+        "hi": "loaded",
+        "face-detector": "loaded",
+        "face-recognizer": "loaded",
+    }
     assert {"paddleocr", "opencv"} <= set(body["versions"])
 
 
@@ -57,6 +65,17 @@ def test_readyz_is_503_until_the_models_are_ready(client):
     body = res.json()
     assert res.status_code == 503
     assert body["status"] == "loading" and body["models"]["en"] == "pending"
+
+
+def test_readyz_is_503_until_the_face_models_are_loaded_too(client):
+    app.state.face = None
+    res = client.get("/readyz")
+    assert res.status_code == 503
+    assert res.json()["status"] == "loading" and res.json()["models"]["face-detector"] == "loading"
+
+
+def test_readyz_names_the_face_model_version(client):
+    assert client.get("/readyz").json()["versions"]["face-embedding"] == "fake"
 
 
 def test_readyz_is_503_and_says_error_when_loading_failed(client):

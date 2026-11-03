@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     ocr_cpu_threads: int | None = None
     ocr_enable_mkldnn: bool = False  # oneDNN is off by default: it fails on Linux x86-64 (see app/vision/ocr.py)
 
+    # ---- faces (YuNet detector + SFace recogniser; see app/face and README.md) ------------------------------------------
+    face_model_dir: str = "models"
+    face_min_confidence: float = 0.6
+    # Motion check. Frames are three shots 300 ms apart.
+    liveness_max_mean_ssim: float = 0.98  # above this the frames are the same picture: a photo of a photo
+    liveness_min_box_iou: float = 0.4  # below this the face left the frame and came back
+    liveness_central_margin: float = 0.15  # a face centre must lie inside the middle (1 - 2 * margin) of the frame
+    liveness_min_sharpness: float = 15.0  # webcam selfies are softer than document scans
+    liveness_min_brightness: float = 50.0
+    liveness_max_brightness: float = 235.0
+    # An ID card photo is a few dozen pixels wide in a phone picture of the card; the selfie must hold one dominant face.
+    ambiguous_face_ratio: float = 0.6  # a second face this fraction of the largest makes the selfie ambiguous
+
     max_pixels: int = 40_000_000
     pdf_render_dpi: int = 200
     # Tests turn this off and inject a fake OCR engine.

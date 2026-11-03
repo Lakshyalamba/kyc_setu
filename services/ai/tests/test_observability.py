@@ -45,7 +45,7 @@ def test_extract_logs_carry_the_session_id_and_never_the_signed_url(client, caps
 def test_metrics_exposes_the_expected_names(client):
     client.post("/extract/pan", json=BODY, headers=H)
     text = client.get("/metrics").text
-    for name in ("ai_extractions_total", "ai_extract_latency_seconds", "ai_match_latency_seconds",
+    for name in ("ai_extractions_total", "ai_extract_latency_seconds", "ai_face_latency_seconds",
                  "ai_http_request_duration_seconds"):
         assert f"# TYPE {name} " in text
     assert 'ai_extractions_total{document_type="PAN",outcome="ok"}' in text

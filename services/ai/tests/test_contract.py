@@ -43,3 +43,15 @@ def test_pipeline_output_has_the_same_shape_as_the_sample(doc_type, sample, cont
 
     assert shape(out) == shape(reference)
     assert out["status"] == "ok"
+
+
+FACE_SAMPLES = sorted(p.name for p in CONTRACTS.glob("face-*.json"))
+
+
+@pytest.mark.parametrize("name", FACE_SAMPLES)
+def test_face_sample_validates_and_round_trips(name):
+    from app.schemas import FaceMatchResponse, MotionCheckResponse
+
+    raw = json.loads((CONTRACTS / name).read_text())
+    model = MotionCheckResponse if name.startswith("face-liveness") else FaceMatchResponse
+    assert model.model_validate(raw).model_dump(by_alias=True) == raw

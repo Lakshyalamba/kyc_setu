@@ -1,0 +1,11 @@
+{
+  "selfieCaptureId": "3f2c9a1e-5b7d-4e8a-9c01-2d4f6a8b0c13",
+  "idDocumentId": "7b1d3c5e-1111-4222-8333-444455556666",
+  "score": 0,
+  "embeddingVersion": "yunet-2023mar+sface-2021dec",
+  "reason": "no_face_in_id",
+  "idFaceCropPng": null,
+  "selfieFaceCropPng": null,
+  "idEmbedding": null,
+  "selfieEmbedding": null
+}

@@ -3,6 +3,11 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { extractResponseSchema, extractionSummaryDtoSchema } from './extraction.js';
 import { loginRequestSchema, signupRequestSchema } from './auth.js';
+import {
+  faceMatchResponseSchema,
+  motionCheckResponseSchema,
+  selfieStatusResponseSchema,
+} from './face.js';
 
 describe('auth schemas', () => {
   it('normalises email and enforces password length on signup', () => {
@@ -14,6 +19,27 @@ describe('auth schemas', () => {
   });
   it('does not enforce min length on login', () => {
     expect(loginRequestSchema.safeParse({ email: 'a@b.com', password: 'x' }).success).toBe(true);
+  });
+});
+
+describe('AI face contract samples (/contracts, shared with the Python tests)', () => {
+  const dir = path.resolve(import.meta.dirname, '../../../../contracts');
+  const files = readdirSync(dir).filter((f) => f.startsWith('face-') && f.endsWith('.json'));
+
+  it.each(files)('%s validates against the zod contract', (file) => {
+    const json: unknown = JSON.parse(readFileSync(path.join(dir, file), 'utf8'));
+    const schema = file.startsWith('face-liveness')
+      ? motionCheckResponseSchema
+      : faceMatchResponseSchema;
+    const result = schema.safeParse(json);
+    expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
+  });
+
+  it('rejects a face score outside 0..1 and a customer status that carries a score', () => {
+    const base = JSON.parse(readFileSync(path.join(dir, 'face-match.ok.json'), 'utf8')) as object;
+    expect(faceMatchResponseSchema.safeParse({ ...base, score: 1.2 }).success).toBe(false);
+    expect(Object.keys(selfieStatusResponseSchema.shape)).not.toContain('score');
+    expect(Object.keys(selfieStatusResponseSchema.shape.faceMatch.shape)).not.toContain('score');
   });
 });
 

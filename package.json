@@ -16,7 +16,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc -b && pnpm --filter @kyc-setu/web run typecheck",
     "test": "pnpm build:libs && pnpm -r --workspace-concurrency=1 --if-present run test && pnpm test:ai",
-    "test:ai": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m \"not ocr\"",
+    "test:ai": "cd services/ai && uv run python scripts/download_face_models.py && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m \"not ocr\"",
     "db:generate": "pnpm --filter @kyc-setu/db run generate",
     "db:migrate": "pnpm --filter @kyc-setu/db run migrate",
     "db:validate": "pnpm --filter @kyc-setu/db run validate",
@@ -29,7 +29,7 @@
     "demo:docs": "pnpm build:libs && pnpm --filter @kyc-setu/api run demo:docs --",
     "test:ai:ocr": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m ocr",
     "test:coverage": "pnpm build:libs && pnpm -r --workspace-concurrency=1 --if-present run test:coverage && pnpm --filter @kyc-setu/web run test && pnpm coverage:ai",
-    "coverage:ai": "cd services/ai && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m \"not ocr\" --cov=app/vision/parsers --cov-report=term --cov-fail-under=70",
+    "coverage:ai": "cd services/ai && uv run python scripts/download_face_models.py && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m \"not ocr\" --cov=app/vision/parsers --cov-report=term --cov-fail-under=70",
     "consent:revise": "pnpm build:libs && pnpm --filter @kyc-setu/api run consent:revise --",
     "audit:chain": "pnpm build:libs && pnpm --filter @kyc-setu/api run audit:chain",
     "demo:risk": "pnpm build:libs && pnpm --filter @kyc-setu/api run demo:risk --"

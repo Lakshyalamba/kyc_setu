@@ -1,0 +1,15 @@
+{
+  "captureId": "3f2c9a1e-5b7d-4e8a-9c01-2d4f6a8b0c13",
+  "method": "MOTION_CHECK",
+  "result": "FAILED",
+  "failureReason": "FRAMES_TOO_SIMILAR",
+  "metrics": {
+    "ssimPairs": [1.0, 1.0],
+    "meanSsim": 1.0,
+    "boxIouPairs": [1.0, 1.0],
+    "facesPerFrame": [1, 1, 1],
+    "sharpness": null,
+    "brightness": null
+  },
+  "modelVersion": "motion-check-1:yunet-2023mar"
+}

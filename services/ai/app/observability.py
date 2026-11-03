@@ -41,10 +41,11 @@ extract_latency = Histogram(
     buckets=(0.25, 0.5, 1, 2, 5, 10, 20, 40, 60),
     registry=registry,
 )
-match_latency = Histogram(
-    "ai_match_latency_seconds",
-    "Time spent on a /match call. Today this is the name/date-of-birth comparison stub; face matching is not built.",
-    buckets=(0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1),
+face_latency = Histogram(
+    "ai_face_latency_seconds",
+    "Time spent on a face call (the motion check or the face match), excluding nothing: fetching the images is included",
+    ["step"],
+    buckets=(0.05, 0.1, 0.25, 0.5, 1, 2, 5, 10),
     registry=registry,
 )
 
