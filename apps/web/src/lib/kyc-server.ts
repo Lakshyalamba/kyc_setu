@@ -48,6 +48,19 @@ export async function requireStep(step: KycStep): Promise<KycSessionDto> {
   return session;
 }
 
+/**
+ * The selfie page is open from the moment the documents are submitted until the application is: the server moves the
+ * session's step on to REVIEW as soon as a selfie is stored, but the checks that follow can still ask for a retake here.
+ */
+export async function requireSelfieStep(): Promise<KycSessionDto> {
+  await requireCustomer();
+  const session = await getCurrentKycSession();
+  if (!session) redirect('/kyc');
+  const open = ['DOCS_UPLOADED', 'DOCS_EXTRACTED', 'SELFIE_CAPTURED'].includes(session.status);
+  if (!open) redirect(stepPath(session.currentStep));
+  return session;
+}
+
 export async function getCurrentConsent(): Promise<ConsentVersionDto> {
   const api = await serverApi();
   const { consent } = await api('/kyc/consent/current', { schema: consentCurrentResponseSchema });

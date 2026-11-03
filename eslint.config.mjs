@@ -12,6 +12,7 @@ export default tseslint.config(
       'services/ai/**',
       '**/next-env.d.ts',
       'packages/db/prisma/migrations/**',
+      'apps/web/public/mediapipe/**',
     ],
   },
   js.configs.recommended,

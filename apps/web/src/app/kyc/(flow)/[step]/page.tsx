@@ -5,10 +5,12 @@ import { ContactStep } from '@/components/kyc/contact-step';
 import { StatusView } from '@/components/kyc/status-view';
 import { PersonalStep } from '@/components/kyc/personal-step';
 import { DocumentsStep } from '@/components/kyc/documents-step';
+import { SelfieStep } from '@/components/kyc/selfie-step';
 import {
   getCurrentConsent,
   getCustomerStatus,
   getSessionDocuments,
+  requireSelfieStep,
   requireStep,
 } from '@/lib/kyc-server';
 import { stepFromSlug } from '@/lib/kyc-steps';
@@ -20,7 +22,11 @@ export default async function KycStepPage({ params }: { params: Promise<{ step: 
   const step = stepFromSlug(slug);
   if (!step) notFound();
 
-  // Redirects to the session's real current step if this isn't it.
+  // Redirects to the session's real current step if this isn't it. The selfie page has its own, wider, rule.
+  if (step === 'SELFIE') {
+    const session = await requireSelfieStep();
+    return <SelfieStep key={session.id} sessionId={session.id} sessionStatus={session.status} />;
+  }
   const session = await requireStep(step);
 
   switch (step) {

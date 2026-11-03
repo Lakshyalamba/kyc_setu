@@ -10,6 +10,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { kycClient } from '@/lib/kyc-api';
+import { selfieClient } from '@/lib/selfie-api';
 
 const POLL_MS = 20_000;
 /** Statuses that are about to move on their own (documents being read, application being checked). */
@@ -30,18 +31,26 @@ export function StatusView({ initial }: { initial: CustomerStatusResponse }) {
       try {
         const next = await kycClient.status();
         if (stopped) return;
+        // A failed selfie check that still has its one retake on offer: that choice is made on the selfie page.
+        if (next.status === 'SELFIE_CAPTURED') {
+          const selfie = await selfieClient.status(next.sessionId).catch(() => null);
+          if (stopped) return;
+          if (selfie?.canRetake) return void router.replace('/kyc/selfie');
+        }
         setStatus(next);
         setCheckedAt(new Date());
       } catch {
         /* a failed poll is not worth an error; the next one will do */
       }
     };
+    // Coming back to a selfie whose check wants a decision should not wait twenty seconds to say so.
+    if (initial.status === 'SELFIE_CAPTURED') void tick();
     const t = setInterval(() => void tick(), POLL_MS);
     return () => {
       stopped = true;
       clearInterval(t);
     };
-  }, []);
+  }, [router, initial.status]);
 
   useEffect(() => {
     if (status.status === 'APPROVED') router.replace('/kyc/done');
