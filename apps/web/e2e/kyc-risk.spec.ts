@@ -1,11 +1,12 @@
 /**
  * Phase 5, the customer's side: after the automated checks the customer sees "under review" and NOTHING about
- * the outcome. Needs the real AI service (`make ai`). Face match and liveness come from the dev-only injector,
- * because the selfie step (Phase 4) does not exist yet.
+ * the outcome. Needs the AI service with its face stand-in (`make ai-stub`): the selfie is taken through the screen,
+ * and the stand-in says what the face match and the motion check found.
  */
 import { expect, test, type Browser } from '@playwright/test';
 import { API_URL, prisma } from './db';
 import { newEmail, requireAiService, submitDocuments } from './helpers';
+import { installFakeCamera, setFaceOutcome, takeSelfieInUi } from './selfie-support';
 
 test.beforeAll(requireAiService);
 
@@ -22,24 +23,17 @@ test('the customer ends on an "under review" screen that shows nothing about ris
   page,
   browser,
 }) => {
+  await installFakeCamera(page);
   const session = await submitDocuments(page, newEmail(), {
     pan: 'pan.png',
     front: 'aadhaar-front.png',
     back: 'aadhaar-back.png',
   });
 
-  // Wait for OCR, then stand in for the selfie step with a mismatching face.
-  await expect
-    .poll(
-      async () => (await prisma.kycSession.findUniqueOrThrow({ where: { id: session.id } })).status,
-      { timeout: 60_000 },
-    )
-    .toBe('DOCS_EXTRACTED');
+  // The selfie, through the screen, with a face that does not match the Aadhaar photo; the customer carries on with it.
+  await setFaceOutcome({ score: 0.18, motionPasses: true });
+  await takeSelfieInUi(page);
   const officer = await officerContext(browser);
-  const inject = await officer.request.post(`${API_URL}/dev/sessions/${session.id}/biometrics`, {
-    data: { faceMatch: { score: 0.18, modelVersion: 'e2e' }, liveness: { passed: true } },
-  });
-  expect(inject.ok()).toBe(true);
 
   await expect
     .poll(

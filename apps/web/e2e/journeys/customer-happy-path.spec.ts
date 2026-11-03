@@ -3,15 +3,16 @@
  *
  * Sign up, verify a mobile number, accept the consent text, type their details, upload a PAN card, both sides of an
  * Aadhaar card and a signature (the cards are invented: see scripts/sample-docs), and wait while the real OCR service
- * reads them. The selfie step is not built, so the development signal injector stands in for it, with a face that matches
- * and a liveness check that passes; the customer ends on the "under review" screen with a reference id and no trace of
- * a risk outcome. Needs the AI service (`make ai`).
+ * reads them. The selfie is taken through the screen (a canvas for a camera), with the AI service's stand-in saying the face
+ * matches and the motion check passes; the customer ends on the "under review" screen with a reference id and no trace of
+ * a risk outcome. Needs the AI service with its face stand-in (`make ai-stub`).
  *
  * Run with a recording: `E2E_VIDEO=on pnpm --filter @kyc-setu/web exec playwright test e2e/journeys/customer-happy-path`.
  */
 import { expect, test } from '@playwright/test';
-import { API_URL, prisma } from '../db';
+import { prisma } from '../db';
 import { MOBILE, newEmail, reachPersonalStep, requireAiService, sample, signUp } from '../helpers';
+import { installFakeCamera, setFaceOutcome, takeSelfieInUi } from '../selfie-support';
 
 test.beforeAll(requireAiService);
 
@@ -28,9 +29,9 @@ const card = (name: string) => `personas/kavita-nair/${name}.png`;
 
 test('a customer signs up, uploads their documents and ends up waiting for an officer', async ({
   page,
-  browser,
 }) => {
   const email = newEmail();
+  await installFakeCamera(page);
   await signUp(page, email);
   await reachPersonalStep(page, email);
 
@@ -63,27 +64,9 @@ test('a customer signs up, uploads their documents and ends up waiting for an of
   const session = await prisma.kycSession.findFirstOrThrow({ where: { userId: user.id } });
   expect(MOBILE).toMatch(/^\d{10}$/);
 
-  // The real OCR service reads the three cards.
-  await expect
-    .poll(
-      async () => (await prisma.kycSession.findUniqueOrThrow({ where: { id: session.id } })).status,
-      {
-        timeout: 90_000,
-      },
-    )
-    .toBe('DOCS_EXTRACTED');
-
-  // No selfie step yet: the development injector records the signals a matching face and a passed liveness check would.
-  const officer = await browser.newContext();
-  const login = await officer.request.post(`${API_URL}/auth/officer/login`, {
-    data: { email: 'priya.officer@kycsetu.dev', password: 'password123' },
-  });
-  expect(login.ok()).toBe(true);
-  const injected = await officer.request.post(`${API_URL}/dev/sessions/${session.id}/biometrics`, {
-    data: { faceMatch: { score: 0.94, modelVersion: 'e2e' }, liveness: { passed: true } },
-  });
-  expect(injected.ok()).toBe(true);
-  await officer.close();
+  // The real OCR service reads the three cards, then the selfie screen opens; the face matches.
+  await setFaceOutcome({ score: 0.94, motionPasses: true });
+  await takeSelfieInUi(page);
 
   await expect
     .poll(

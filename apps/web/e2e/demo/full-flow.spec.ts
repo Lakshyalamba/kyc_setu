@@ -4,18 +4,19 @@
  *   pnpm demo:record        (runs this, then stitches the clips with scripts/make-demo-gif.sh)
  *
  * It plays the story once, in four short recordings (one browser context each, so each has its own video):
- *   1  a customer on a phone: sign up, verify mobile, consent, details, four documents, ends at the selfie step
- *   1b the same customer after the OCR service has read the cards: "under review"
+ *   1  a customer on a phone: sign up, verify mobile, consent, details, four documents, the selfie
+ *   1b the same customer later: "under review"
  *   2  an officer: sign in, the queue, the review page, approve
  *   3  the customer again: the application is approved (signing in again, rather than waiting for the page to poll)
  *   4  an auditor: verify the audit chain
- * The selfie step is not built, so the second recording is made after a development endpoint has recorded the
- * signals it would have produced. The pauses are only so that the video can be read.
+ * The selfie is taken on camera (a canvas stands in for it) with the AI service's face stand-in (`make ai-stub`) saying the
+ * face matches. The pauses are only so that the video can be read.
  */
 import path from 'node:path';
 import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test';
-import { API_URL, prisma } from '../db';
+import { prisma } from '../db';
 import { MOBILE, PASSWORD, newEmail, requireAiService, sample, signUp } from '../helpers';
+import { installFakeCamera, setFaceOutcome, takeSelfieInUi } from '../selfie-support';
 
 test.skip(
   process.env['E2E_DEMO'] !== '1',
@@ -57,6 +58,8 @@ test('the demo', async ({ browser }) => {
   // ---- 1: the customer, on a phone ---------------------------------------------------------------------------
   phone = await recorded(browser, '1-customer', PHONE);
   let page = phone.page;
+  await installFakeCamera(page);
+  await setFaceOutcome({ score: 0.94, motionPasses: true });
   await page.goto('/');
   await beat(page, 1200);
   await signUp(page, email);
@@ -109,29 +112,17 @@ test('the demo', async ({ browser }) => {
   await beat(page, 1500);
   await page.getByRole('button', { name: 'Continue to Selfie' }).click();
   await expect(page).toHaveURL(/\/kyc\/selfie$/);
-  await beat(page, 2000);
+  await beat(page, 1500);
+  // The OCR service reads the cards, then the camera is offered.
+  await expect(page.getByTestId('selfie-intro')).toBeVisible({ timeout: 90_000 });
+  await beat(page, 1800);
+  await takeSelfieInUi(page);
+  await beat(page, 1500);
   await phone.context.close();
 
-  // ---- the OCR service reads the cards; a development endpoint stands in for the selfie step -------------------
+  // ---- the checks finish and the application is under review ---------------------------------------------------
   const user = await prisma.user.findUniqueOrThrow({ where: { email } });
   const session = await prisma.kycSession.findFirstOrThrow({ where: { userId: user.id } });
-  await expect
-    .poll(
-      async () => (await prisma.kycSession.findUniqueOrThrow({ where: { id: session.id } })).status,
-      {
-        timeout: 90_000,
-      },
-    )
-    .toBe('DOCS_EXTRACTED');
-  const dev = await browser.newContext();
-  await dev.request.post(`${API_URL}/auth/officer/login`, {
-    data: { email: 'priya.officer@kycsetu.dev', password: PASSWORD },
-  });
-  const injected = await dev.request.post(`${API_URL}/dev/sessions/${session.id}/biometrics`, {
-    data: { faceMatch: { score: 0.94, modelVersion: 'demo' }, liveness: { passed: true } },
-  });
-  expect(injected.ok()).toBe(true);
-  await dev.close();
   await expect
     .poll(
       async () => (await prisma.kycSession.findUniqueOrThrow({ where: { id: session.id } })).status,
