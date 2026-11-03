@@ -161,6 +161,7 @@ export function buildServices(deps: ServiceDeps): Services {
     extractionStore: deps.extractionStore,
     riskStore: deps.riskStore,
     selfieStore: deps.selfieStore,
+    selfie,
     docs,
     enqueuer: deps.enqueuer,
     kms,

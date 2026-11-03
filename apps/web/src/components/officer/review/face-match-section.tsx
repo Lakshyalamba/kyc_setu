@@ -52,10 +52,17 @@ function FaceCard({
   );
 }
 
+const REASON_TEXT: Record<string, string> = {
+  FRAMES_TOO_SIMILAR: 'the three frames are almost identical (no natural movement)',
+  NO_FACE_IN_FRAME: 'no face was found in one of the frames',
+  FACE_MOVED_OUT: 'the face moved out of the picture between frames',
+  QUALITY_TOO_LOW: 'the picture was too dark or too blurry to judge',
+};
+
 export function FaceMatchSection() {
   const { payload } = useReview();
   const { faceMatch, liveness } = payload;
-  const livenessFailed = liveness.available && !liveness.passed;
+  const motionFailed = liveness.available && !liveness.passed;
 
   let verdict: { label: string; tone: 'high' | 'medium' | 'low' } | null = null;
   if (faceMatch.available) {
@@ -75,7 +82,7 @@ export function FaceMatchSection() {
           {faceMatch.available && (
             <span
               className="cursor-help text-xs text-muted-foreground underline decoration-dotted"
-              title={`Model: ${faceMatch.modelVersion ?? 'unknown'} · source: ${faceMatch.source === 'DEV_INJECTED' ? 'dev-injected signal (no selfie pipeline yet)' : 'selfie pipeline'}`}
+              title={`Embedding model: ${faceMatch.modelVersion ?? 'unknown'}`}
               data-testid="face-model"
             >
               model details
@@ -88,23 +95,23 @@ export function FaceMatchSection() {
             title="Photo on Aadhaar"
             src={faceMatch.available ? faceMatch.aadhaarCropUrl : null}
             alt="Face cropped from the Aadhaar card"
-            empty="Not cropped yet. The selfie step stores aligned crops."
+            empty="No face crop was stored."
           />
           <FaceCard
             title="Selfie"
             src={faceMatch.available ? faceMatch.selfieCropUrl : null}
             alt="Customer selfie, aligned"
-            empty="No selfie on file."
+            empty="No selfie crop was stored."
             banner={
-              livenessFailed ? (
+              motionFailed ? (
                 <p
                   role="alert"
                   data-testid="liveness-banner"
                   className="rounded border border-risk-high/40 bg-risk-high/10 px-2 py-1 text-xs font-medium text-risk-high"
                 >
-                  Liveness check failed
+                  Motion check did not pass
                   {liveness.available && liveness.failureReason
-                    ? `: ${liveness.failureReason}`
+                    ? `: ${REASON_TEXT[liveness.failureReason] ?? liveness.failureReason}`
                     : ' (no reason recorded)'}
                 </p>
               ) : null
@@ -126,12 +133,12 @@ export function FaceMatchSection() {
               >
                 {faceMatch.score.toFixed(2)}
               </p>
-              <p className="text-xs text-muted-foreground">similarity, 0 to 1</p>
+              <p className="text-xs text-muted-foreground">cosine similarity, 0 to 1</p>
             </div>
             {verdict && <Badge tone={verdict.tone}>{verdict.label}</Badge>}
             <p className="text-xs text-muted-foreground" data-testid="face-threshold">
               Threshold {faceMatch.thresholds.fail.toFixed(2)} · borderline up to{' '}
-              {faceMatch.thresholds.borderline.toFixed(2)}
+              {faceMatch.thresholds.borderline.toFixed(2)} · not yet calibrated on real faces
             </p>
           </div>
         ) : (
@@ -139,21 +146,32 @@ export function FaceMatchSection() {
             No face match has been recorded for this application yet.
           </p>
         )}
-        <p className="text-xs text-muted-foreground" data-testid="liveness-line">
-          Liveness: {liveness.available ? (liveness.passed ? 'passed' : 'failed') : 'not recorded'}
+
+        <div className="space-y-1.5 border-t pt-3" data-testid="motion-check">
+          <p className="text-xs font-medium text-muted-foreground uppercase">Motion check</p>
+          <p className="text-sm" data-testid="liveness-line">
+            {liveness.available
+              ? liveness.passed
+                ? 'Passed: the frames show natural movement.'
+                : 'Did not pass.'
+              : 'Not performed: the customer uploaded a photo instead of using the camera.'}
+          </p>
           {liveness.available && liveness.frameUrls.length > 0 && (
-            <span className="mt-2 flex gap-1">
+            <div className="flex gap-1">
               {liveness.frameUrls.map((f, i) => (
                 <img
                   key={f.url}
                   src={f.url}
                   alt={`Motion check frame ${i + 1}`}
-                  className="h-16 rounded border"
+                  className="h-20 rounded border"
                 />
               ))}
-            </span>
+            </div>
           )}
-        </p>
+          <p className="text-xs text-muted-foreground" data-testid="motion-disclaimer">
+            Motion check is not production-grade liveness. Use judgment.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );

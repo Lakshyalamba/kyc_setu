@@ -45,7 +45,9 @@ import type { KycStore, SessionRecord } from '../kyc/store.js';
 import { buildRiskInput } from '../risk/inputs.js';
 import { toAssessmentDto } from '../risk/risk.service.js';
 import type { RiskStore } from '../risk/store.js';
+import type { SelfieSlot } from '../selfie/selfie.service.js';
 import { activeFrontId, biometricsOf, type BiometricRecord } from '../selfie/readiness.js';
+import type { SelfieService } from '../selfie/selfie.service.js';
 import type { SelfieStore } from '../selfie/store.js';
 import type {
   AssignmentRecord,
@@ -72,6 +74,8 @@ export interface OfficerServiceDeps {
   extractionStore: ExtractionStore;
   riskStore: RiskStore;
   selfieStore: SelfieStore;
+  /** Issues the officer's links to the selfie frames and the aligned crops. */
+  selfie: Pick<SelfieService, 'issueOfficerLink'>;
   docs: DocumentsService;
   enqueuer: VerificationEnqueuer;
   kms: KmsClient;
@@ -407,6 +411,7 @@ export function createOfficerService(deps: OfficerServiceDeps) {
       extractions,
       comparison,
       risk: assessment ? toAssessmentDto(assessment) : null,
+      bio,
       ...toFaceAndLiveness(bio),
     };
   }
@@ -688,9 +693,32 @@ export function createOfficerService(deps: OfficerServiceDeps) {
           previewUrl: await docs.issueOfficerUrl(actor.userId, d, meta),
         })),
       );
+      // The aligned crops and the three motion-check frames, as links of the same kind: short-lived, one officer, audited.
+      const selfieLink = (slot: SelfieSlot) =>
+        deps.selfie.issueOfficerLink(actor.userId, g.bio!.captureId, slot, sessionId);
+      const faceMatch =
+        g.faceMatch.available && g.bio?.face?.hasCrops
+          ? {
+              ...g.faceMatch,
+              aadhaarCropUrl: await selfieLink('crop:id'),
+              selfieCropUrl: await selfieLink('crop:selfie'),
+            }
+          : g.faceMatch;
+      const liveness =
+        g.liveness.available && g.bio?.livenessMethod === 'MOTION_CHECK'
+          ? {
+              ...g.liveness,
+              frameUrls: await Promise.all(
+                (['frame:0', 'frame:1', 'frame:2'] as const).map(selfieLink),
+              ),
+            }
+          : g.liveness;
       await store.writeAudit(
         audit(actor, AUDIT_ACTIONS.OFFICER_REVIEW_OPENED, sessionId, {
-          signedUrlCount: documents.length,
+          signedUrlCount:
+            documents.length +
+            (faceMatch.available && faceMatch.aadhaarCropUrl ? 2 : 0) +
+            (liveness.available ? liveness.frameUrls.length : 0),
         }),
       );
 
@@ -750,8 +778,8 @@ export function createOfficerService(deps: OfficerServiceDeps) {
         documents,
         extractions: g.extractions.map(toReviewExtraction),
         comparison: g.comparison,
-        faceMatch: g.faceMatch,
-        liveness: g.liveness,
+        faceMatch,
+        liveness,
         risk: g.risk,
         audit: auditRows.map((r) => toAuditEntry(r, users)),
         decisions: decisions.map((d) => ({

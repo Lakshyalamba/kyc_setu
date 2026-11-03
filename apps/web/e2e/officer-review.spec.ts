@@ -3,8 +3,8 @@
  * follow. Every run seeds brand-new applications (new customers, new identity numbers), so nothing depends on, or
  * disturbs, what is already in the database.
  *
- * Face match and liveness come from the dev-only signal injector (the selfie step, Phase 4, does not exist yet), and
- * the documents are "read" by the seeder's canned OCR. Only the resubmission test needs the real AI service, because
+ * The seeder uploads a real selfie and has its canned AI answer the face match and the motion check; the documents are
+ * "read" by the same canned OCR. Only the resubmission test needs the real AI service, because
  * the customer's new upload really goes through the worker.
  */
 import { execFileSync } from 'node:child_process';
@@ -211,8 +211,8 @@ test.describe('officer workbench', () => {
     await expect(page.getByTestId('rule-liveness-failed')).toBeVisible();
     await expect(page.getByTestId('passed-rules')).toContainText('rules passed');
     await expect(page.getByTestId('face-score')).toHaveText('0.22');
-    await expect(page.getByTestId('face-threshold')).toContainText('0.65');
-    await expect(page.getByTestId('liveness-banner')).toContainText('Liveness check failed');
+    await expect(page.getByTestId('face-threshold')).toContainText('0.30');
+    await expect(page.getByTestId('liveness-banner')).toContainText('Motion check did not pass');
     await expect(page.getByTestId('face-match')).toContainText('Photo on Aadhaar');
     await expect(page.getByTestId('face-match')).toContainText('Selfie');
 

@@ -179,8 +179,8 @@ export const reviewFaceMatchSchema = z.discriminatedUnion('available', [
     score: z.number().min(0).max(1),
     thresholds: z.object({ fail: z.number(), borderline: z.number() }),
     modelVersion: z.string().nullable(),
-    source: z.enum(['PIPELINE', 'DEV_INJECTED']),
-    /** Aligned crops. Null until the selfie pipeline (Phase 4) stores them. */
+    source: z.literal('PIPELINE'),
+    /** The two aligned 112x112 crops the score was computed from, as short-lived officer links. Null if none were stored. */
     aadhaarCropUrl: signedUrlRefSchema.nullable(),
     selfieCropUrl: signedUrlRefSchema.nullable(),
   }),
@@ -193,7 +193,7 @@ export const reviewLivenessSchema = z.discriminatedUnion('available', [
     passed: z.boolean(),
     /** Not recorded yet: a signal only says passed or failed. */
     failureReason: z.string().nullable(),
-    /** The three motion-check frames. Empty until Phase 4 stores them. */
+    /** The three motion-check frames, as short-lived officer links. */
     frameUrls: z.array(signedUrlRefSchema),
   }),
 ]);

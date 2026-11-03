@@ -328,15 +328,11 @@ describe('the one-shot review payload', () => {
       thresholds: { fail: 0.3, borderline: 0.5 },
       modelVersion: 'fake-face-1',
       source: 'PIPELINE',
-      aadhaarCropUrl: null,
-      selfieCropUrl: null,
+      aadhaarCropUrl: { purpose: 'OFFICER_REVIEW', url: expect.stringContaining('/files/') },
+      selfieCropUrl: { purpose: 'OFFICER_REVIEW', url: expect.stringContaining('/files/') },
     });
-    expect(p.liveness).toEqual({
-      available: true,
-      passed: true,
-      failureReason: null,
-      frameUrls: [],
-    });
+    expect(p.liveness).toMatchObject({ available: true, passed: true, failureReason: null });
+    expect(p.liveness.frameUrls).toHaveLength(3);
     expect(p.risk).toMatchObject({ band: 'LOW', score: 0, engineVersion: ENGINE_VERSION });
     expect(p.assignment).toMatchObject({ officerName: 'officer@kycsetu.dev', isMine: true });
     expect(p.decisionOptions).toMatchObject({ allowed: true, blockers: [], resubmitRemaining: 2 });
@@ -352,14 +348,14 @@ describe('the one-shot review payload', () => {
       expect(text).not.toContain(secret);
   });
 
-  it('issues one officer-purpose signed URL per document on every load, each logged', async () => {
+  it('issues one officer-purpose signed URL per document, crop and frame on every load, each logged', async () => {
     const { sessionId } = await h.reachUnderReview(customer);
     const issued = () => h.documentStore.issues.filter((i) => i.purpose === 'OFFICER_REVIEW');
     expect(issued()).toHaveLength(0);
     await review(one, sessionId);
-    expect(issued()).toHaveLength(4);
-    await review(one, sessionId); // a reload issues four more: the log is the point, not the byte count
-    expect(issued()).toHaveLength(8);
+    expect(issued()).toHaveLength(9); // 4 documents, 2 aligned crops, 3 motion-check frames
+    await review(one, sessionId); // a reload issues them all again: the log is the point, not the byte count
+    expect(issued()).toHaveLength(18);
     expect(issued().every((i) => i.issuedToUserId === h.officers.one.id)).toBe(true);
     expect(issued().every((i) => i.expiresAt.getTime() === CLOCK.getTime() + 300_000)).toBe(true); // 5 minutes
 
@@ -368,9 +364,32 @@ describe('the one-shot review payload', () => {
         a.action === 'document.signed_url_issued' &&
         (a.metadata as { purpose?: string }).purpose === 'OFFICER_REVIEW',
     );
-    expect(logged).toHaveLength(8);
+    expect(logged).toHaveLength(8); // the documents
+    const selfieLogged = h.audits.filter(
+      (a) =>
+        a.action === 'selfie.link_issued' &&
+        (a.metadata as { purpose?: string }).purpose === 'OFFICER_REVIEW',
+    );
+    expect(selfieLogged).toHaveLength(10); // 2 crops and 3 frames, twice
     expect(logged[0]?.metadata).toMatchObject({ sessionId, issuedTo: h.officers.one.id });
     expect(actions(sessionId).filter((a) => a === 'officer.review_opened')).toHaveLength(2);
+  });
+
+  it('the links to the face crops and frames work for that officer only, and decrypt the stored picture', async () => {
+    const { sessionId } = await h.reachUnderReview(customer);
+    const p = (await review(one, sessionId)).body;
+    for (const ref of [
+      p.faceMatch.selfieCropUrl,
+      p.faceMatch.aadhaarCropUrl,
+      p.liveness.frameUrls[1],
+    ]) {
+      const path = new URL(ref.url).pathname;
+      const ok = await one.get(path);
+      expect(ok.status).toBe(200);
+      expect(ok.headers['cache-control']).toBe('no-store');
+      expect((await two.get(path)).status).toBe(403);
+      expect((await customer.get(path)).status).toBe(401);
+    }
   });
 
   it('the signed URLs work for that officer only, and decrypt the real file', async () => {

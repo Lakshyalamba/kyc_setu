@@ -76,6 +76,8 @@ export interface BiometricRecord {
     failThreshold: number;
     reason: string | null;
     embeddingVersion: string;
+    /** The aligned crops were stored (an officer can be shown them). */
+    hasCrops: boolean;
   } | null;
 }
 
@@ -104,6 +106,7 @@ export async function biometricsOf(
           failThreshold: face.failThreshold,
           reason: face.reason,
           embeddingVersion: face.embeddingVersion,
+          hasCrops: face.cropEnvelopes !== null,
         }
       : null,
   };
