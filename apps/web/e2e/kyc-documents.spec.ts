@@ -116,7 +116,10 @@ test('documents: upload all four, preview via signed URLs, replace, submit, and 
   // 5. Submit documents -> DOCS_UPLOADED, and the stub Selfie step.
   await page.getByRole('button', { name: 'Continue to Selfie' }).click();
   await expect(page).toHaveURL(/\/kyc\/selfie$/);
-  await expect(page.getByText('Coming next')).toBeVisible();
+  // The selfie screen: waiting while the documents are read, or already offering the camera if the worker was quick.
+  await expect(
+    page.getByTestId('selfie-waiting').or(page.getByTestId('selfie-intro')),
+  ).toBeVisible();
   const done = await prisma.kycSession.findUniqueOrThrow({ where: { id: session.id } });
   // With the worker and AI service running, extraction may already have moved it on.
   expect(['DOCS_UPLOADED', 'DOCS_EXTRACTED']).toContain(done.status);

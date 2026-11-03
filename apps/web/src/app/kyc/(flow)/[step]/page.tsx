@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation';
-import { ComingNext } from '@/components/kyc/coming-next';
 import { ConsentStep } from '@/components/kyc/consent-step';
 import { ContactStep } from '@/components/kyc/contact-step';
 import { StatusView } from '@/components/kyc/status-view';
@@ -62,6 +61,6 @@ export default async function KycStepPage({ params }: { params: Promise<{ step: 
       return <StatusView initial={status} />;
     }
     default:
-      return <ComingNext step={step} />;
+      notFound();
   }
 }
