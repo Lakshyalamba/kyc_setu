@@ -22,3 +22,9 @@ test-artifacts/
 
 # Face-model weights are downloaded, not committed (services/ai/scripts/download_face_models.py)
 services/ai/models/
+
+# Copied from node_modules by apps/web/scripts/copy-mediapipe.mjs
+apps/web/public/mediapipe/
+
+# Photos of real people for scripts/calibrate-face-match.ts: never committed
+calibration-photos/

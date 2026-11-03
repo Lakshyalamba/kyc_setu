@@ -32,7 +32,8 @@
     "coverage:ai": "cd services/ai && uv run python scripts/download_face_models.py && PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True uv run pytest -q -m \"not ocr\" --cov=app/vision/parsers --cov-report=term --cov-fail-under=70",
     "consent:revise": "pnpm build:libs && pnpm --filter @kyc-setu/api run consent:revise --",
     "audit:chain": "pnpm build:libs && pnpm --filter @kyc-setu/api run audit:chain",
-    "demo:risk": "pnpm build:libs && pnpm --filter @kyc-setu/api run demo:risk --"
+    "demo:risk": "pnpm build:libs && pnpm --filter @kyc-setu/api run demo:risk --",
+    "calibrate:faces": "pnpm build:libs && pnpm --filter @kyc-setu/api exec tsx ../../scripts/calibrate-face-match.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
