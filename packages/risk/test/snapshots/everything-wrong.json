@@ -51,10 +51,16 @@
     "aadhaarTypedMatchesExtracted": false
   },
   "faceMatch": {
-    "score": 0.1
+    "score": 0.1,
+    "decision": "AUTO_FAIL",
+    "thresholds": {
+      "autoPass": 0.5,
+      "autoFail": 0.3
+    }
   },
   "liveness": {
-    "passed": false
+    "method": "MOTION_CHECK",
+    "result": "FAILED"
   },
   "priorApprovedMatches": [
     {

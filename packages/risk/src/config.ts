@@ -21,6 +21,7 @@ export const RULE_IDS = [
   'face-match-below-threshold',
   'face-match-borderline',
   'liveness-failed',
+  'liveness-method-none',
   'duplicate-pan-approved',
   'duplicate-aadhaar-approved',
   'age-ineligible',
@@ -38,10 +39,6 @@ export interface RiskConfig {
     nameSimilarityMin: number;
     /** low-ocr-confidence fires when a critical field is read with less confidence than this. */
     criticalFieldConfidenceMin: number;
-    /** face-match-below-threshold fires below this score. */
-    faceMatchMin: number;
-    /** face-match-borderline fires from faceMatchMin up to (but not including) this score. */
-    faceMatchBorderlineMax: number;
     minAgeYears: number;
   };
   /** Fields whose OCR confidence matters. */
@@ -69,6 +66,7 @@ export const defaultConfig: RiskConfig = {
     'face-match-below-threshold': 35,
     'face-match-borderline': 15,
     'liveness-failed': 25,
+    'liveness-method-none': 15,
     'duplicate-pan-approved': 40,
     'duplicate-aadhaar-approved': 40,
     'age-ineligible': 100,
@@ -78,8 +76,6 @@ export const defaultConfig: RiskConfig = {
   thresholds: {
     nameSimilarityMin: 0.85,
     criticalFieldConfidenceMin: 0.6,
-    faceMatchMin: 0.65,
-    faceMatchBorderlineMax: 0.75,
     minAgeYears: 18,
   },
   criticalFields: ['name', 'dob', 'panNumber', 'aadhaarNumber'],

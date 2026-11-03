@@ -27,7 +27,7 @@ import { createBullEnqueuer, createVerificationQueue } from '../src/queue/verifi
 import { buildServices } from '../src/services.js';
 import { createVerificationWorker } from '../src/workers/verification.js';
 import { makeJpeg, makePng } from './fixtures.js';
-import { createFakeAiClient, createFakeExportDeps, testEnv } from './helpers.js';
+import { createFakeAiClient, createFakeExportDeps, matchResponse, testEnv } from './helpers.js';
 
 const up = process.env['INFRA_UP'] === '1';
 const dbUrl = process.env['TEST_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '';
@@ -58,11 +58,12 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
   let officerOne: Agent;
   let officerTwo: Agent;
   let ids: { one: string; two: string; ai: string };
+  let fakeAi: ReturnType<typeof createFakeAiClient>;
 
   beforeAll(async () => {
     await ensureBucket(s3, bucket);
     await prisma.$executeRawUnsafe(
-      'TRUNCATE "audit_logs", "decisions", "officer_assignments", "risk_assessments", "biometric_signals", "extractions", "signed_url_issues", "documents", "otp_challenges", "kyc_sessions", "users" CASCADE',
+      'TRUNCATE "audit_logs", "decisions", "officer_assignments", "risk_assessments", "extractions", "signed_url_issues", "documents", "otp_challenges", "kyc_sessions", "users" CASCADE',
     );
     const hash = await hashPassword(PASSWORD);
     const ai = await prisma.user.create({
@@ -81,6 +82,7 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
     });
     ids = { one: one.id, two: two.id, ai: ai.id };
 
+    fakeAi = createFakeAiClient();
     queue = createVerificationQueue(redis, env.EXTRACTION_BACKOFF_SECONDS, queueName);
     const deps = {
       env,
@@ -95,7 +97,7 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
       auditChainStore: createPrismaAuditChainStore(prisma),
       exports: createFakeExportDeps([]),
       enqueuer: createBullEnqueuer(queue),
-      aiClient: createFakeAiClient(),
+      aiClient: fakeAi,
     };
     services = buildServices(deps);
     app = createApp({
@@ -205,10 +207,25 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
     // The worker reads the three documents; wait for it to say so.
     await until(async () => (await statusOf(sessionId)) === 'DOCS_EXTRACTED', 'DOCS_EXTRACTED');
 
-    await services.risk.injectBiometrics(ids.one, sessionId, {
-      faceMatch: { score: opts.face ?? 0.92, modelVersion: 'it-1' },
-      liveness: { passed: true },
-    }); // queues the risk job; the worker runs it
+    {
+      fakeAi.match = (r) =>
+        matchResponse(r.selfieCaptureId, r.idDocumentId, { score: opts.face ?? 0.92 });
+      const frames = [makeJpeg(3000, 1), makeJpeg(3000, 2), makeJpeg(3000, 3)];
+      let req = agent.post(`/kyc/sessions/${sessionId}/selfie`);
+      frames.forEach((f, i) => {
+        req = req.attach(`frame${i}`, f, { filename: `f${i}.jpg`, contentType: 'image/jpeg' });
+      });
+      const shot = await req
+        .attach('best', frames[1]!, { filename: 'b.jpg', contentType: 'image/jpeg' })
+        .field('screenWidth', '390')
+        .field('screenHeight', '844');
+      expect(shot.status).toBe(201);
+      // The checks are idempotent, so it does not matter whether a worker or this call gets there first.
+      await services.selfie.runMotionCheck(shot.body.captureId);
+      await services.selfie.runFaceMatch(shot.body.captureId, docIds['AADHAAR_FRONT']!);
+      if ((opts.face ?? 0.92) < 0.3)
+        await agent.post(`/kyc/sessions/${sessionId}/selfie/continue`).expect(200);
+    }
     await until(async () => (await statusOf(sessionId)) === 'UNDER_REVIEW', 'UNDER_REVIEW');
     if (opts.submittedAt) {
       await prisma.kycSession.update({
@@ -259,7 +276,7 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
       submittedAt: new Date(base + 1_800_000),
     });
     const medium = await underReview({
-      face: 0.7,
+      face: 0.4,
       displayName: 'Kabir Shah',
       submittedAt: new Date(base + 7_200_000),
     });

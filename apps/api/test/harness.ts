@@ -5,7 +5,14 @@ import { buildServices } from '../src/services.js';
 import { makeJpeg, makePng } from './fixtures.js';
 import { encryptForStorage } from '../src/modules/kyc/personal-codec.js';
 import { parsePiiKey } from '@kyc-setu/shared/pii';
-import { allDeps, createFakeKycStore, createFakeStore, testEnv } from './helpers.js';
+import {
+  allDeps,
+  createFakeKycStore,
+  createFakeStore,
+  matchResponse,
+  motionResponse,
+  testEnv,
+} from './helpers.js';
 
 export const PASSWORD = 'password123';
 export type Agent = ReturnType<typeof request.agent>;
@@ -133,8 +140,48 @@ export async function createHarness(
   };
 
   /**
-   * A customer all the way to UNDER_REVIEW: documents uploaded and read, the dev signal injector standing in for the
-   * selfie step, and the risk job run. `at` spreads submission times so queue order is predictable.
+   * The customer's selfie, through the real route, and both checks run the way the worker would: the fake AI client is told
+   * the face score and whether the motion check passes. Leaves the session at SELFIE_CAPTURED with the risk job queued.
+   */
+  async function completeSelfie(
+    agent: Agent,
+    sessionId: string,
+    opts: { face?: number; liveness?: boolean; runChecks?: boolean } = {},
+  ) {
+    fakes.aiClient.match = (req) =>
+      matchResponse(req.selfieCaptureId, req.idDocumentId, { score: opts.face ?? 0.92 });
+    fakes.aiClient.motion = (req) =>
+      motionResponse(
+        req.captureId,
+        opts.liveness === false ? { result: 'FAILED', failureReason: 'FRAMES_TOO_SIMILAR' } : {},
+      );
+    const frames = [makeJpeg(3000, 1), makeJpeg(3000, 2), makeJpeg(3000, 3)];
+    let req = agent.post(`/kyc/sessions/${sessionId}/selfie`);
+    frames.forEach((f, i) => {
+      req = req.attach(`frame${i}`, f, { filename: `frame${i}.jpg`, contentType: 'image/jpeg' });
+    });
+    const res = await req
+      .attach('best', frames[1]!, { filename: 'best.jpg', contentType: 'image/jpeg' })
+      .field('screenWidth', '390')
+      .field('screenHeight', '844');
+    if (res.status !== 201) throw new Error(`selfie failed: ${res.status} ${res.text}`);
+    if (opts.runChecks === false) return res.body as { captureId: string };
+    for (const job of fakes.enqueuer.selfieChecks.splice(0)) {
+      if (job.motionCheck) await services.selfie.runMotionCheck(job.captureId);
+      await services.selfie.runFaceMatch(job.captureId, job.idDocumentId);
+    }
+    // A failed check waits for the customer to retake or carry on; these tests carry on, as a customer may.
+    const after = (await agent.get(`/kyc/sessions/${sessionId}/selfie/status`)).body;
+    const bad =
+      after.faceMatch?.decision === 'AUTO_FAIL' ||
+      ['FAILED', 'INCONCLUSIVE'].includes(after.liveness?.status);
+    if (bad) await agent.post(`/kyc/sessions/${sessionId}/selfie/continue`).expect(200);
+    return res.body as { captureId: string };
+  }
+
+  /**
+   * A customer all the way to UNDER_REVIEW: documents uploaded and read, a selfie taken through the real route with the
+   * fake AI client answering the two checks, and the risk job run. `at` spreads submission times so queue order is predictable.
    */
   async function reachUnderReview(
     agent: Agent,
@@ -145,10 +192,7 @@ export async function createHarness(
     } = {},
   ) {
     const docs = await reachExtracted(agent, opts.typed);
-    await services.risk.injectBiometrics(officers.one.id, docs.sessionId, {
-      faceMatch: { score: opts.face ?? 0.92, modelVersion: 'test-1' },
-      liveness: { passed: opts.liveness ?? true },
-    });
+    await completeSelfie(agent, docs.sessionId, opts);
     await runQueuedRisk();
     return docs;
   }
@@ -158,6 +202,7 @@ export async function createHarness(
     services,
     officers,
     reachUnderReview,
+    completeSelfie,
     store,
     kycStore,
     ...fakes,

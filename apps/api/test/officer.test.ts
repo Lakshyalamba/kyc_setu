@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { makeJpeg } from './fixtures.js';
+import { ENGINE_VERSION } from '@kyc-setu/risk';
 import { createHarness, type Agent, type Harness } from './harness.js';
 import { assertFourEyes } from '../src/modules/officer/officer.service.js';
 import { createNotificationService } from '../src/modules/officer/notify.js';
@@ -324,9 +325,9 @@ describe('the one-shot review payload', () => {
     expect(p.faceMatch).toMatchObject({
       available: true,
       score: 0.92,
-      thresholds: { fail: 0.65, borderline: 0.75 },
-      modelVersion: 'test-1',
-      source: 'DEV_INJECTED',
+      thresholds: { fail: 0.3, borderline: 0.5 },
+      modelVersion: 'fake-face-1',
+      source: 'PIPELINE',
       aadhaarCropUrl: null,
       selfieCropUrl: null,
     });
@@ -336,7 +337,7 @@ describe('the one-shot review payload', () => {
       failureReason: null,
       frameUrls: [],
     });
-    expect(p.risk).toMatchObject({ band: 'LOW', score: 0, engineVersion: '1.0.0' });
+    expect(p.risk).toMatchObject({ band: 'LOW', score: 0, engineVersion: ENGINE_VERSION });
     expect(p.assignment).toMatchObject({ officerName: 'officer@kycsetu.dev', isMine: true });
     expect(p.decisionOptions).toMatchObject({ allowed: true, blockers: [], resubmitRemaining: 2 });
     expect(p.decisionOptions.reasonCodes.REJECT).toContain('FACE_MISMATCH');
@@ -412,7 +413,7 @@ describe('the one-shot review payload', () => {
         e.action === 'document.signed_url_issued' && e.metadata['purpose'] === 'OFFICER_REVIEW',
     );
     expect(officerLinks).toHaveLength(4); // the links this very page load created (the AI's own are listed too)
-    expect(names.filter((n) => n === 'document.signed_url_issued')).toHaveLength(7);
+    expect(names.filter((n) => n === 'document.signed_url_issued')).toHaveLength(8); // + the face match's read of the Aadhaar front
     expect(names.at(-1)).not.toBe('kyc.session.created');
     expect([...timeline.map((e) => e.at)]).toEqual([...timeline.map((e) => e.at)].sort());
     for (const e of timeline) {

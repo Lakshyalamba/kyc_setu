@@ -23,6 +23,9 @@ import { buildRiskInput } from './inputs.js';
 import type { OfficerStore } from '../officer/store.js';
 import type { AssessmentRecord, NewAssessment, RiskStore } from './store.js';
 import { loggerFor } from '../../observability/logger.js';
+import { activeFrontId, biometricsOf, readChecks } from '../selfie/readiness.js';
+import type { SelfieStore } from '../selfie/store.js';
+import type { DocumentStore } from '../documents/store.js';
 
 const log = loggerFor('risk');
 
@@ -37,6 +40,9 @@ export interface RiskServiceDeps {
   extractionStore: ExtractionStore;
   /** Only used to tell whether the session is being re-checked after an officer asked for a resubmission. */
   decisions: Pick<OfficerStore, 'latestDecision'>;
+  /** The selfie step's own results: the engine reads real rows, nothing is injected. */
+  selfieStore: SelfieStore;
+  documentStore: Pick<DocumentStore, 'listActive'>;
   enqueuer: VerificationEnqueuer;
   kms: KmsClient;
   piiKey: Buffer;
@@ -65,12 +71,10 @@ const ruleIds = (triggered: unknown): string[] =>
   Array.isArray(triggered) ? triggered.map((t) => (t as { ruleId: string }).ruleId) : [];
 
 export function createRiskService(deps: RiskServiceDeps) {
-  const { env, store, kycStore, extractionStore, kms, piiKey } = deps;
+  const { store, kycStore, extractionStore, kms, piiKey } = deps;
   const now = deps.now ?? (() => new Date());
   // Rules are built once from the (single-file) config. The engine is deterministic, so this is safe to share.
   const rules = createRules(defaultConfig);
-  // Injected-in-dev signals are ignored in production, so a leftover dev row can never influence a real decision.
-  const includeDevInjected = env.NODE_ENV !== 'production';
 
   const audit = (
     actorId: string | null,
@@ -94,7 +98,9 @@ export function createRiskService(deps: RiskServiceDeps) {
     if (!session) throw new AppError(404, 'SESSION_NOT_FOUND', 'KYC session not found');
     const [extractions, biometrics] = await Promise.all([
       extractionStore.listForSession(sessionId),
-      store.latestBiometrics(sessionId, { includeDevInjected }),
+      activeFrontId(deps.documentStore, sessionId).then((front) =>
+        biometricsOf(deps.selfieStore, sessionId, front),
+      ),
     ]);
     const { input } = await buildRiskInput(
       {
@@ -143,6 +149,47 @@ export function createRiskService(deps: RiskServiceDeps) {
     return (await kycStore.updateSession(sessionId, from, patch, [entry])) !== null;
   }
 
+  async function runAutomaticLocked(sessionId: string): Promise<RiskRunOutcome> {
+    const session = await kycStore.findSession(sessionId);
+    if (!session) return { kind: 'skipped', reason: 'session not found' };
+
+    if (session.status === 'SUBMITTED') {
+      const existing = await store.latestAssessment(sessionId);
+      if (!existing)
+        return {
+          kind: 'skipped',
+          reason: 'SUBMITTED without an assessment; needs a manual recompute',
+        };
+      await transition(sessionId, 'SUBMITTED', 'UNDER_REVIEW');
+      return { kind: 'assessed', assessment: existing, finalStatus: 'UNDER_REVIEW' };
+    }
+    if (session.status !== 'SELFIE_CAPTURED') {
+      return { kind: 'skipped', reason: `session is ${session.status}, not SELFIE_CAPTURED` };
+    }
+
+    const { result, snapshot } = await evaluate(sessionId);
+    const assessment = await store.insertAssessment(
+      toNew(sessionId, result, snapshot, 'AUTO', null),
+      (a) => [
+        audit(null, AUDIT_ACTIONS.RISK_EVALUATED, sessionId, {
+          assessmentId: a.id,
+          // Numbers and names of rules only: never field values.
+          score: result.score,
+          band: result.band,
+          engineVersion: result.engineVersion,
+          ruleCount: result.appliedRules.length,
+          hardFail: result.hardFail,
+          trigger: 'AUTO',
+        }),
+      ],
+    );
+    if (!(await transition(sessionId, 'SELFIE_CAPTURED', 'SUBMITTED'))) {
+      return { kind: 'skipped', reason: 'session changed while assessing' };
+    }
+    await transition(sessionId, 'SUBMITTED', 'UNDER_REVIEW');
+    return { kind: 'assessed', assessment, finalStatus: 'UNDER_REVIEW' };
+  }
+
   return {
     toAssessmentDto,
 
@@ -150,14 +197,19 @@ export function createRiskService(deps: RiskServiceDeps) {
     preview: evaluate,
 
     /**
-     * Ready = the session is at SELFIE_CAPTURED and both a face-match score and a liveness result exist.
-     * (Getting to SELFIE_CAPTURED already required every document extraction to have finished.)
+     * Ready = the session is at SELFIE_CAPTURED, both selfie checks have a result for the current Aadhaar front, and the
+     * customer is not in the middle of choosing between a retake and carrying on. (Getting to SELFIE_CAPTURED already
+     * required every document extraction to have finished.)
      */
     async isReady(sessionId: string): Promise<boolean> {
       const session = await kycStore.findSession(sessionId);
       if (!session || session.status !== 'SELFIE_CAPTURED') return false;
-      const b = await store.latestBiometrics(sessionId, { includeDevInjected });
-      return b !== null && b.faceMatchScore !== null && b.livenessPassed !== null;
+      const checks = await readChecks(
+        deps.selfieStore,
+        sessionId,
+        await activeFrontId(deps.documentStore, sessionId),
+      );
+      return checks !== null && checks.done && !checks.awaitingCustomer;
     },
 
     /** Call whenever an input arrives (face match, liveness). Queues the risk job once everything is in. */
@@ -166,7 +218,7 @@ export function createRiskService(deps: RiskServiceDeps) {
       // One automatic run per submission: the job id includes how many automatic runs already happened.
       const n = (await store.countAssessments(sessionId, 'AUTO')) + 1;
       try {
-        await deps.enqueuer.enqueueRisk(sessionId, n);
+        if (!(await deps.enqueuer.enqueueRisk(sessionId, n))) return true; // already queued, already audited
       } catch (err) {
         log.error({ err }, 'could not enqueue the risk job');
         return false;
@@ -178,9 +230,10 @@ export function createRiskService(deps: RiskServiceDeps) {
     },
 
     /**
-     * After an officer asked for a resubmission and the new documents have been read, the customer should not have to
-     * take a selfie again: the face match and liveness already on file are carried forward and the risk job is queued.
-     * Not done when the officer asked for a selfie retake, or when there is nothing on file to carry.
+     * After an officer asked for a resubmission and the new documents have been read, the customer should not have to take a
+     * selfie again: the selfie on file is kept, the motion check stands, and the face match is carried forward if the Aadhaar
+     * front is unchanged or run again against the new one. Not done when the officer asked for a selfie retake (the customer
+     * takes one) or when there is no selfie on file.
      */
     async resumeAfterResubmission(sessionId: string): Promise<boolean> {
       const session = await kycStore.findSession(sessionId);
@@ -189,8 +242,10 @@ export function createRiskService(deps: RiskServiceDeps) {
       if (!last || last.decision !== 'REQUEST_RESUBMIT' || last.reasonCode === 'SELFIE_RETAKE') {
         return false;
       }
-      const bio = await store.latestBiometrics(sessionId, { includeDevInjected });
-      if (!bio || bio.faceMatchScore === null || bio.livenessPassed === null) return false;
+      const front = await activeFrontId(deps.documentStore, sessionId);
+      const checks = await readChecks(deps.selfieStore, sessionId);
+      if (!front || !checks || !checks.livenessDone) return false;
+      const rematch = (await deps.selfieStore.faceMatchFor(checks.capture.id, front)) === null;
       const { session: next, audit: entry } = applyTransition(
         toState(session),
         'SELFIE_CAPTURED',
@@ -200,11 +255,24 @@ export function createRiskService(deps: RiskServiceDeps) {
       const moved = await kycStore.updateSession(sessionId, 'DOCS_EXTRACTED', patchFrom(next), [
         entry,
         audit(null, AUDIT_ACTIONS.RISK_BIOMETRICS_CARRIED_FORWARD, sessionId, {
-          biometricId: bio.id,
-          source: bio.source,
+          captureId: checks.capture.id,
+          rematched: rematch,
         }),
       ]);
-      return moved ? this.onInputsChanged(sessionId) : false;
+      if (!moved) return false;
+      if (rematch) {
+        try {
+          await deps.enqueuer.enqueueSelfieChecks({
+            captureId: checks.capture.id,
+            idDocumentId: front,
+            motionCheck: false,
+          });
+        } catch (err) {
+          log.error({ err }, 'could not enqueue the face match for the new Aadhaar front');
+        }
+        return false;
+      }
+      return this.onInputsChanged(sessionId);
     },
 
     /**
@@ -212,46 +280,8 @@ export function createRiskService(deps: RiskServiceDeps) {
      * separate persisted transitions (so the audit log shows both). Safe to run again: a retry that finds the
      * session already SUBMITTED (we crashed between the two steps) only completes the second one.
      */
-    async runAutomatic(sessionId: string): Promise<RiskRunOutcome> {
-      const session = await kycStore.findSession(sessionId);
-      if (!session) return { kind: 'skipped', reason: 'session not found' };
-
-      if (session.status === 'SUBMITTED') {
-        const existing = await store.latestAssessment(sessionId);
-        if (!existing)
-          return {
-            kind: 'skipped',
-            reason: 'SUBMITTED without an assessment; needs a manual recompute',
-          };
-        await transition(sessionId, 'SUBMITTED', 'UNDER_REVIEW');
-        return { kind: 'assessed', assessment: existing, finalStatus: 'UNDER_REVIEW' };
-      }
-      if (session.status !== 'SELFIE_CAPTURED') {
-        return { kind: 'skipped', reason: `session is ${session.status}, not SELFIE_CAPTURED` };
-      }
-
-      const { result, snapshot } = await evaluate(sessionId);
-      const assessment = await store.insertAssessment(
-        toNew(sessionId, result, snapshot, 'AUTO', null),
-        (a) => [
-          audit(null, AUDIT_ACTIONS.RISK_EVALUATED, sessionId, {
-            assessmentId: a.id,
-            // Numbers and names of rules only: never field values.
-            score: result.score,
-            band: result.band,
-            engineVersion: result.engineVersion,
-            ruleCount: result.appliedRules.length,
-            hardFail: result.hardFail,
-            trigger: 'AUTO',
-          }),
-        ],
-      );
-      if (!(await transition(sessionId, 'SELFIE_CAPTURED', 'SUBMITTED'))) {
-        return { kind: 'skipped', reason: 'session changed while assessing' };
-      }
-      await transition(sessionId, 'SUBMITTED', 'UNDER_REVIEW');
-      return { kind: 'assessed', assessment, finalStatus: 'UNDER_REVIEW' };
-    },
+    runAutomatic: (sessionId: string): Promise<RiskRunOutcome> =>
+      store.withSessionLock(sessionId, () => runAutomaticLocked(sessionId)),
 
     /** Officer-triggered re-run against current data. Appends a row; the session's state is left alone. */
     async recompute(officerId: string, sessionId: string) {
@@ -284,58 +314,6 @@ export function createRiskService(deps: RiskServiceDeps) {
         previous: previous ? { band: previous.band, score: previous.score } : null,
         bandChanged,
       };
-    },
-
-    /**
-     * DEV ONLY (the route is not registered in production, and this refuses to run there too). Stands in for the
-     * selfie / face-match pipeline: records a biometric signal marked DEV_INJECTED, moves the session to
-     * SELFIE_CAPTURED the way capturing a selfie would, and queues the risk job once everything is in.
-     */
-    async injectBiometrics(
-      officerId: string,
-      sessionId: string,
-      input: { faceMatch: { score: number; modelVersion: string }; liveness: { passed: boolean } },
-    ): Promise<{ enqueued: boolean }> {
-      if (env.NODE_ENV === 'production') throw new AppError(404, 'NOT_FOUND', 'Not found');
-      const session = await kycStore.findSession(sessionId);
-      if (!session) throw new AppError(404, 'SESSION_NOT_FOUND', 'KYC session not found');
-      if (session.status === 'DOCS_EXTRACTED') {
-        const { session: next, audit: entry } = applyTransition(
-          toState(session),
-          'SELFIE_CAPTURED',
-          officerId,
-          now(),
-        );
-        if (
-          !(await kycStore.updateSession(sessionId, 'DOCS_EXTRACTED', patchFrom(next), [entry]))
-        ) {
-          throw new AppError(409, 'CONFLICT', 'The session changed. Retry.');
-        }
-      } else if (session.status !== 'SELFIE_CAPTURED') {
-        throw new AppError(
-          409,
-          'INVALID_STATE',
-          `Biometrics can only be injected at DOCS_EXTRACTED or SELFIE_CAPTURED, not ${session.status}`,
-        );
-      }
-      await store.recordBiometrics(
-        {
-          sessionId,
-          source: 'DEV_INJECTED',
-          faceMatchScore: input.faceMatch.score,
-          faceMatchModel: input.faceMatch.modelVersion,
-          livenessPassed: input.liveness.passed,
-        },
-        (b) =>
-          audit(officerId, AUDIT_ACTIONS.DEV_BIOMETRICS_INJECTED, sessionId, {
-            biometricId: b.id,
-            source: 'DEV_INJECTED',
-            // The values drive a risk decision in dev only; they are scores, not personal data.
-            faceMatchScore: input.faceMatch.score,
-            livenessPassed: input.liveness.passed,
-          }),
-      );
-      return { enqueued: await this.onInputsChanged(sessionId) };
     },
 
     /** The final failure of a risk job: leave a trail and a flag for the officer dashboard. */

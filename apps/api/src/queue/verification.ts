@@ -56,7 +56,8 @@ export type VerificationJobData =
 export interface VerificationEnqueuer {
   enqueueExtractions(documentIds: string[]): Promise<void>;
   /** `run` is 1 for the first automatic assessment of a session, 2 for the next, and so on. */
-  enqueueRisk(sessionId: string, run: number): Promise<void>;
+  /** Resolves false when this run was already queued (the two selfie checks both ask for it). */
+  enqueueRisk(sessionId: string, run: number): Promise<boolean>;
   /** Tells the customer about an officer's decision. One job per decision. */
   enqueueNotification(decisionId: string): Promise<void>;
   /** After a selfie is stored: the motion check (unless the customer used the file-upload fallback) and the face match. */
@@ -119,11 +120,13 @@ export function createBullEnqueuer(queue: Queue<VerificationJobData>): Verificat
       );
     },
     async enqueueRisk(sessionId, run) {
+      if (await queue.getJob(riskJobId(sessionId, run))) return false;
       await queue.add(
         RISK_JOB,
         { sessionId, kind: 'risk', ...trace() },
         { jobId: riskJobId(sessionId, run) },
       );
+      return true;
     },
     async enqueueExtractions(documentIds) {
       if (documentIds.length === 0) return;

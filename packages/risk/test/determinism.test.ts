@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { runRiskEngine } from '../src/engine.js';
 import { summarizeInputs } from '../src/features.js';
 import { createRules } from '../src/rules/index.js';
-import { build, happyContext } from './builders.js';
+import { build, happyContext, face, live } from './builders.js';
 
 const noisy = () =>
   build((c) => {
-    c.faceMatch = { score: 0.7 };
-    c.liveness = { passed: false };
+    c.faceMatch = face(0.7);
+    c.liveness = live('FAILED');
     c.comparisons.panTypedMatchesExtracted = false;
     c.personal.fullName = 'Raul Kumr Sarma';
     c.priorApprovedMatches = [

@@ -8,12 +8,12 @@
       "ruleId": "face-match-borderline",
       "category": "biometric",
       "penalty": 15,
-      "reason": "The selfie only borderline matches the photo on the ID (score 0.7); a human look is recommended",
+      "reason": "The selfie only borderline matches the photo on the ID (score 0.4); a human look is recommended",
       "details": {
-        "score": 0.7,
+        "score": 0.4,
         "range": [
-          0.65,
-          0.75
+          0.3,
+          0.5
         ]
       }
     }
@@ -32,6 +32,7 @@
     "face-match-below-threshold",
     "face-match-borderline",
     "liveness-failed",
+    "liveness-method-none",
     "low-ocr-confidence",
     "name-mismatch-form-pan",
     "name-mismatch-pan-aadhaar",
@@ -39,5 +40,5 @@
     "pan-format-invalid"
   ],
   "skippedRules": [],
-  "engineVersion": "1.0.0"
+  "engineVersion": "1.1.0"
 }

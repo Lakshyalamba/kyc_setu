@@ -35,6 +35,7 @@
     "face-match-below-threshold",
     "face-match-borderline",
     "liveness-failed",
+    "liveness-method-none",
     "low-ocr-confidence",
     "name-mismatch-form-pan",
     "name-mismatch-pan-aadhaar",
@@ -42,5 +43,5 @@
     "pan-format-invalid"
   ],
   "skippedRules": [],
-  "engineVersion": "1.0.0"
+  "engineVersion": "1.1.0"
 }

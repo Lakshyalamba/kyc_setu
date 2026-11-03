@@ -22,16 +22,6 @@ export interface AssessmentRecord {
 
 export type NewAssessment = Omit<AssessmentRecord, 'id' | 'createdAt'>;
 
-export interface BiometricRecord {
-  id: string;
-  sessionId: string;
-  source: 'PIPELINE' | 'DEV_INJECTED';
-  faceMatchScore: number | null;
-  faceMatchModel: string | null;
-  livenessPassed: boolean | null;
-  createdAt: Date;
-}
-
 /** An APPROVED session of ANOTHER user that shares a PAN hash or an Aadhaar last-4 with this one. */
 export interface PriorCandidate {
   sessionId: string;
@@ -53,20 +43,17 @@ export interface RiskStore {
     input: NewAssessment,
     audits: (a: AssessmentRecord) => AuditEntry[],
   ): Promise<AssessmentRecord>;
-  latestBiometrics(
-    sessionId: string,
-    opts: { includeDevInjected: boolean },
-  ): Promise<BiometricRecord | null>;
-  recordBiometrics(
-    input: Omit<BiometricRecord, 'id' | 'createdAt'>,
-    audit: (b: BiometricRecord) => AuditEntry,
-  ): Promise<BiometricRecord>;
   findPriorApprovedCandidates(args: {
     userId: string;
     panHmac: string | null;
     aadhaarLast4: string | null;
   }): Promise<PriorCandidate[]>;
   writeAudit(entry: AuditEntry): Promise<void>;
+  /**
+   * Runs `fn` while holding a lock on the session, so two workers cannot run the automatic assessment of one session at the
+   * same time (the two selfie checks finish together and each may queue it).
+   */
+  withSessionLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T>;
 }
 
 const auditData = (e: AuditEntry) => ({
@@ -81,6 +68,15 @@ const json = (v: unknown) => v as Prisma.InputJsonValue;
 
 export function createPrismaRiskStore(prisma: SafeClient): RiskStore {
   return {
+    withSessionLock: (sessionId, fn) =>
+      prisma.$transaction(
+        async (tx) => {
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`risk:${sessionId}`}))`;
+          return fn();
+        },
+        { timeout: 60_000 },
+      ),
+
     listAssessments: (sessionId) =>
       prisma.riskAssessment.findMany({ where: { sessionId }, orderBy: { createdAt: 'asc' } }),
 
@@ -102,19 +98,6 @@ export function createPrismaRiskStore(prisma: SafeClient): RiskStore {
           },
         });
         await tx.auditLog.createMany({ data: audits(row).map(auditData) });
-        return row;
-      }),
-
-    latestBiometrics: (sessionId, { includeDevInjected }) =>
-      prisma.biometricSignal.findFirst({
-        where: { sessionId, ...(includeDevInjected ? {} : { source: 'PIPELINE' }) },
-        orderBy: { createdAt: 'desc' },
-      }),
-
-    recordBiometrics: (input, audit) =>
-      prisma.$transaction(async (tx) => {
-        const row = await tx.biometricSignal.create({ data: input });
-        await tx.auditLog.create({ data: auditData(audit(row)) });
         return row;
       }),
 

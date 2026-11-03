@@ -1,4 +1,34 @@
-import type { Applicability, Rule, RuleContext, RuleOutcome } from '../src/types.js';
+import type {
+  Applicability,
+  FaceMatchFacts,
+  LivenessFacts,
+  Rule,
+  RuleContext,
+  RuleOutcome,
+} from '../src/types.js';
+
+/** The boundaries the shared package ships (packages/shared/src/face/thresholds.ts). The engine only follows the decision it is given. */
+export const FACE_THRESHOLDS = { autoPass: 0.5, autoFail: 0.3 };
+
+/** A face-match fact for `score`, decided the way the worker decides it. */
+export function face(score: number, reason?: string): FaceMatchFacts {
+  const decision =
+    reason || score < FACE_THRESHOLDS.autoFail
+      ? 'AUTO_FAIL'
+      : score >= FACE_THRESHOLDS.autoPass
+        ? 'AUTO_PASS'
+        : 'REVIEW';
+  return { score, decision, thresholds: { ...FACE_THRESHOLDS }, ...(reason ? { reason } : {}) };
+}
+
+/** A motion-check fact. `NONE` (the file-upload fallback) always means NOT_PERFORMED. */
+export function live(
+  result: 'PASSED' | 'FAILED' | 'INCONCLUSIVE',
+  failureReason?: string,
+): LivenessFacts {
+  return { method: 'MOTION_CHECK', result, ...(failureReason ? { failureReason } : {}) };
+}
+export const noMotionCheck = (): LivenessFacts => ({ method: 'NONE', result: 'NOT_PERFORMED' });
 
 export const NOW = new Date('2026-10-10T00:00:00Z');
 
@@ -26,8 +56,8 @@ export function happyContext(): RuleContext {
       AADHAAR_BACK: { status: 'OK', warnings: [] },
     },
     comparisons: { panTypedMatchesExtracted: true, aadhaarTypedMatchesExtracted: true },
-    faceMatch: { score: 0.92 },
-    liveness: { passed: true },
+    faceMatch: face(0.8),
+    liveness: live('PASSED'),
     priorApprovedMatches: [],
   };
 }

@@ -522,6 +522,7 @@ export function createFakeEnqueuer(): FakeEnqueuer {
         throw new Error('redis is down');
       }
       e.riskQueued.push({ sessionId, run });
+      return true;
     },
     async enqueueExtractions(ids) {
       if (e.failNext) {
@@ -668,29 +669,22 @@ export function allDeps(
 }
 
 // ---- Risk fakes ----
-import type {
-  AssessmentRecord,
-  BiometricRecord,
-  PriorCandidate,
-  RiskStore,
-} from '../src/modules/risk/store.js';
+import type { AssessmentRecord, PriorCandidate, RiskStore } from '../src/modules/risk/store.js';
 
 export interface FakeRiskStore extends RiskStore {
   assessments: AssessmentRecord[];
-  biometrics: BiometricRecord[];
   /** Pretend these APPROVED sessions of other users exist; the fake filters them like the real query. */
   priors: PriorCandidate[];
 }
 
 export function createFakeRiskStore(audits: AuditEntry[]): FakeRiskStore {
   const assessments: AssessmentRecord[] = [];
-  const biometrics: BiometricRecord[] = [];
   const priors: PriorCandidate[] = [];
+  const locks = new Map<string, Promise<void>>();
   let tick = 0;
   const stamp = () => new Date(Date.UTC(2026, 9, 10, 0, 0, tick++));
   return {
     assessments,
-    biometrics,
     priors,
     listAssessments: async (sessionId) =>
       assessments
@@ -708,15 +702,17 @@ export function createFakeRiskStore(audits: AuditEntry[]): FakeRiskStore {
       audits.push(...buildAudits(row));
       return row;
     },
-    latestBiometrics: async (sessionId, { includeDevInjected }) =>
-      biometrics
-        .filter((b) => b.sessionId === sessionId && (includeDevInjected || b.source === 'PIPELINE'))
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null,
-    async recordBiometrics(input, audit) {
-      const row: BiometricRecord = { ...input, id: randomUUID(), createdAt: stamp() };
-      biometrics.push(row);
-      audits.push(audit(row));
-      return row;
+    // One at a time per session, like the advisory lock the real store takes.
+    withSessionLock(sessionId, fn) {
+      const run = (locks.get(sessionId) ?? Promise.resolve()).then(fn, fn);
+      locks.set(
+        sessionId,
+        run.then(
+          () => undefined,
+          () => undefined,
+        ),
+      );
+      return run;
     },
     findPriorApprovedCandidates: async ({ userId, panHmac, aadhaarLast4 }) =>
       priors.filter(

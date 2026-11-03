@@ -15,6 +15,12 @@ export const UNGUARDED_ROUTES: Record<string, string> = {
     'Development stand-in for the AI service: authorised by the shared internal key, as the real one is.',
   'POST /dev/ai-mock/extract/aadhaar':
     'Development stand-in for the AI service: authorised by the shared internal key, as the real one is.',
+  'POST /dev/ai-mock/face/config':
+    'Development stand-in for the AI service: authorised by the shared internal key, as the real one is.',
+  'POST /dev/ai-mock/face/liveness':
+    'Development stand-in for the AI service: authorised by the shared internal key, as the real one is.',
+  'POST /dev/ai-mock/face/match':
+    'Development stand-in for the AI service: authorised by the shared internal key, as the real one is.',
   'POST /auth/customer/signup': 'Creates an account, so there is nobody to authorise yet.',
   'POST /auth/customer/login': 'Signs in; rate-limited and locked out per account instead.',
   'POST /auth/officer/login': 'Signs in; rate-limited and locked out per account instead.',

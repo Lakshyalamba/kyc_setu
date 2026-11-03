@@ -5,7 +5,8 @@
  * "reading" them is done by a canned AI client that answers from the generated sample cards, so the extraction
  * rows, the encrypted PAN, the blind index, the risk engine and every audit row are the real thing.
  *
- * Face match and liveness come from the dev-only signal injector, because the selfie step (Phase 4) does not exist.
+ * The selfie is a real upload (three frames, encrypted, stored); the face match and the motion check are answered by the same
+ * canned client, with the scores each scenario asks for, and then run through the real worker code paths.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -220,6 +221,7 @@ const contract = (name: string) =>
 /** Answers like the OCR service would for one persona's cards (field boxes come from where the card was drawn). */
 function cannedAi(
   personaOf: (sessionId: string) => (Persona & { override?: Scenario['identity'] }) | undefined,
+  selfieOf: (captureId: string) => { face: number; liveness: boolean } | undefined,
 ): AiClient {
   const samples: Record<ExtractionDocumentType, ExtractResponse> = {
     PAN: contract('extract-pan.ok.json'),
@@ -231,10 +233,40 @@ function cannedAi(
     confidence,
     bbox: bbox ?? { x: 0.1, y: 0.1, w: 0.3, h: 0.08 },
   });
-  const unused = () => Promise.reject(new Error('the seed reads documents only'));
   return {
-    motionCheck: unused,
-    faceMatch: unused,
+    async motionCheck(req) {
+      const wanted = selfieOf(req.captureId);
+      const ok = wanted?.liveness ?? true;
+      return {
+        captureId: req.captureId,
+        method: 'MOTION_CHECK',
+        result: ok ? 'PASSED' : 'FAILED',
+        failureReason: ok ? null : 'FRAMES_TOO_SIMILAR',
+        metrics: {
+          ssimPairs: ok ? [0.55, 0.5] : [0.995, 0.996],
+          meanSsim: ok ? 0.525 : 0.9955,
+          boxIouPairs: [0.93, 0.9],
+          facesPerFrame: [1, 1, 1],
+          sharpness: 50,
+          brightness: 150,
+        },
+        modelVersion: 'seed-motion-check',
+      };
+    },
+    async faceMatch(req) {
+      const wanted = selfieOf(req.selfieCaptureId);
+      return {
+        selfieCaptureId: req.selfieCaptureId,
+        idDocumentId: req.idDocumentId,
+        score: wanted?.face ?? 0.9,
+        embeddingVersion: 'seed-face',
+        reason: null,
+        idFaceCropPng: null,
+        selfieFaceCropPng: null,
+        idEmbedding: null,
+        selfieEmbedding: null,
+      };
+    },
     async extract(req: ExtractRequest): Promise<ExtractResponse> {
       const person = personaOf(req.sessionId);
       if (!person) throw new Error(`no persona for session ${req.sessionId}`);
@@ -319,9 +351,10 @@ export async function createSeeder(deps: { enqueuer?: VerificationEnqueuer } = {
 
   // The scenario currently being processed, so the canned AI knows whose cards it is "reading".
   const bySession = new Map<string, Persona & { override?: Scenario['identity'] }>();
+  const bySelfie = new Map<string, { face: number; liveness: boolean }>();
   const nothingToQueue: VerificationEnqueuer = {
     enqueueExtractions: async () => undefined,
-    enqueueRisk: async () => undefined,
+    enqueueRisk: async () => true,
     enqueueNotification: async () => undefined,
     enqueueSelfieChecks: async () => undefined,
   };
@@ -347,7 +380,10 @@ export async function createSeeder(deps: { enqueuer?: VerificationEnqueuer } = {
     },
     // Only the scenario that is meant to still be waiting for OCR uses the real queue (see `docs`).
     enqueuer: nothingToQueue,
-    aiClient: cannedAi((id) => bySession.get(id)),
+    aiClient: cannedAi(
+      (id) => bySession.get(id),
+      (id) => bySelfie.get(id),
+    ),
   });
 
   const must = async (email: string) => {
@@ -561,11 +597,21 @@ export async function createSeeder(deps: { enqueuer?: VerificationEnqueuer } = {
       await services.extraction.process(docIds.get(type)!, { attempt: 1, maxAttempts: 1 });
     }
 
-    const officer = await must('priya.officer@kycsetu.dev');
-    await services.risk.injectBiometrics(officer.id, started.id, {
-      faceMatch: { score: s.face ?? 0.9, modelVersion: 'seed-facenet-0' },
-      liveness: { passed: s.liveness ?? true },
-    });
+    const frame = readFileSync(path.join(SAMPLES, 'signature.png'));
+    const taken = await services.selfie.upload(
+      user.id,
+      started.id,
+      {
+        method: 'MOTION_CHECK',
+        frames: [frame, frame, frame],
+        best: frame,
+        deviceMeta: { userAgent: 'seed', screen: { width: 390, height: 844 } },
+      },
+      meta,
+    );
+    bySelfie.set(taken.captureId, { face: s.face ?? 0.9, liveness: s.liveness ?? true });
+    await services.selfie.runMotionCheck(taken.captureId);
+    await services.selfie.runFaceMatch(taken.captureId, docIds.get('AADHAAR_FRONT')!);
     await services.risk.runAutomatic(started.id);
 
     if (s.waitingMinutes !== undefined) {

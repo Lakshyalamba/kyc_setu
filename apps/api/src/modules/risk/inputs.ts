@@ -10,7 +10,8 @@ import { decryptPii } from '@kyc-setu/shared/pii';
 import { decryptStored } from '../kyc/personal-codec.js';
 import type { SessionRecord } from '../kyc/store.js';
 import type { ExtractionWithType } from '../extraction/store.js';
-import type { BiometricRecord, PriorCandidate } from './store.js';
+import type { BiometricRecord } from '../selfie/readiness.js';
+import type { PriorCandidate } from './store.js';
 
 const PAN_FORMAT = /^[A-Z]{5}[0-9]{4}[A-Z]$/;
 const AADHAAR_IN_TEXT = /(?<!\d)([2-9]\d{3})[\s-]?(\d{4})[\s-]?(\d{4})(?!\d)/g;
@@ -151,8 +152,21 @@ export async function buildRiskInput(
             ? aadhaarCandidates.has(typedAadhaarDigits)
             : null,
       },
-      faceMatch: b?.faceMatchScore != null ? { score: b.faceMatchScore } : null,
-      liveness: b?.livenessPassed != null ? { passed: b.livenessPassed } : null,
+      faceMatch: b?.face
+        ? {
+            score: b.face.score,
+            decision: b.face.decision,
+            thresholds: { autoPass: b.face.threshold, autoFail: b.face.failThreshold },
+            ...(b.face.reason ? { reason: b.face.reason } : {}),
+          }
+        : null,
+      liveness: b?.livenessResult
+        ? {
+            method: b.livenessMethod,
+            result: b.livenessResult,
+            ...(b.livenessFailureReason ? { failureReason: b.livenessFailureReason } : {}),
+          }
+        : null,
       priorApprovedMatches,
     },
   };

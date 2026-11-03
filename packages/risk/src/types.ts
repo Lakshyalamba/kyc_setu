@@ -30,13 +30,33 @@ export interface ExtractionFacts {
   warnings: string[];
 }
 
+export type FaceMatchDecision = 'AUTO_PASS' | 'REVIEW' | 'AUTO_FAIL';
+
+/**
+ * What the face match found, decided by the thresholds in packages/shared (the worker applies them and stores the decision
+ * with the boundaries that were in force). The engine follows the decision and holds no face-match numbers of its own.
+ */
 export interface FaceMatchFacts {
-  /** Similarity between the selfie and the ID photo, 0..1. */
+  /** Cosine similarity between the selfie and the ID photo, clamped to 0..1. */
   score: number;
+  decision: FaceMatchDecision;
+  /** The score boundaries the decision was made with: at or above `autoPass` passes, below `autoFail` fails. */
+  thresholds: { autoPass: number; autoFail: number };
+  /** Why there was nothing to compare, if so: no_face_in_id, no_face_in_selfie, ambiguous_selfie. */
+  reason?: string | undefined;
 }
 
+export type LivenessMethod = 'MOTION_CHECK' | 'NONE';
+
+/**
+ * The anti-spoofing result. It is a MOTION CHECK (three frames, did anything move?), not production liveness; `NONE` means the
+ * customer used the file-upload fallback and no check was possible.
+ */
 export interface LivenessFacts {
-  passed: boolean;
+  method: LivenessMethod;
+  /** NOT_PERFORMED exactly when the method is NONE. */
+  result: 'PASSED' | 'FAILED' | 'INCONCLUSIVE' | 'NOT_PERFORMED';
+  failureReason?: string | undefined;
 }
 
 /** One APPROVED session of a *different* user, already compared with this session by the worker. */

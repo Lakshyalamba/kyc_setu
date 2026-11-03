@@ -41,6 +41,7 @@ import { AiServiceError } from '../extraction/ai-client.js';
 import { patchFrom, toState, type RequestMeta } from '../kyc/kyc.service.js';
 import type { KycStore, SessionRecord } from '../kyc/store.js';
 import type { VerificationEnqueuer } from '../../queue/verification.js';
+import { activeFrontId, readChecks } from './readiness.js';
 import type { CaptureRecord, SelfieStore, StoredEnvelope } from './store.js';
 
 const log = loggerFor('selfie');
@@ -154,38 +155,8 @@ export function createSelfieService(deps: SelfieServiceDeps) {
       throw new AppError(415, 'UNSUPPORTED_MEDIA_TYPE', 'Send JPEG or PNG pictures only');
   }
 
-  /** What the customer's checks look like now. Used by the status route, retake rules and the risk service's readiness. */
-  async function checksOf(sessionId: string) {
-    const capture = await store.activeCapture(sessionId);
-    if (!capture) return null;
-    const [liveness, face, captures] = await Promise.all([
-      store.livenessFor(capture.id),
-      store.faceMatchFor(capture.id),
-      store.capturesOf(sessionId),
-    ]);
-    const retakesUsed = captures.length - 1;
-    const livenessDone = capture.livenessMethod === 'NONE' || liveness !== null;
-    const done = livenessDone && face !== null;
-    const livenessBad = liveness !== null && liveness.result !== 'PASSED';
-    const faceBad = face?.decision === 'AUTO_FAIL';
-    // A failed check with a retake still available is the customer's call: retake, or go on.
-    const awaitingCustomer =
-      done &&
-      (livenessBad || faceBad) &&
-      retakesUsed < MAX_SELFIE_RETAKES &&
-      capture.confirmedAt === null;
-    return {
-      capture,
-      liveness,
-      face,
-      retakesUsed,
-      livenessDone,
-      done,
-      awaitingCustomer,
-      livenessBad,
-      faceBad,
-    };
-  }
+  const checksOf = async (sessionId: string) =>
+    readChecks(store, sessionId, await activeFrontId(documentStore, sessionId));
 
   async function issueLink(
     captureId: string,
@@ -234,14 +205,15 @@ export function createSelfieService(deps: SelfieServiceDeps) {
       const session = await loadOwned(userId, sessionId);
       annotateContext({ sessionId });
       const checks = await checksOf(sessionId);
-      const firstTime = session.status === 'DOCS_EXTRACTED' && checks === null;
-      if (mode === 'first' && checks !== null)
+      // From DOCS_EXTRACTED a selfie is always welcome: a first one, or the one an officer asked for again.
+      const firstTime = session.status === 'DOCS_EXTRACTED';
+      if (mode === 'first' && checks !== null && !firstTime)
         throw new AppError(
           409,
           'SELFIE_EXISTS',
           'You have already taken a selfie. Use the retake option if you need to.',
         );
-      if (mode === 'retake' && checks === null)
+      if (mode === 'retake' && checks === null && !firstTime)
         throw new AppError(409, 'NO_SELFIE_TO_RETAKE', 'There is no selfie to retake yet.');
       if (!firstTime) {
         if (session.status !== 'SELFIE_CAPTURED' || !checks)

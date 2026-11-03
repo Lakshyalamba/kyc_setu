@@ -44,7 +44,9 @@ import { maskForRole } from '../pii/mask.js';
 import type { KycStore, SessionRecord } from '../kyc/store.js';
 import { buildRiskInput } from '../risk/inputs.js';
 import { toAssessmentDto } from '../risk/risk.service.js';
-import type { BiometricRecord, RiskStore } from '../risk/store.js';
+import type { RiskStore } from '../risk/store.js';
+import { activeFrontId, biometricsOf, type BiometricRecord } from '../selfie/readiness.js';
+import type { SelfieStore } from '../selfie/store.js';
 import type {
   AssignmentRecord,
   AuditRow,
@@ -69,6 +71,7 @@ export interface OfficerServiceDeps {
   documentStore: DocumentStore;
   extractionStore: ExtractionStore;
   riskStore: RiskStore;
+  selfieStore: SelfieStore;
   docs: DocumentsService;
   enqueuer: VerificationEnqueuer;
   kms: KmsClient;
@@ -157,9 +160,8 @@ const asFields = (v: unknown): Record<string, FieldJson> =>
   v && typeof v === 'object' ? (v as Record<string, FieldJson>) : {};
 
 export function createOfficerService(deps: OfficerServiceDeps) {
-  const { env, store, kycStore, documentStore, extractionStore, riskStore, docs, piiKey } = deps;
+  const { store, kycStore, documentStore, extractionStore, riskStore, docs, piiKey } = deps;
   const now = deps.now ?? (() => new Date());
-  const includeDevInjected = env.NODE_ENV !== 'production';
 
   const audit = (
     actor: Actor | null,
@@ -366,26 +368,24 @@ export function createOfficerService(deps: OfficerServiceDeps) {
   }
 
   function toFaceAndLiveness(bio: BiometricRecord | null) {
-    const t = defaultConfig.thresholds;
-    const faceMatch: ReviewPayload['faceMatch'] =
-      bio && bio.faceMatchScore !== null
-        ? {
-            available: true,
-            score: bio.faceMatchScore,
-            thresholds: { fail: t.faceMatchMin, borderline: t.faceMatchBorderlineMax },
-            modelVersion: bio.faceMatchModel,
-            source: bio.source,
-            // Aligned crops arrive with the selfie pipeline (Phase 4); nothing stores them yet.
-            aadhaarCropUrl: null,
-            selfieCropUrl: null,
-          }
-        : { available: false };
+    const faceMatch: ReviewPayload['faceMatch'] = bio?.face
+      ? {
+          available: true,
+          score: bio.face.score,
+          thresholds: { fail: bio.face.failThreshold, borderline: bio.face.threshold },
+          modelVersion: bio.face.embeddingVersion,
+          source: 'PIPELINE',
+          // The aligned crops are linked in the review payload (see the officer page); none here.
+          aadhaarCropUrl: null,
+          selfieCropUrl: null,
+        }
+      : { available: false };
     const liveness: ReviewPayload['liveness'] =
-      bio && bio.livenessPassed !== null
+      bio?.livenessResult && bio.livenessResult !== 'NOT_PERFORMED'
         ? {
             available: true,
-            passed: bio.livenessPassed,
-            failureReason: null,
+            passed: bio.livenessResult === 'PASSED',
+            failureReason: bio.livenessFailureReason,
             frameUrls: [],
           }
         : { available: false };
@@ -397,7 +397,9 @@ export function createOfficerService(deps: OfficerServiceDeps) {
       documentStore.listActive(session.id),
       extractionStore.listForSession(session.id),
       riskStore.latestAssessment(session.id),
-      riskStore.latestBiometrics(session.id, { includeDevInjected }),
+      activeFrontId(documentStore, session.id).then((front) =>
+        biometricsOf(deps.selfieStore, session.id, front),
+      ),
     ]);
     const comparison = await buildComparison(session, extractions);
     return {

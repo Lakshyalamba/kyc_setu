@@ -29,6 +29,8 @@ import type { AuditExportStore, ExportRecord } from './export.store.js';
 import { buildPacket, type PacketContent } from './packet.js';
 import type { ExportSigner } from './signing.js';
 import { loggerFor } from '../../observability/logger.js';
+import { activeFrontId, biometricsOf, type BiometricRecord } from '../selfie/readiness.js';
+import type { SelfieStore } from '../selfie/store.js';
 
 const log = loggerFor('export');
 
@@ -56,7 +58,7 @@ export interface ExportServiceDeps {
   chainStore: AuditChainStore;
   kms: KmsClient;
   piiKey: Buffer;
-  includeDevInjected: boolean;
+  selfieStore: SelfieStore;
   now?: () => Date;
 }
 
@@ -76,6 +78,15 @@ const PAN_IN_TEXT = /\b[A-Z]{5}\d{4}[A-Z]\b/g;
 export function redactRawText(text: string): string {
   return redactAadhaar(text).replace(PAN_IN_TEXT, (m) => maskPan(m) ?? 'XXXXXXXXXX');
 }
+
+const summaryOf = (bio: BiometricRecord) => ({
+  livenessMethod: bio.livenessMethod,
+  livenessResult: bio.livenessResult,
+  livenessFailureReason: bio.livenessFailureReason,
+  faceMatchScore: bio.face?.score ?? null,
+  faceMatchDecision: bio.face?.decision ?? null,
+  embeddingVersion: bio.face?.embeddingVersion ?? null,
+});
 
 export function createExportService(deps: ExportServiceDeps) {
   const {
@@ -121,7 +132,9 @@ export function createExportService(deps: ExportServiceDeps) {
         documentStore.listActive(session.id),
         extractionStore.listForSession(session.id),
         riskStore.listAssessments(session.id),
-        riskStore.latestBiometrics(session.id, { includeDevInjected: deps.includeDevInjected }),
+        activeFrontId(documentStore, session.id).then((front) =>
+          biometricsOf(deps.selfieStore, session.id, front),
+        ),
         officerStore.decisionsFor(session.id),
         officerStore.sessionAudit(session.id),
         session.consentVersionId ? kycStore.findConsentById(session.consentVersionId) : null,
@@ -221,16 +234,8 @@ export function createExportService(deps: ExportServiceDeps) {
           })),
         },
         face: {
-          available: false,
-          reason:
-            'Selfie capture, aligned crops and liveness frames are not stored yet (Phase 4 is not built)',
-          signals: bio
-            ? {
-                faceMatchScore: bio.faceMatchScore,
-                livenessPassed: bio.livenessPassed,
-                source: bio.source,
-              }
-            : null,
+          note: 'Results and model versions only: no pictures and no embeddings are included.',
+          recorded: bio ? summaryOf(bio) : null,
         },
         redactions: [
           'personal.json: PAN, mobile and Aadhaar are masked exactly as in the review page',
@@ -261,14 +266,7 @@ export function createExportService(deps: ExportServiceDeps) {
         )
         .join('\n')
         .concat(auditRows.length ? '\n' : ''),
-      faceSignals: bio
-        ? {
-            faceMatchScore: bio.faceMatchScore,
-            faceMatchModel: bio.faceMatchModel,
-            livenessPassed: bio.livenessPassed,
-            source: bio.source,
-          }
-        : { available: false },
+      faceSignals: bio ? summaryOf(bio) : { available: false },
       documents,
     };
   }

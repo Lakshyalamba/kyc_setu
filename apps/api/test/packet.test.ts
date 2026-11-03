@@ -34,9 +34,9 @@ const content = (): PacketContent => ({
       ],
     },
     consent: null,
-    riskEngine: { version: '1.0.0', latestAssessmentId: null, assessmentCount: 0 },
+    riskEngine: { version: '1.1.0', latestAssessmentId: null, assessmentCount: 0 },
     auditChain: { algorithm: 'sha256-chain-v1', checkpoints: [] },
-    face: { available: false, reason: 'Selfie capture (Phase 4) is not built', signals: null },
+    face: { note: 'no selfie was recorded', recorded: null },
     redactions: ['Aadhaar numbers in raw OCR text'],
   },
   personal: { fullName: 'Rahul K. S.', aadhaarMasked: 'XXXX-XXXX-4321' },
@@ -124,7 +124,7 @@ describe('the session packet', () => {
     expect(manifest).toMatchObject({
       schemaVersion: 1,
       session: { referenceId: 'KYC-33333333' },
-      face: { available: false },
+      face: { recorded: null },
       signature: {
         algorithm: 'ed25519',
         publicKey: signer.publicKeyBase64,

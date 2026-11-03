@@ -82,7 +82,6 @@ export const AUDIT_ACTIONS = {
   RISK_EVALUATED: 'risk.evaluated',
   RISK_RECOMPUTED: 'risk.recomputed',
   RISK_FAILED: 'risk.failed',
-  DEV_BIOMETRICS_INJECTED: 'dev.biometrics_injected',
   RISK_BIOMETRICS_CARRIED_FORWARD: 'risk.biometrics_carried_forward',
   OFFICER_REVIEW_OPENED: 'officer.review_opened',
   ASSIGNMENT_CLAIMED: 'assignment.claimed',

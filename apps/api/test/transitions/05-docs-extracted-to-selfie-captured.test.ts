@@ -7,33 +7,25 @@ import {
   statusOf,
 } from './support.js';
 
-const signals = {
-  faceMatch: { score: 0.92, modelVersion: 'test-1' },
-  liveness: { passed: true },
-};
-
-// The selfie step is not built (Phase 4), so this edge is fired by the development signal injector, which records the
-// same face-match and liveness signals the selfie step will.
 describe('DOCS_EXTRACTED -> SELFIE_CAPTURED', () => {
-  it('happens when face-match and liveness signals are recorded, and queues the automatic risk assessment', async () => {
+  it('happens when the customer uploads a selfie, and the risk job is queued once both checks are done', async () => {
     const h = await newWorld();
-    const { sessionId } = await docsExtracted(h);
-    const officer = await h.signedIn('officer@kycsetu.dev', 'officer');
+    const { customer, sessionId } = await docsExtracted(h);
 
-    const res = await officer.post(`/dev/sessions/${sessionId}/biometrics`).send(signals);
-    expect(res.status).toBe(200);
+    await h.completeSelfie(customer, sessionId);
     const t = expectLastTransition(h, sessionId, 'DOCS_EXTRACTED', 'SELFIE_CAPTURED');
-    // Credited to the officer who used the injector, since there is no customer action to credit.
-    expect(t).toMatchObject({ actorType: 'USER', actorId: h.officers.one.id });
+    // Credited to the customer who took the selfie.
+    expect(t).toMatchObject({
+      actorType: 'USER',
+      actorId: h.store.users.find((u) => u.email === 'a@kycsetu.dev')?.id,
+    });
     expect(h.enqueuer.riskQueued).toEqual([{ sessionId, run: 1 }]);
   });
 
   it('is refused before the documents have been read', async () => {
     const h = await newWorld();
-    const { sessionId } = await docsUploaded(h);
-    const officer = await h.signedIn('officer@kycsetu.dev', 'officer');
-    const res = await officer.post(`/dev/sessions/${sessionId}/biometrics`).send(signals);
-    expect(res.status).toBeGreaterThanOrEqual(400);
+    const { customer, sessionId } = await docsUploaded(h);
+    await expect(h.completeSelfie(customer, sessionId)).rejects.toThrow(/selfie failed: 409/);
     expect(statusOf(h, sessionId)).toBe('DOCS_UPLOADED');
   });
 });

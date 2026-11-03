@@ -123,3 +123,35 @@ export async function waitForExtractions(customer: Client, sessionId: string, ti
   }
   return { rows, seconds: (Date.now() - started) / 1000 };
 }
+
+/**
+ * The customer's selfie, through the real route: three frames and the middle one as best. The synthetic cards have no
+ * photograph a face model could use, so for a run without real selfies this sends the sample picture three times; the face
+ * and motion results are whatever the AI service answers (see `setMockFace` for the stand-in).
+ */
+export async function uploadSelfie(customer: Client, sessionId: string) {
+  const bytes = await readFile(path.join(SAMPLES, 'signature.png'));
+  const form = new FormData();
+  for (const name of ['frame0', 'frame1', 'frame2', 'best'])
+    form.append(name, new Blob([bytes], { type: 'image/png' }), `${name}.png`);
+  form.append('screenWidth', '390');
+  form.append('screenHeight', '844');
+  return customer('POST', `/kyc/sessions/${sessionId}/selfie`, undefined, form);
+}
+
+/** Tells the AI stand-in (`AI_SERVICE_URL=<api>/dev/ai-mock`) what to answer. A real AI service has no such endpoint. */
+export async function setMockFace(opts: { score: number; motionPasses: boolean }) {
+  const base = process.env['AI_SERVICE_URL'] ?? 'http://localhost:8000';
+  const res = await fetch(`${base}/face/config`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-internal-key': process.env['AI_INTERNAL_KEY'] ?? '',
+    },
+    body: JSON.stringify(opts),
+  });
+  if (!res.ok)
+    throw new Error(
+      `could not configure the AI stand-in (${res.status}); set AI_SERVICE_URL=<api>/dev/ai-mock to choose scores`,
+    );
+}

@@ -30,7 +30,14 @@ import { createBullEnqueuer, createVerificationQueue } from '../src/queue/verifi
 import { buildServices } from '../src/services.js';
 import { createVerificationWorker } from '../src/workers/verification.js';
 import { makeJpeg, makePng } from './fixtures.js';
-import { aiResponse, createFakeExportDeps, testEnv } from './helpers.js';
+import { ENGINE_VERSION } from '@kyc-setu/risk';
+import {
+  aiResponse,
+  createFakeExportDeps,
+  matchResponse,
+  motionResponse,
+  testEnv,
+} from './helpers.js';
 
 const up = process.env['INFRA_UP'] === '1';
 const dbUrl = process.env['TEST_DATABASE_URL'] ?? process.env['DATABASE_URL'] ?? '';
@@ -51,6 +58,7 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
   const queueName = `verification-test-${randomUUID()}`;
 
   let mode: Mode = 'ok';
+  let faceScore = 0.92;
   const aiCalls: {
     type: string;
     documentId: string;
@@ -67,7 +75,7 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
   beforeAll(async () => {
     await ensureBucket(s3, bucket);
     await prisma.$executeRawUnsafe(
-      'TRUNCATE "audit_logs", "risk_assessments", "biometric_signals", "extractions", "signed_url_issues", "documents", "otp_challenges", "kyc_sessions", "users" CASCADE',
+      'TRUNCATE "audit_logs", "risk_assessments", "extractions", "signed_url_issues", "documents", "otp_challenges", "kyc_sessions", "users" CASCADE',
     );
     await prisma.user.create({
       data: {
@@ -96,6 +104,19 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
           signedUrl: string;
           documentType?: ExtractionDocumentType;
         };
+        if (req.url?.startsWith('/face/')) {
+          const f = JSON.parse(body || '{}') as Record<string, string>;
+          if (req.headers['x-internal-key'] !== testEnv().AI_INTERNAL_KEY)
+            return void res.writeHead(401).end();
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return void res.end(
+            JSON.stringify(
+              req.url === '/face/liveness'
+                ? motionResponse(f['captureId']!)
+                : matchResponse(f['selfieCaptureId']!, f['idDocumentId']!, { score: faceScore }),
+            ),
+          );
+        }
         const type = req.url?.endsWith('/pan') ? 'PAN' : (parsed.documentType ?? 'AADHAAR_FRONT');
         const key = req.headers['x-internal-key'] as string | undefined;
         const call = { type, documentId: parsed.documentId, fetched: null as Buffer | null, key };
@@ -157,6 +178,7 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
       connection: createRedis(redisUrl),
       extraction: services.extraction,
       risk: services.risk,
+      selfie: services.selfie,
       backoffSeconds: env.EXTRACTION_BACKOFF_SECONDS,
       concurrency: 2,
       queueName,
@@ -355,7 +377,33 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
   });
 
   // ---- Phase 5: risk -------------------------------------------------------------------------------------
-  const GOOD = { faceMatch: { score: 0.92, modelVersion: 'it' }, liveness: { passed: true } };
+  /** The customer's selfie through the real route; the worker runs both checks against the fake AI over HTTP. */
+  async function takeSelfie(
+    agent: ReturnType<typeof request.agent>,
+    sessionId: string,
+    face = 0.92,
+  ) {
+    faceScore = face;
+    const frames = [makeJpeg(3000, 1), makeJpeg(3000, 2), makeJpeg(3000, 3)];
+    let req = agent.post(`/kyc/sessions/${sessionId}/selfie`);
+    frames.forEach((f, i) => {
+      req = req.attach(`frame${i}`, f, { filename: `f${i}.jpg`, contentType: 'image/jpeg' });
+    });
+    const res = await req
+      .attach('best', frames[1]!, { filename: 'b.jpg', contentType: 'image/jpeg' })
+      .field('screenWidth', '390')
+      .field('screenHeight', '844');
+    expect(res.status).toBe(201);
+    // A failed face match waits for the customer to retake or carry on; these tests carry on.
+    if (face < 0.3) {
+      for (let i = 0; i < 100; i++) {
+        const st = (await agent.get(`/kyc/sessions/${sessionId}/selfie/status`)).body;
+        if (st.faceMatch.status === 'DONE' && st.liveness.status !== 'PENDING') break;
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      await agent.post(`/kyc/sessions/${sessionId}/selfie/continue`).expect(200);
+    }
+  }
 
   async function officerAgent() {
     const o = request.agent(apiServer);
@@ -388,10 +436,8 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
     mode = 'ok';
     const { sessionId, agent } = await submitDocuments();
     await untilSettled(sessionId);
+    await takeSelfie(agent, sessionId);
     const officer = await officerAgent();
-    expect((await officer.post(`/dev/sessions/${sessionId}/biometrics`).send(GOOD)).body).toEqual({
-      enqueued: true,
-    });
     const { rows, session } = await untilAssessed(sessionId);
 
     expect(rows).toHaveLength(1);
@@ -400,7 +446,7 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
       score: 0,
       hardFail: false,
       trigger: 'AUTO',
-      engineVersion: '1.0.0',
+      engineVersion: ENGINE_VERSION,
     });
     expect(rows[0]?.triggeredRules).toEqual([]);
     expect(session.status).toBe('UNDER_REVIEW');
@@ -432,12 +478,9 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
 
   it('risk, real infra: a different face is HIGH, and risk_assessments is append-only at the database level', async () => {
     mode = 'ok';
-    const { sessionId } = await submitDocuments();
+    const { sessionId, agent } = await submitDocuments();
     await untilSettled(sessionId);
-    const officer = await officerAgent();
-    await officer
-      .post(`/dev/sessions/${sessionId}/biometrics`)
-      .send({ ...GOOD, faceMatch: { score: 0.15, modelVersion: 'it' } });
+    await takeSelfie(agent, sessionId, 0.15);
     const { rows } = await untilAssessed(sessionId);
     expect(rows[0]).toMatchObject({ band: 'HIGH', rawBand: 'MEDIUM', score: 35 });
     expect((rows[0]?.triggeredRules as { ruleId: string }[])[0]?.ruleId).toBe(
@@ -453,10 +496,9 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
 
   it('risk, real infra: a typed PAN one character off is MEDIUM (pan-form-mismatch)', async () => {
     mode = 'ok';
-    const { sessionId } = await submitDocuments({ panNumber: 'ABCDE1234G' });
+    const { sessionId, agent } = await submitDocuments({ panNumber: 'ABCDE1234G' });
     await untilSettled(sessionId);
-    const officer = await officerAgent();
-    await officer.post(`/dev/sessions/${sessionId}/biometrics`).send(GOOD);
+    await takeSelfie(agent, sessionId);
     const { rows } = await untilAssessed(sessionId);
     expect(rows[0]).toMatchObject({ band: 'MEDIUM', score: 20 });
     expect((rows[0]?.triggeredRules as { ruleId: string }[]).map((r) => r.ruleId)).toEqual([
@@ -507,10 +549,9 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
       data: { documentId: priorFront.id, status: 'OK', aadhaarNumberLast4: '4321' },
     });
 
-    const { sessionId } = await submitDocuments();
+    const { sessionId, agent } = await submitDocuments();
     await untilSettled(sessionId);
-    const officer = await officerAgent();
-    await officer.post(`/dev/sessions/${sessionId}/biometrics`).send(GOOD);
+    await takeSelfie(agent, sessionId);
     const { rows } = await untilAssessed(sessionId);
     expect(rows[0]).toMatchObject({ band: 'HIGH', rawBand: 'HIGH', score: 80 }); // 40 + 40
     expect((rows[0]?.triggeredRules as { ruleId: string }[]).map((r) => r.ruleId)).toEqual([
@@ -530,20 +571,15 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
 
   it('risk, real infra: recompute appends a row, records the actor and the delta, and leaves the state alone', async () => {
     mode = 'ok';
-    const { sessionId } = await submitDocuments();
+    const { sessionId, agent } = await submitDocuments();
     await untilSettled(sessionId);
+    await takeSelfie(agent, sessionId);
     const officer = await officerAgent();
-    await officer.post(`/dev/sessions/${sessionId}/biometrics`).send(GOOD);
     await untilAssessed(sessionId);
-    // Something changes afterwards: a worse face-match result arrives.
-    await prisma.biometricSignal.create({
-      data: {
-        sessionId,
-        source: 'DEV_INJECTED',
-        faceMatchScore: 0.1,
-        faceMatchModel: 'it',
-        livenessPassed: true,
-      },
+    // Something changes afterwards: the stored face comparison now reads as a different person.
+    await prisma.faceMatch.updateMany({
+      where: { selfieCapture: { sessionId } },
+      data: { score: 0.1, decision: 'AUTO_FAIL' },
     });
 
     const res = await officer.post(`/kyc/sessions/${sessionId}/risk/recompute`);

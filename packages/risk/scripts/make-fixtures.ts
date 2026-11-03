@@ -2,7 +2,7 @@
 // Regenerates test/snapshots/*.json from the builders. The JSON is committed and is what the snapshot test reads.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { build } from '../test/builders.js';
+import { build, face, live, noMotionCheck } from '../test/builders.js';
 import type { RuleContext } from '../src/types.js';
 
 const dir = path.resolve(import.meta.dirname, '../test/snapshots');
@@ -10,9 +10,9 @@ mkdirSync(dir, { recursive: true });
 
 const scenarios: Record<string, (c: RuleContext) => void> = {
   'happy-path': () => undefined,
-  // A different person's face: below the 0.65 match threshold.
+  // A different person's face: below the face-match fail boundary (0.30), so the match decided AUTO_FAIL.
   'stranger-selfie': (c) => {
-    c.faceMatch = { score: 0.21 };
+    c.faceMatch = face(0.21);
   },
   // Typed name is a clumsy version of the PAN name; the PAN and the Aadhaar agree.
   'typo-name': (c) => {
@@ -44,8 +44,17 @@ const scenarios: Record<string, (c: RuleContext) => void> = {
   'pan-tampered': (c) => {
     c.comparisons.panTypedMatchesExtracted = false;
   },
+  // Between the two face-match boundaries (0.30 and 0.50): the match decided REVIEW.
   'borderline-face': (c) => {
-    c.faceMatch = { score: 0.7 };
+    c.faceMatch = face(0.4);
+  },
+  // The customer could not use the camera and uploaded a file: no motion check was possible.
+  'no-motion-check': (c) => {
+    c.liveness = noMotionCheck();
+  },
+  // Three identical frames: a photograph held still. The face matched, so only the motion check is interesting.
+  'photo-of-a-photo': (c) => {
+    c.liveness = live('FAILED', 'FRAMES_TOO_SIMILAR');
   },
   // A PAN card in the Aadhaar slot: most identity rules are skipped, which must NOT look clean.
   'wrong-document': (c) => {
@@ -55,8 +64,8 @@ const scenarios: Record<string, (c: RuleContext) => void> = {
   // Everything at once: the score clamps at 100.
   'everything-wrong': (c) => {
     c.personal.fullName = 'Somebody Else';
-    c.faceMatch = { score: 0.1 };
-    c.liveness = { passed: false };
+    c.faceMatch = face(0.1);
+    c.liveness = live('FAILED');
     c.comparisons = { panTypedMatchesExtracted: false, aadhaarTypedMatchesExtracted: false };
     if (c.extractions.PAN?.name) c.extractions.PAN.name.confidence = 0.3;
     if (c.extractions.PAN?.panNumber) c.extractions.PAN.panNumber.formatValid = false;

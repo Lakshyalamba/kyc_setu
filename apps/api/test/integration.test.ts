@@ -32,7 +32,7 @@ import { createFakeExportDeps, testEnv } from './helpers.js';
 
 const noopEnqueuer = {
   enqueueExtractions: async () => undefined,
-  enqueueRisk: async () => undefined,
+  enqueueRisk: async () => true,
   enqueueNotification: async () => undefined,
   enqueueSelfieChecks: async () => undefined,
 };

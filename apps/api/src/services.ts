@@ -113,6 +113,8 @@ export function buildServices(deps: ServiceDeps): Services {
     kycStore: deps.kycStore,
     extractionStore: deps.extractionStore,
     decisions: deps.officerStore,
+    selfieStore: deps.selfieStore,
+    documentStore: deps.documentStore,
     enqueuer: deps.enqueuer,
     kms,
     piiKey,
@@ -158,6 +160,7 @@ export function buildServices(deps: ServiceDeps): Services {
     documentStore: deps.documentStore,
     extractionStore: deps.extractionStore,
     riskStore: deps.riskStore,
+    selfieStore: deps.selfieStore,
     docs,
     enqueuer: deps.enqueuer,
     kms,
@@ -186,7 +189,7 @@ export function buildServices(deps: ServiceDeps): Services {
     chainStore: deps.auditChainStore,
     kms,
     piiKey,
-    includeDevInjected: env.NODE_ENV !== 'production',
+    selfieStore: deps.selfieStore,
     ...deps.kycOverrides,
   });
   const retention = createRetentionService({

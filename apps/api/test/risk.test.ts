@@ -5,6 +5,7 @@ import { encryptPii } from '@kyc-setu/shared/pii';
 import { panBlindIndex } from '../src/modules/extraction/pii.js';
 import type { VerificationJobData } from '../src/queue/verification.js';
 import { createVerificationProcessor } from '../src/workers/verification.js';
+import { ENGINE_VERSION } from '@kyc-setu/risk';
 import { aiResponse } from './helpers.js';
 import { createHarness, type Agent, type Harness } from './harness.js';
 
@@ -12,32 +13,28 @@ let h: Harness;
 let a: Agent;
 let officer: Agent;
 
-const GOOD = { faceMatch: { score: 0.92, modelVersion: 'test-1' }, liveness: { passed: true } };
-
 beforeEach(async () => {
   h = await createHarness();
   a = await h.signedIn('a@kycsetu.dev');
   officer = await h.signedIn('officer@kycsetu.dev', 'officer');
 });
 
-/** Customer finishes documents -> extracted; then the (dev) injector supplies the selfie signals; then the worker runs. */
-async function assess(opts: { typed?: Record<string, unknown>; biometrics?: typeof GOOD } = {}) {
+/** Customer finishes documents -> extracted -> takes a selfie (both checks answered by the fake AI); then the worker runs. */
+async function assess(
+  opts: { typed?: Record<string, unknown>; face?: number; liveness?: boolean } = {},
+) {
   const docs = await h.reachExtracted(a, opts.typed);
-  const inject = await officer
-    .post(`/dev/sessions/${docs.sessionId}/biometrics`)
-    .send(opts.biometrics ?? GOOD);
-  expect(inject.status).toBe(200);
+  await h.completeSelfie(a, docs.sessionId, opts);
   const outcomes = await h.runQueuedRisk();
   const assessment = await h.riskStore.latestAssessment(docs.sessionId);
-  return { ...docs, inject, outcomes, assessment };
+  return { ...docs, outcomes, assessment };
 }
 const fired = (a: { triggeredRules: unknown } | null) =>
   (a?.triggeredRules as { ruleId: string }[] | undefined)?.map((t) => t.ruleId) ?? [];
 
 describe('exit criterion 1: a clean flow', () => {
   it('produces a LOW assessment with nothing triggered, and the session ends UNDER_REVIEW', async () => {
-    const { sessionId, assessment, inject, outcomes } = await assess();
-    expect(inject.body).toEqual({ enqueued: true });
+    const { sessionId, assessment, outcomes } = await assess();
     expect(outcomes).toHaveLength(1);
     expect(assessment).toMatchObject({
       band: 'LOW',
@@ -45,7 +42,7 @@ describe('exit criterion 1: a clean flow', () => {
       hardFail: false,
       trigger: 'AUTO',
       triggeredById: null,
-      engineVersion: '1.0.0',
+      engineVersion: ENGINE_VERSION,
     });
     expect(assessment?.triggeredRules).toEqual([]);
     expect(h.kycStore.sessions.find((s) => s.id === sessionId)?.status).toBe('UNDER_REVIEW');
@@ -82,8 +79,8 @@ describe('exit criterion 1: a clean flow', () => {
     expect(evald[0]?.metadata).toMatchObject({
       score: 0,
       band: 'LOW',
-      engineVersion: '1.0.0',
-      ruleCount: 17,
+      engineVersion: ENGINE_VERSION,
+      ruleCount: 18,
       hardFail: false,
       assessmentId: assessment?.id,
     });
@@ -107,9 +104,7 @@ describe('exit criterion 1: a clean flow', () => {
 
 describe('exit criteria 2-5: the scenarios', () => {
   it('2. a different face: HIGH, with face-match-below-threshold on top', async () => {
-    const { assessment } = await assess({
-      biometrics: { faceMatch: { score: 0.18, modelVersion: 't' }, liveness: { passed: true } },
-    });
+    const { assessment } = await assess({ face: 0.18 });
     expect(assessment).toMatchObject({ band: 'HIGH', rawBand: 'MEDIUM', score: 35 });
     expect(fired(assessment)[0]).toBe('face-match-below-threshold');
     expect(assessment?.bandFloors).toEqual([
@@ -171,7 +166,7 @@ describe('exit criteria 2-5: the scenarios', () => {
     h.riskStore.priors.push(prior('234123414321')); // the same Aadhaar
     const b = await h.signedIn('b@kycsetu.dev');
     const docs = await h.reachExtracted(b);
-    await officer.post(`/dev/sessions/${docs.sessionId}/biometrics`).send(GOOD);
+    await h.completeSelfie(b, docs.sessionId);
     await h.runQueuedRisk();
     const dup = await h.riskStore.latestAssessment(docs.sessionId);
     expect(dup).toMatchObject({ band: 'HIGH' });
@@ -212,30 +207,18 @@ describe('exit criteria 2-5: the scenarios', () => {
 });
 
 describe('triggering and idempotency', () => {
-  it('does not queue the job until BOTH face match and liveness exist', async () => {
+  it('does not queue the job until BOTH the motion check and the face match are done', async () => {
     const docs = await h.reachExtracted(a);
-    const session = h.kycStore.sessions.find((s) => s.id === docs.sessionId);
-    if (session) session.status = 'SELFIE_CAPTURED';
-    await h.riskStore.recordBiometrics(
-      {
-        sessionId: docs.sessionId,
-        source: 'DEV_INJECTED',
-        faceMatchScore: 0.9,
-        faceMatchModel: 't',
-        livenessPassed: null,
-      },
-      (b) => ({
-        actorId: null,
-        actorType: 'SYSTEM',
-        action: 'x',
-        entityType: 'KycSession',
-        entityId: b.sessionId,
-        metadata: {},
-      }),
-    ); // fmt: skip
+    await h.completeSelfie(a, docs.sessionId, { runChecks: false });
+    h.enqueuer.riskQueued.length = 0;
+    const [job] = h.enqueuer.selfieChecks.splice(0);
+    expect(await h.services.risk.onInputsChanged(docs.sessionId)).toBe(false);
+    await h.services.selfie.runMotionCheck(job!.captureId);
     expect(await h.services.risk.onInputsChanged(docs.sessionId)).toBe(false);
     expect(h.enqueuer.riskQueued).toEqual([]);
     expect(h.actions()).not.toContain('risk.job_enqueued');
+    await h.services.selfie.runFaceMatch(job!.captureId, job!.idDocumentId);
+    expect(await h.services.risk.isReady(docs.sessionId)).toBe(true);
   });
 
   it('does not queue before the selfie step (session not at SELFIE_CAPTURED)', async () => {
@@ -261,7 +244,8 @@ describe('triggering and idempotency', () => {
 
   it('the queue processor runs the risk job, and a final failure leaves an audit row and a flag', async () => {
     const docs = await h.reachExtracted(a);
-    await officer.post(`/dev/sessions/${docs.sessionId}/biometrics`).send(GOOD);
+    await h.completeSelfie(a, docs.sessionId);
+    h.enqueuer.riskQueued.length = 0;
     const processor = createVerificationProcessor(
       h.services.extraction,
       [10, 60, 300],
@@ -274,8 +258,8 @@ describe('triggering and idempotency', () => {
         opts: { attempts: 4 },
       }) as unknown as Job<VerificationJobData>;
 
-    const original = h.riskStore.latestBiometrics;
-    h.riskStore.latestBiometrics = async () => {
+    const original = h.selfieStore.activeCapture;
+    h.selfieStore.activeCapture = async () => {
       throw new Error('database is down');
     };
     await expect(processor(job(0))).rejects.toThrow('database is down'); // will be retried
@@ -284,7 +268,7 @@ describe('triggering and idempotency', () => {
     expect(h.actions()).toContain('risk.failed');
     expect(h.kycStore.sessions.find((s) => s.id === docs.sessionId)?.flags).toContain('RISK_ERROR');
 
-    h.riskStore.latestBiometrics = original;
+    h.selfieStore.activeCapture = original;
     h.kycStore.sessions.forEach(
       (s) => (s.status = s.id === docs.sessionId ? 'SELFIE_CAPTURED' : s.status),
     );
@@ -300,93 +284,16 @@ describe('triggering and idempotency', () => {
     } as unknown as Job<VerificationJobData>;
     await expect(processor(job)).rejects.toBeInstanceOf(UnrecoverableError);
   });
-
-  it('production ignores dev-injected signals entirely', async () => {
-    // Production cookies are Secure, so drive the stores directly instead of logging in over plain HTTP.
-    const prod = await createHarness({ NODE_ENV: 'production', KMS_PROVIDER: 'aws' });
-    const userId = prod.store.users.find((u) => u.email === 'a@kycsetu.dev')?.id ?? '';
-    const session = await prod.kycStore.createSession(
-      { userId, expiresAt: new Date('2027-01-01') },
-      (s) => ({
-        actorId: userId,
-        actorType: 'USER',
-        action: 'kyc.session.created',
-        entityType: 'KycSession',
-        entityId: s.id,
-        metadata: {},
-      }),
-    ); // fmt: skip
-    if (!session) throw new Error('no session');
-    session.status = 'SELFIE_CAPTURED';
-    await prod.riskStore.recordBiometrics(
-      {
-        sessionId: session.id,
-        source: 'DEV_INJECTED',
-        faceMatchScore: 0.9,
-        faceMatchModel: 't',
-        livenessPassed: true,
-      },
-      (b) => ({
-        actorId: null,
-        actorType: 'SYSTEM',
-        action: 'x',
-        entityType: 'KycSession',
-        entityId: b.sessionId,
-        metadata: {},
-      }),
-    ); // fmt: skip
-    expect(await prod.services.risk.isReady(session.id)).toBe(false);
-    await expect(
-      prod.services.risk.injectBiometrics('o', session.id, {
-        faceMatch: { score: 0.9, modelVersion: 'x' },
-        liveness: { passed: true },
-      }),
-    ).rejects.toMatchObject({ status: 404 });
-
-    // A real pipeline signal, by contrast, counts.
-    await prod.riskStore.recordBiometrics(
-      {
-        sessionId: session.id,
-        source: 'PIPELINE',
-        faceMatchScore: 0.9,
-        faceMatchModel: 't',
-        livenessPassed: true,
-      },
-      (b) => ({
-        actorId: null,
-        actorType: 'SYSTEM',
-        action: 'x',
-        entityType: 'KycSession',
-        entityId: b.sessionId,
-        metadata: {},
-      }),
-    ); // fmt: skip
-    expect(await prod.services.risk.isReady(session.id)).toBe(true);
-  });
 });
 
 describe('exit criterion 6: recompute', () => {
   it('writes a NEW row, records who and what changed, and leaves the session where it is', async () => {
     const { sessionId } = await assess();
     expect(h.riskStore.assessments).toHaveLength(1);
-    // The facts change (e.g. a better selfie after a resubmission would, here a worse one).
-    await h.riskStore.recordBiometrics(
-      {
-        sessionId,
-        source: 'DEV_INJECTED',
-        faceMatchScore: 0.2,
-        faceMatchModel: 't',
-        livenessPassed: true,
-      },
-      (b) => ({
-        actorId: null,
-        actorType: 'SYSTEM',
-        action: 'x',
-        entityType: 'KycSession',
-        entityId: b.sessionId,
-        metadata: {},
-      }),
-    ); // fmt: skip
+    // The facts change: the face comparison now says the selfie is a different person.
+    const match = h.selfieStore.faceMatches[0]!;
+    match.score = 0.2;
+    match.decision = 'AUTO_FAIL';
 
     const res = await officer.post(`/kyc/sessions/${sessionId}/risk/recompute`);
     expect(res.status).toBe(200);
@@ -438,16 +345,14 @@ describe('exit criterion 6: recompute', () => {
 
 describe('reading an assessment', () => {
   it('officers (and auditors) see everything', async () => {
-    const { sessionId } = await assess({
-      biometrics: { faceMatch: { score: 0.7, modelVersion: 't' }, liveness: { passed: true } },
-    });
+    const { sessionId } = await assess({ face: 0.4 });
     for (const who of [officer, await h.signedIn('auditor@kycsetu.dev', 'officer')]) {
       const res = await who.get(`/kyc/sessions/${sessionId}/risk`);
       expect(res.status).toBe(200);
       expect(res.body.assessment).toMatchObject({
         band: 'MEDIUM',
         score: 15,
-        engineVersion: '1.0.0',
+        engineVersion: ENGINE_VERSION,
       });
       expect(res.body.assessment.triggeredRules[0]).toMatchObject({
         ruleId: 'face-match-borderline',
@@ -458,9 +363,7 @@ describe('reading an assessment', () => {
   });
 
   it('the owning customer sees the band and nothing else', async () => {
-    const { sessionId } = await assess({
-      biometrics: { faceMatch: { score: 0.7, modelVersion: 't' }, liveness: { passed: true } },
-    });
+    const { sessionId } = await assess({ face: 0.4 });
     const res = await a.get(`/kyc/sessions/${sessionId}/risk`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ band: 'MEDIUM' });
@@ -482,23 +385,8 @@ describe('reading an assessment', () => {
 
   it('returns the newest assessment after a recompute', async () => {
     const { sessionId } = await assess();
-    await h.riskStore.recordBiometrics(
-      {
-        sessionId,
-        source: 'DEV_INJECTED',
-        faceMatchScore: 0.2,
-        faceMatchModel: 't',
-        livenessPassed: true,
-      },
-      (b) => ({
-        actorId: null,
-        actorType: 'SYSTEM',
-        action: 'x',
-        entityType: 'KycSession',
-        entityId: b.sessionId,
-        metadata: {},
-      }),
-    ); // fmt: skip
+    h.selfieStore.faceMatches[0]!.score = 0.2;
+    h.selfieStore.faceMatches[0]!.decision = 'AUTO_FAIL';
     await officer.post(`/kyc/sessions/${sessionId}/risk/recompute`);
     expect((await officer.get(`/kyc/sessions/${sessionId}/risk`)).body.assessment).toMatchObject({
       band: 'HIGH',
@@ -511,26 +399,10 @@ describe('reading an assessment', () => {
 describe('dev routes', () => {
   it('preview runs the engine on current data and persists nothing', async () => {
     const docs = await h.reachExtracted(a);
-    await h.riskStore.recordBiometrics(
-      {
-        sessionId: docs.sessionId,
-        source: 'DEV_INJECTED',
-        faceMatchScore: 0.3,
-        faceMatchModel: 't',
-        livenessPassed: false,
-      },
-      (b) => ({
-        actorId: null,
-        actorType: 'SYSTEM',
-        action: 'x',
-        entityType: 'KycSession',
-        entityId: b.sessionId,
-        metadata: {},
-      }),
-    ); // fmt: skip
+    await h.completeSelfie(a, docs.sessionId, { face: 0.2, liveness: false });
     const res = await officer.get(`/dev/risk/preview?sessionId=${docs.sessionId}`);
     expect(res.status).toBe(200);
-    expect(res.body.result).toMatchObject({ band: 'HIGH', engineVersion: '1.0.0' });
+    expect(res.body.result).toMatchObject({ band: 'HIGH', engineVersion: ENGINE_VERSION });
     expect(res.body.result.triggeredRules.map((t: { ruleId: string }) => t.ruleId)).toEqual([
       'face-match-below-threshold',
       'liveness-failed',
@@ -547,25 +419,12 @@ describe('dev routes', () => {
   it('require an officer; customers cannot use them', async () => {
     const docs = await h.reachExtracted(a);
     expect((await a.get(`/dev/risk/preview?sessionId=${docs.sessionId}`)).status).toBe(403);
-    expect((await a.post(`/dev/sessions/${docs.sessionId}/biometrics`).send(GOOD)).status).toBe(
-      403,
-    );
     expect((await officer.get('/dev/risk/preview?sessionId=nope')).status).toBe(400);
   });
 
-  it('the injector only works at DOCS_EXTRACTED / SELFIE_CAPTURED, and audits what it did', async () => {
-    const early = (await a.post('/kyc/sessions')).body.session.id as string;
-    expect((await officer.post(`/dev/sessions/${early}/biometrics`).send(GOOD)).status).toBe(409);
-    const { sessionId } = await assess();
-    expect((await officer.post(`/dev/sessions/${sessionId}/biometrics`).send(GOOD)).status).toBe(
-      409,
-    ); // already UNDER_REVIEW
-    const row = h.audits.find((x) => x.action === 'dev.biometrics_injected');
-    expect(row?.metadata).toMatchObject({
-      source: 'DEV_INJECTED',
-      faceMatchScore: 0.92,
-      livenessPassed: true,
-    });
+  it('the injector is gone: the route does not exist any more', async () => {
+    const docs = await h.reachExtracted(a);
+    expect((await officer.post(`/dev/sessions/${docs.sessionId}/biometrics`)).status).toBe(404);
   });
 
   it('are not registered in production', async () => {
@@ -573,10 +432,6 @@ describe('dev routes', () => {
     const o = await prod.signedIn('officer@kycsetu.dev', 'officer');
     expect(
       (await o.get('/dev/risk/preview?sessionId=7b1d3c5e-0000-4000-8000-000000000001')).status,
-    ).toBe(404);
-    expect(
-      (await o.post('/dev/sessions/7b1d3c5e-0000-4000-8000-000000000001/biometrics').send(GOOD))
-        .status,
     ).toBe(404);
   });
 });

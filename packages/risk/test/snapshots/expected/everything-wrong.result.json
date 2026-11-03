@@ -53,17 +53,20 @@
       "ruleId": "face-match-below-threshold",
       "category": "biometric",
       "penalty": 35,
-      "reason": "The selfie does not match the photo on the ID (score 0.1, minimum 0.65)",
+      "reason": "The selfie does not match the photo on the ID (score 0.1, minimum 0.3)",
       "details": {
         "score": 0.1,
-        "threshold": 0.65
+        "threshold": 0.3
       }
     },
     {
       "ruleId": "liveness-failed",
       "category": "biometric",
       "penalty": 25,
-      "reason": "The liveness (motion) check failed"
+      "reason": "The motion check failed",
+      "details": {
+        "result": "FAILED"
+      }
     },
     {
       "ruleId": "low-ocr-confidence",
@@ -127,6 +130,7 @@
     "face-match-below-threshold",
     "face-match-borderline",
     "liveness-failed",
+    "liveness-method-none",
     "low-ocr-confidence",
     "name-mismatch-form-pan",
     "name-mismatch-pan-aadhaar",
@@ -134,5 +138,5 @@
     "pan-format-invalid"
   ],
   "skippedRules": [],
-  "engineVersion": "1.0.0"
+  "engineVersion": "1.1.0"
 }

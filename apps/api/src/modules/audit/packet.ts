@@ -44,17 +44,18 @@ export interface PacketManifest {
       chainHash: string;
     }[];
   };
-  face:
-    | {
-        available: false;
-        reason: string;
-        signals: null | {
-          faceMatchScore: number | null;
-          livenessPassed: boolean | null;
-          source: string;
-        };
-      }
-    | { available: true };
+  face: {
+    /** What the packet says about the selfie: results and versions only. Pictures are not included. */
+    note: string;
+    recorded: null | {
+      livenessMethod: 'MOTION_CHECK' | 'NONE';
+      livenessResult: string | null;
+      livenessFailureReason: string | null;
+      faceMatchScore: number | null;
+      faceMatchDecision: string | null;
+      embeddingVersion: string | null;
+    };
+  };
   redactions: string[];
   /** Every file in the packet except this one, `files.sha256` and its signature. */
   files: { path: string; sha256: string; bytes: number }[];
@@ -84,8 +85,10 @@ export const sha256Hex = (data: Uint8Array | string): string =>
 const json = (v: unknown) => `${JSON.stringify(v, null, 2)}\n`;
 
 export const FACE_README =
-  'Aligned face crops, the selfie and the liveness frames are not stored yet: the selfie step (Phase 4) is not built.\n' +
-  'signals.json holds the face-match score and liveness result that were recorded, if any.\n';
+  'The selfie frames and the aligned face crops are NOT in this packet: a face is as identifying as a document, and the\n' +
+  'packet carries results, not pictures. signals.json holds what was recorded: whether a motion check was performed and its\n' +
+  'result (a motion check is not production liveness), the face-match score and decision, and the version of the models.\n' +
+  'Embeddings are never exported.\n';
 
 /** The script a recipient runs inside the extracted packet. Plain bash and sha256sum; OpenSSL 3 for the signature. */
 export const VERIFY_SH = `#!/usr/bin/env bash

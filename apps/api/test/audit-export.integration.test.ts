@@ -63,13 +63,12 @@ describe.skipIf(!up)('signed session packets (real infra)', () => {
   let services: ReturnType<typeof buildServices>;
   let sessionId: string;
   let docIds: Record<string, string>;
-  let adminId: string;
 
   beforeAll(async () => {
     await ensureBucket(s3, bucket);
     await ensureBucket(s3, exportsBucket);
     await raw.$executeRawUnsafe(
-      'TRUNCATE "audit_logs", "audit_exports", "decisions", "officer_assignments", "risk_assessments", "biometric_signals", "extractions", "signed_url_issues", "documents", "otp_challenges", "kyc_sessions", "users" CASCADE',
+      'TRUNCATE "audit_logs", "audit_exports", "decisions", "officer_assignments", "risk_assessments", "extractions", "signed_url_issues", "documents", "otp_challenges", "kyc_sessions", "users" CASCADE',
     );
     const hash = await hashPassword(PASSWORD);
     await raw.user.create({
@@ -80,10 +79,9 @@ describe.skipIf(!up)('signed session packets (real infra)', () => {
         kind: 'SERVICE',
       },
     });
-    const officer = await raw.user.create({
+    await raw.user.create({
       data: { email: 'officer@example.com', passwordHash: hash, role: 'OFFICER' },
     });
-    adminId = officer.id;
     await raw.user.create({
       data: { email: 'auditor@example.com', passwordHash: hash, role: 'AUDITOR' },
     });
@@ -181,10 +179,21 @@ describe.skipIf(!up)('signed session packets (real infra)', () => {
     await customer.post(`/kyc/sessions/${sessionId}/documents/submit`);
     for (const t of ['PAN', 'AADHAAR_FRONT', 'AADHAAR_BACK'])
       await services.extraction.process(docIds[t]!, { attempt: 1, maxAttempts: 4 });
-    await services.risk.injectBiometrics(adminId, sessionId, {
-      faceMatch: { score: 0.91, modelVersion: 'it-1' },
-      liveness: { passed: true },
-    });
+    {
+      const frames = [makeJpeg(3000, 1), makeJpeg(3000, 2), makeJpeg(3000, 3)];
+      let req = customer.post(`/kyc/sessions/${sessionId}/selfie`);
+      frames.forEach((f, i) => {
+        req = req.attach(`frame${i}`, f, { filename: `f${i}.jpg`, contentType: 'image/jpeg' });
+      });
+      const shot = await req
+        .attach('best', frames[1]!, { filename: 'b.jpg', contentType: 'image/jpeg' })
+        .field('screenWidth', '390')
+        .field('screenHeight', '844');
+      expect(shot.status).toBe(201);
+      // The checks are idempotent, so it does not matter whether a worker or this call gets there first.
+      await services.selfie.runMotionCheck(shot.body.captureId);
+      await services.selfie.runFaceMatch(shot.body.captureId, docIds['AADHAAR_FRONT']!);
+    }
     await services.risk.runAutomatic(sessionId);
   });
 

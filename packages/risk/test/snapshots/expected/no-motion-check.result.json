@@ -1,0 +1,44 @@
+{
+  "score": 15,
+  "band": "MEDIUM",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "liveness-method-none",
+      "category": "biometric",
+      "penalty": 15,
+      "reason": "No motion check was performed: the selfie was uploaded as a file",
+      "details": {
+        "method": "NONE"
+      }
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-method-none",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [
+    {
+      "ruleId": "liveness-failed",
+      "reason": "No motion check was performed (file upload)"
+    }
+  ],
+  "engineVersion": "1.1.0"
+}

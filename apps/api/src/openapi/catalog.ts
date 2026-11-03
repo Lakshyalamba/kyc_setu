@@ -52,7 +52,8 @@ export const TAG_DESCRIPTIONS: Record<Tag, string> = {
   Audit:
     'Read-only audit access: verify the hash chain, search every session, build a signed packet for one session.',
   Admin: 'Lead-officer tools: account unlock and the retention dry run.',
-  Development: 'Parser-tuning and signal-injection aids. Not mounted when NODE_ENV is production.',
+  Development:
+    'Parser-tuning aids and the AI-service stand-in. Not mounted when NODE_ENV is production.',
 };
 
 const owner403 =
@@ -521,16 +522,31 @@ export const CATALOG: Record<string, OperationDoc> = {
     tag: 'Development',
     errors: { 401: 'Missing or wrong `X-Internal-Key`.' },
   },
+  'POST /dev/ai-mock/face/config': {
+    summary: 'AI service stand-in: choose the face score and motion-check result (development)',
+    description:
+      'Sets what the stand-in answers to the next face match and motion check. It looks at no pixels. Requires the internal key header.',
+    tag: 'Development',
+    errors: { 401: 'Missing or wrong `X-Internal-Key`.' },
+  },
+  'POST /dev/ai-mock/face/liveness': {
+    summary: 'AI service stand-in: motion check (development)',
+    description:
+      'Answers PASSED, or FAILED with FRAMES_TOO_SIMILAR, from the stand-in config. Requires the internal key header.',
+    tag: 'Development',
+    errors: { 401: 'Missing or wrong `X-Internal-Key`.' },
+  },
+  'POST /dev/ai-mock/face/match': {
+    summary: 'AI service stand-in: face match (development)',
+    description:
+      'Answers with the configured score and no crops or embeddings. Requires the internal key header.',
+    tag: 'Development',
+    errors: { 401: 'Missing or wrong `X-Internal-Key`.' },
+  },
   'GET /dev/risk/preview': {
     summary: 'Risk preview (development)',
     description:
       'Runs the risk engine on supplied inputs without storing anything. Not mounted in production.',
-    tag: 'Development',
-  },
-  'POST /dev/sessions/{id}/biometrics': {
-    summary: 'Inject biometric signals (development)',
-    description:
-      'Records face-match and liveness signals for a session, standing in for the selfie step. Not mounted in production.',
     tag: 'Development',
   },
 };

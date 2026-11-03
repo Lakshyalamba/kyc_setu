@@ -1,6 +1,6 @@
 # Data model
 
-Postgres, through Prisma ([`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma), 18 tables, 14 hand-written
+Postgres, through Prisma ([`packages/db/prisma/schema.prisma`](../packages/db/prisma/schema.prisma), 17 tables, 16 hand-written
 migrations in `packages/db/prisma/migrations/`). This page is the map; the schema file has a comment on every table
 that is not obvious. The diagram below is **generated from the schema** (`pnpm docs:erd`) and a test fails if it is stale.
 
@@ -63,11 +63,6 @@ erDiagram
     RiskBand rawBand
     RiskTrigger trigger
   }
-  biometric_signals {
-    string id PK
-    string sessionId FK
-    BiometricSource source
-  }
   decisions {
     string id PK
     string sessionId FK
@@ -128,7 +123,6 @@ erDiagram
   documents |o--o{ signed_url_issues : "document"
   users ||--o{ signed_url_issues : "user"
   kyc_sessions ||--o{ risk_assessments : "session"
-  kyc_sessions ||--o{ biometric_signals : "session"
   kyc_sessions ||--o{ decisions : "session"
   users ||--o{ decisions : "officer"
   kyc_sessions ||--o{ officer_assignments : "session"
@@ -183,7 +177,6 @@ only; **none** = nothing about a person. Retention periods are those of [retenti
 | `selfie_captures`   | A selfie: three frames and the best (middle) one        | high | Each picture is its own AES-256-GCM envelope in the object store; the row holds the keys' envelopes. One active capture per session (a partial unique index); a retake keeps the old row via `replacedById`. `livenessMethod = NONE` marks the file-upload fallback. `deviceMeta` is the user agent and screen size, nothing else. Never returned to the customer. |
 | `liveness_results`  | The motion check on one capture                         | low  | `PASSED`, `FAILED` or `INCONCLUSIVE`, a failure reason and the metrics behind it (per-pair SSIM inside the face box, box overlap, sharpness). It is a motion check, not production liveness, and is labelled so everywhere.                                                                                                                                        |
 | `face_matches`      | A selfie compared with the face on the Aadhaar front    | high | The cosine score (0..1), both thresholds in force, the decision, the embedding version, the two aligned 112x112 crops (encrypted, shown to officers) and the embeddings (encrypted, a biometric template). A resubmitted Aadhaar front is compared again; the old row stays.                                                                                       |
-| `biometric_signals` | A face-match score and a liveness result                | low  | Today only the development injector writes these (`source = DEV_INJECTED`); the selfie step that would write real ones is not built. No images or embeddings are stored.                                                                                                                                                                                           |
 
 ### Review
 

@@ -104,13 +104,10 @@ export async function docsExtracted(h: World) {
   return { customer, ...docs };
 }
 
-/** Same, then the dev injector stands in for the selfie step: the session is SELFIE_CAPTURED. */
+/** Same, then a selfie through the real route, both checks done: the session is SELFIE_CAPTURED. */
 export async function selfieCaptured(h: World) {
   const world = await docsExtracted(h);
-  await h.services.risk.injectBiometrics(h.officers.one.id, world.sessionId, {
-    faceMatch: { score: 0.92, modelVersion: 'test-1' },
-    liveness: { passed: true },
-  });
+  await h.completeSelfie(world.customer, world.sessionId);
   return world;
 }
 

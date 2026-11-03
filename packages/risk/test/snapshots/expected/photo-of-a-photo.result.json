@@ -1,0 +1,41 @@
+{
+  "score": 25,
+  "band": "MEDIUM",
+  "rawBand": "MEDIUM",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "liveness-failed",
+      "category": "biometric",
+      "penalty": 25,
+      "reason": "The motion check failed",
+      "details": {
+        "result": "FAILED",
+        "failureReason": "FRAMES_TOO_SIMILAR"
+      }
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "liveness-method-none",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.1.0"
+}

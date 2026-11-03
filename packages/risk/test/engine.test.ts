@@ -4,7 +4,7 @@ import { bandFor, runRiskEngine } from '../src/engine.js';
 import { createRules } from '../src/rules/index.js';
 import type { Rule, RuleInput } from '../src/types.js';
 import { ENGINE_VERSION } from '../src/version.js';
-import { build, happyContext } from './builders.js';
+import { build, happyContext, face, live } from './builders.js';
 
 /** A rule that always fires with the given penalty (to test the engine, not the rules). */
 const fixed = (id: string, penalty: number, weight = penalty, extra: Partial<Rule> = {}): Rule => ({
@@ -70,9 +70,9 @@ describe('runRiskEngine', () => {
 
   it('is order-independent for the real rule set too', () => {
     const ctx = build((c) => {
-      c.faceMatch = { score: 0.5 };
+      c.faceMatch = face(0.5);
       c.comparisons.panTypedMatchesExtracted = false;
-      c.liveness = { passed: false };
+      c.liveness = live('FAILED');
     });
     const rules = createRules();
     const shuffled = [...rules].sort(
@@ -93,6 +93,7 @@ describe('runRiskEngine', () => {
       'face-match-below-threshold',
       'face-match-borderline',
       'liveness-failed',
+      'liveness-method-none',
     ]);
     expect(r.skippedRules.every((s) => s.reason.length > 0)).toBe(true);
     expect(r.appliedRules).not.toContain('liveness-failed');
@@ -122,7 +123,7 @@ describe('runRiskEngine', () => {
   it('applies band floors: the score stays honest, the band is raised, and the report says why', () => {
     const r = runRiskEngine(
       build((c) => {
-        c.faceMatch = { score: 0.2 };
+        c.faceMatch = face(0.2);
       }),
       createRules(),
     );
@@ -141,7 +142,7 @@ describe('runRiskEngine', () => {
     const cfg: RiskConfig = { ...defaultConfig, bandFloors: { 'face-match-borderline': 'LOW' } };
     const r = runRiskEngine(
       build((c) => {
-        c.faceMatch = { score: 0.7 };
+        c.faceMatch = face(0.4); // REVIEW: face-match-borderline fires (15)
       }),
       createRules(cfg),
       { config: cfg },
@@ -156,7 +157,7 @@ describe('runRiskEngine', () => {
       bands: { LOW: [0, 4], MEDIUM: [5, 9], HIGH: [10, 100] },
     };
     const ctx = build((c) => {
-      c.liveness = { passed: false };
+      c.liveness = live('FAILED');
     });
     const r = runRiskEngine(ctx, createRules(cfg), { config: cfg });
     expect(r).toMatchObject({ score: 5, band: 'MEDIUM' });
@@ -173,7 +174,7 @@ describe('runRiskEngine', () => {
       bandFloors: [],
       skippedRules: [],
     });
-    expect(r.appliedRules).toHaveLength(17);
+    expect(r.appliedRules).toHaveLength(18);
     expect(r.engineVersion).toBe(ENGINE_VERSION);
   });
 
@@ -187,7 +188,7 @@ describe('runRiskEngine', () => {
     };
     expect(
       runRiskEngine({ ...young, now: new Date('2026-05-31T00:00:00Z') }, createRules()).hardFail,
-    ).toBe(true); // 17
+    ).toBe(true); // 18
     expect(
       runRiskEngine({ ...young, now: new Date('2026-06-01T00:00:00Z') }, createRules()).hardFail,
     ).toBe(false); // 18
@@ -196,9 +197,9 @@ describe('runRiskEngine', () => {
 
 describe('the default rule set', () => {
   const rules = createRules();
-  it('has 17 uniquely named kebab-case rules whose weights come from the config', () => {
-    expect(rules).toHaveLength(17);
-    expect(new Set(rules.map((r) => r.id)).size).toBe(17);
+  it('has 18 uniquely named kebab-case rules whose weights come from the config', () => {
+    expect(rules).toHaveLength(18);
+    expect(new Set(rules.map((r) => r.id)).size).toBe(18);
     for (const r of rules) {
       expect(r.id).toMatch(/^[a-z]+(-[a-z0-9]+)+$/);
       expect(r.weight).toBe((defaultConfig.weights as Record<string, number>)[r.id]);

@@ -2,7 +2,6 @@ import { Router, type Request } from 'express';
 import { z } from 'zod';
 import {
   customerRiskResponseSchema,
-  injectBiometricsRequestSchema,
   officerRiskResponseSchema,
   recomputeResponseSchema,
   riskPreviewResponseSchema,
@@ -86,20 +85,6 @@ export function createDevRiskRouter(deps: { risk: RiskService; guard: Permission
         const { result, snapshot } = await risk.preview(ctx.query.sessionId);
         return { result: result as unknown as Record<string, unknown>, inputs: snapshot };
       },
-    ),
-  );
-
-  // Stands in for Phase 4 (selfie capture + face match + liveness) until it exists.
-  router.post(
-    '/sessions/:id/biometrics',
-    guard.require('kyc.session.decide'),
-    route(
-      {
-        params: sessionIdParamsSchema,
-        body: injectBiometricsRequestSchema,
-        response: z.object({ enqueued: z.boolean() }),
-      },
-      (ctx) => risk.injectBiometrics(userIdOf(ctx.req), ctx.params.id, ctx.body),
     ),
   );
 

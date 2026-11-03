@@ -1,3 +1,4 @@
+import { ENGINE_VERSION } from '@kyc-setu/risk';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -197,11 +198,15 @@ describe('the packet', () => {
       generatedBy: { role: 'AUDITOR' },
       session: { id: sessionId, status: 'UNDER_REVIEW', resubmitCount: 0 },
       consent: { version: '1.0.0', sha256: expect.stringMatching(/^[0-9a-f]{64}$/) },
-      riskEngine: { version: '1.0.0', assessmentCount: 1 },
+      riskEngine: { version: ENGINE_VERSION, assessmentCount: 1 },
       auditChain: { algorithm: 'sha256-chain-v1', checkpoints: [] },
       face: {
-        available: false,
-        signals: { faceMatchScore: 0.92, livenessPassed: true, source: 'DEV_INJECTED' },
+        recorded: {
+          livenessMethod: 'MOTION_CHECK',
+          livenessResult: 'PASSED',
+          faceMatchScore: 0.92,
+          faceMatchDecision: 'AUTO_PASS',
+        },
       },
     });
     expect(m.session.referenceId).toMatch(/^KYC-[0-9A-F]{8}$/);
@@ -210,7 +215,7 @@ describe('the packet', () => {
       expect.arrayContaining(['SELFIE_CAPTURED', 'SUBMITTED', 'UNDER_REVIEW']),
     );
     expect(m.redactions.length).toBeGreaterThan(1);
-    expect(strFromU8(files['face/README.txt']!)).toContain('not stored yet');
+    expect(strFromU8(files['face/README.txt']!)).toContain('NOT in this packet');
   });
 
   it('masks identifiers: personal details, extracted PAN and the raw OCR text', async () => {
@@ -249,7 +254,7 @@ describe('the packet', () => {
     expect(risk).toHaveLength(1);
     expect(risk[0]).toMatchObject({
       band: 'LOW',
-      engineVersion: '1.0.0',
+      engineVersion: ENGINE_VERSION,
       inputsSnapshot: expect.any(Object),
     });
     const decisions = JSON.parse(strFromU8(files['decisions.json']!));

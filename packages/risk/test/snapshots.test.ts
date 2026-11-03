@@ -59,6 +59,20 @@ const EXPECT: Record<string, (r: RiskResult) => void> = {
     expect(r.band).toBe('MEDIUM');
     expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['face-match-borderline']);
   },
+  'no-motion-check': (r) => {
+    // The file-upload fallback: nothing else is wrong, but a still picture stands in for a person, so MEDIUM.
+    expect(r.band).toBe('MEDIUM');
+    expect(r.score).toBe(15);
+    expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['liveness-method-none']);
+  },
+  'photo-of-a-photo': (r) => {
+    expect(r.band).toBe('MEDIUM');
+    expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['liveness-failed']);
+    expect(r.triggeredRules[0]?.details).toEqual({
+      result: 'FAILED',
+      failureReason: 'FRAMES_TOO_SIMILAR',
+    });
+  },
   'wrong-document': (r) => {
     expect(r.band).toBe('MEDIUM'); // not LOW: skipped rules must not look like a clean bill of health
     expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['extraction-unusable']);

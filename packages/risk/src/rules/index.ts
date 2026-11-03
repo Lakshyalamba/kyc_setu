@@ -12,6 +12,7 @@ import { extractionUnusable } from './extraction-unusable.js';
 import { faceMatchBelowThreshold } from './face-match-below-threshold.js';
 import { faceMatchBorderline } from './face-match-borderline.js';
 import { livenessFailed } from './liveness-failed.js';
+import { livenessMethodNone } from './liveness-method-none.js';
 import { lowOcrConfidence } from './low-ocr-confidence.js';
 import { nameMismatchFormPan } from './name-mismatch-form-pan.js';
 import { nameMismatchPanAadhaar } from './name-mismatch-pan-aadhaar.js';
@@ -34,6 +35,7 @@ export function createRules(config: RiskConfig = defaultConfig): Rule[] {
     faceMatchBelowThreshold,
     faceMatchBorderline,
     livenessFailed,
+    livenessMethodNone,
     duplicatePanApproved,
     duplicateAadhaarApproved,
     ageIneligible,

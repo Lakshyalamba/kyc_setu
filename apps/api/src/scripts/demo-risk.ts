@@ -10,16 +10,19 @@
  *   pnpm demo:risk --scenario duplicate-pan  same PAN as an APPROVED session of another customer -> HIGH
  *   pnpm demo:risk --scenario underage     documents show a minor                -> HIGH, hardFail
  *   add --recompute                 to also run an officer recompute afterwards (nothing changed: same band)
- *   add --recompute-worse-face      to first record a worse face-match result, then recompute (band changes)
  *
- * The face and liveness inputs come from the dev-only injector (Phase 4, the selfie step, does not exist yet).
+ * The selfie is a real upload. To choose the scores, run the API with AI_SERVICE_URL=<api>/dev/ai-mock: the stand-in takes
+ * its face score and motion-check result from this script. With the real AI service the scenarios that depend on a face
+ * score cannot be forced (the sample cards carry no photograph).
  */
 import { prisma } from '@kyc-setu/db';
 import {
   GOOD_FILES,
   createClient,
   sleep,
+  setMockFace,
   startCustomer,
+  uploadSelfie,
   uploadAndSubmitDocuments,
   waitForExtractions,
   type Client,
@@ -76,10 +79,16 @@ async function runCustomer(
   const { rows, seconds } = await waitForExtractions(customer, sessionId);
   console.log(`${rows.map((r) => `${r.type}=${r.status}`).join(' ')} (${seconds.toFixed(1)} s)`);
 
-  await officer('POST', `/dev/sessions/${sessionId}/biometrics`, {
-    faceMatch: { score: opts.bio.score, modelVersion: 'dev-injected' },
-    liveness: { passed: opts.bio.live },
-  });
+  await setMockFace({ score: opts.bio.score, motionPasses: opts.bio.live });
+  await uploadSelfie(customer, sessionId);
+  // A failed check waits for the customer to retake or carry on; the demo carries on.
+  await sleep(1500);
+  const checks = await customer('GET', `/kyc/sessions/${sessionId}/selfie/status`);
+  if (
+    checks.faceMatch.decision === 'AUTO_FAIL' ||
+    ['FAILED', 'INCONCLUSIVE'].includes(checks.liveness.status)
+  )
+    await customer('POST', `/kyc/sessions/${sessionId}/selfie/continue`);
   for (let i = 0; i < 60; i++) {
     try {
       const { assessment } = await officer('GET', `/kyc/sessions/${sessionId}/risk`);
@@ -146,20 +155,7 @@ if (approvedFixture) {
   console.log(`\n   [first] fixture session restored to UNDER_REVIEW`);
 }
 
-if (argv.includes('--recompute') || argv.includes('--recompute-worse-face')) {
-  if (argv.includes('--recompute-worse-face')) {
-    // New evidence arrives after the first assessment (a resubmitted selfie would do this for real).
-    await prisma.biometricSignal.create({
-      data: {
-        sessionId: result.sessionId,
-        source: 'DEV_INJECTED',
-        faceMatchScore: 0.1,
-        faceMatchModel: 'dev-injected',
-        livenessPassed: true,
-      },
-    });
-    console.log('\n   a worse face-match result (0.10) was recorded for this session');
-  }
+if (argv.includes('--recompute')) {
   const re = await result.officer('POST', `/kyc/sessions/${result.sessionId}/risk/recompute`);
   console.log(
     `\n   recompute: new row ${re.assessment.id} (${re.assessment.trigger}), band ${re.previous?.band} -> ${re.assessment.band}, changed: ${re.bandChanged}`,

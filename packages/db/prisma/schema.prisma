@@ -87,13 +87,6 @@ enum RiskTrigger {
   RECOMPUTE
 }
 
-enum BiometricSource {
-  /// Written by the selfie / face-match pipeline (Phase 4).
-  PIPELINE
-  /// Written by the dev-only signal injector. Ignored when NODE_ENV=production.
-  DEV_INJECTED
-}
-
 /// How the customer proved they were present. NONE = they used the file-upload fallback, so no motion check was possible.
 enum LivenessMethod {
   MOTION_CHECK
@@ -201,7 +194,6 @@ model KycSession {
   otpChallenges  OtpChallenge[]
   documents      Document[]
   riskAssessments  RiskAssessment[]
-  biometricSignals BiometricSignal[]
   selfieCaptures   SelfieCapture[]
   faceMatches      FaceMatch[]
   decisions        Decision[]
@@ -370,25 +362,6 @@ model RiskAssessment {
 
   @@index([sessionId, createdAt])
   @@map("risk_assessments")
-}
-
-/// Face-match and liveness outputs for a session. Phase 4 (selfie capture + face match) owns writing real
-/// ones; until then only the dev-only injector writes (source DEV_INJECTED). The risk worker reads the newest.
-model BiometricSignal {
-  id                String          @id @default(uuid()) @db.Uuid
-  sessionId         String          @db.Uuid
-  source            BiometricSource
-  /// Similarity between the selfie and the ID photo, 0..1. Null if not computed.
-  faceMatchScore    Float?
-  faceMatchModel    String?
-  /// Null if the liveness check did not run.
-  livenessPassed    Boolean?
-  createdAt         DateTime        @default(now())
-
-  session KycSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
-
-  @@index([sessionId, createdAt])
-  @@map("biometric_signals")
 }
 
 /// An officer's final call on a session. Append-only (a trigger rejects UPDATE/DELETE): a later change to the

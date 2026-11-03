@@ -4,29 +4,6 @@ import { RISK_BANDS } from '../constants.js';
 export const riskBandSchema = z.enum(RISK_BANDS);
 export type RiskBandDto = z.infer<typeof riskBandSchema>;
 
-// ---- Inputs owned by Phase 4 (selfie capture + face match + liveness) ----------------------------------
-// The risk engine only needs these two numbers/booleans. Phase 4 writes them; until it exists, a clearly
-// labelled dev-only injector does.
-
-export const faceMatchResultSchema = z.object({
-  /** Similarity between the selfie and the photo on the ID, 0..1. */
-  score: z.number().min(0).max(1),
-  modelVersion: z.string().min(1).default('unknown'),
-});
-export type FaceMatchResult = z.infer<typeof faceMatchResultSchema>;
-
-export const livenessResultSchema = z.object({
-  /** Did the motion check pass? */
-  passed: z.boolean(),
-});
-export type LivenessResult = z.infer<typeof livenessResultSchema>;
-
-/** Body of the dev-only POST /dev/sessions/:id/biometrics. */
-export const injectBiometricsRequestSchema = z.object({
-  faceMatch: faceMatchResultSchema,
-  liveness: livenessResultSchema,
-});
-
 // ---- What the API returns ---------------------------------------------------------------------------------
 
 const ruleCategorySchema = z.enum([
