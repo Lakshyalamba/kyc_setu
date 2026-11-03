@@ -219,3 +219,68 @@ def test_embeddings_never_reach_the_logs(face_client, capfd):
     res = face_client.post("/face/match", json=body, headers=H)
     out = capfd.readouterr().out
     assert res.json()["selfieEmbedding"] not in out and res.json()["idFaceCropPng"] not in out
+
+
+# ---- the stub backend (AI_FACE_BACKEND=stub) ------------------------------------------------------------------------------
+
+
+def _stub_client(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app.config import Settings, get_settings
+    from app.main import app
+
+    monkeypatch.setenv("AI_FACE_BACKEND", "stub")
+    monkeypatch.setenv("AI_LOAD_MODELS", "false")
+    get_settings.cache_clear()
+    app.dependency_overrides[get_settings] = lambda: Settings()
+    return TestClient(app), app
+
+
+def test_stub_backend_answers_from_its_config_and_looks_at_no_pixels(monkeypatch):
+    from app.config import DEV_INTERNAL_KEY, get_settings
+
+    client, app = _stub_client(monkeypatch)
+    try:
+        h = {"x-internal-key": DEV_INTERNAL_KEY}
+        cid = "3f2b8c1e-5a4d-4e6f-9b7a-1c2d3e4f5a6b"
+        assert client.post("/face/config", json={"score": 0.2, "motionPasses": False}, headers=h).status_code == 200
+        live = client.post(
+            "/face/liveness",
+            json={"captureId": cid, "frameUrls": ["http://x/a"] * 3, "bestFrameUrl": "http://x/a"},
+            headers=h,
+        )
+        assert live.json()["result"] == "FAILED" and live.json()["failureReason"] == "FRAMES_TOO_SIMILAR"
+        match = client.post(
+            "/face/match",
+            json={"selfieCaptureId": cid, "selfieBestUrl": "http://x/a", "idDocumentId": cid, "idDocumentUrl": "http://x/b"},
+            headers=h,
+        )
+        assert match.json()["score"] == 0.2 and match.json()["idEmbedding"] is None
+        assert client.post("/face/config", json={"score": 0.85, "motionPasses": True}, headers=h).status_code == 200
+    finally:
+        app.dependency_overrides.clear()
+        get_settings.cache_clear()
+
+
+def test_stub_backend_is_refused_in_production(monkeypatch):
+    import pytest
+
+    from app.config import Settings
+
+    monkeypatch.setenv("AI_ENV", "production")
+    monkeypatch.setenv("AI_INTERNAL_KEY", "x" * 40)
+    monkeypatch.setenv("AI_FACE_BACKEND", "stub")
+    with pytest.raises(ValueError, match="not allowed in production"):
+        Settings()
+
+
+def test_config_route_does_not_exist_with_the_real_models():
+    from fastapi.testclient import TestClient
+
+    from app.config import DEV_INTERNAL_KEY
+    from app.main import app
+
+    client = TestClient(app)
+    res = client.post("/face/config", json={"score": 0.2, "motionPasses": False}, headers={"x-internal-key": DEV_INTERNAL_KEY})
+    assert res.status_code == 404

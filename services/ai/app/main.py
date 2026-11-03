@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI):
     app.state.load_error = None
     app.state.face = getattr(app.state, "face", None)
     app.state.face_error = None
-    if get_settings().load_models and app.state.face is None:
+    if get_settings().load_models and app.state.face is None and get_settings().face_backend == "models":
         # The face models are small and quick; load them first so the process is useful sooner.
         threading.Thread(target=_load_face_models, args=(app,), daemon=True, name="face-model-loader").start()
     if get_settings().load_models and app.state.engine is None:

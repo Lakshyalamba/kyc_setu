@@ -56,6 +56,8 @@ services:
       AI_INTERNAL_KEY: ${AI_INTERNAL_KEY:?set AI_INTERNAL_KEY in .env}
       # The worker sends the API's public URL (http://localhost:4000). Inside this container that
       # means the container itself, so fetches are redirected to the host.
+      # `stub` is for end-to-end runs only (see services/ai/README.md): the face calls answer from a config, not a model.
+      AI_FACE_BACKEND: ${AI_FACE_BACKEND:-models}
       AI_FETCH_ALLOWED_ORIGINS: http://localhost:4000
       AI_FETCH_ORIGIN_REWRITES: http://localhost:4000=http://host.docker.internal:4000
     extra_hosts:

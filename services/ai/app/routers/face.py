@@ -1,6 +1,7 @@
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel, Field
 
 from app import fetch as fetching
 from app.config import Settings, get_settings
@@ -12,6 +13,23 @@ from app.security import require_internal_key
 from app.vision.decode import DecodeError, decode_image
 
 router = APIRouter(prefix="/face", dependencies=[Depends(require_internal_key)])
+
+# AI_FACE_BACKEND=stub only: what the stand-in answers next. A process setting for a dev/CI run, not data about anyone.
+_stub = {"score": 0.85, "motion_passes": True}
+
+
+class StubConfig(BaseModel):
+    score: float = Field(ge=0, le=1)
+    motion_passes: bool = Field(alias="motionPasses")
+    model_config = {"populate_by_name": True}
+
+
+@router.post("/config")
+def stub_config(body: StubConfig, settings: Settings = Depends(get_settings)) -> dict[str, bool]:
+    if settings.face_backend != "stub":
+        raise HTTPException(status_code=404, detail="not available")
+    _stub.update(score=body.score, motion_passes=body.motion_passes)
+    return {"ok": True}
 
 
 def _models(request: Request):
@@ -42,6 +60,23 @@ def liveness(
     body: MotionCheckRequest, request: Request, settings: Settings = Depends(get_settings)
 ) -> MotionCheckResponse:
     """The motion check. Named for what it is: it only notices a picture held still in front of the camera."""
+    if settings.face_backend == "stub":
+        ok = bool(_stub["motion_passes"])
+        return MotionCheckResponse(
+            capture_id=body.capture_id,
+            method="MOTION_CHECK",
+            result="PASSED" if ok else "FAILED",
+            failure_reason=None if ok else "FRAMES_TOO_SIMILAR",
+            metrics=MotionCheckMetrics(
+                ssim_pairs=[0.55, 0.5] if ok else [0.995, 0.996],
+                mean_ssim=0.525 if ok else 0.9955,
+                box_iou_pairs=[0.93, 0.9],
+                faces_per_frame=[1, 1, 1],
+                sharpness=50.0,
+                brightness=150.0,
+            ),
+            model_version="stub",
+        )
     models = _models(request)
     bearer = _bearer(request)
     started = time.perf_counter()
@@ -63,6 +98,18 @@ def liveness(
 def match(
     body: FaceMatchRequest, request: Request, settings: Settings = Depends(get_settings)
 ) -> FaceMatchResponse:
+    if settings.face_backend == "stub":
+        return FaceMatchResponse(
+            selfie_capture_id=body.selfie_capture_id,
+            id_document_id=body.id_document_id,
+            score=float(_stub["score"]),
+            embedding_version="stub",
+            reason=None,
+            id_face_crop_png=None,
+            selfie_face_crop_png=None,
+            id_embedding=None,
+            selfie_embedding=None,
+        )
     models = _models(request)
     bearer = _bearer(request)
     started = time.perf_counter()

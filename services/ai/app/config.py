@@ -37,6 +37,10 @@ class Settings(BaseSettings):
 
     # ---- faces (YuNet detector + SFace recogniser; see app/face and README.md) ------------------------------------------
     face_model_dir: str = "models"
+    # "stub" answers the two face calls from `POST /face/config` and looks at no pixels. It exists so an end-to-end run can
+    # steer the selfie step to each outcome without a face model that would have to be fed real people's faces; it is refused
+    # in production, and it says nothing about how the real models behave (tests/test_face.py covers those).
+    face_backend: str = "models"
     face_min_confidence: float = 0.6
     # Motion check. Frames are three shots 300 ms apart.
     liveness_max_mean_ssim: float = 0.98  # above this the frames are the same picture: a photo of a photo
@@ -66,6 +70,14 @@ class Settings(BaseSettings):
     def _no_dev_key_in_production(self) -> "Settings":
         if self.env == "production" and (self.internal_key == DEV_INTERNAL_KEY or len(self.internal_key) < 32):
             raise ValueError("AI_INTERNAL_KEY must be set to a strong secret in production")
+        return self
+
+    @model_validator(mode="after")
+    def _no_stub_faces_in_production(self) -> "Settings":
+        if self.face_backend not in ("models", "stub"):
+            raise ValueError("AI_FACE_BACKEND must be 'models' or 'stub'")
+        if self.env == "production" and self.face_backend != "models":
+            raise ValueError("AI_FACE_BACKEND=stub is not allowed in production")
         return self
 
 

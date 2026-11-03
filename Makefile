@@ -32,6 +32,11 @@ reset:
 ai:
 	docker compose --profile ai up -d --build --wait ai
 
+# The same service with the face STAND-IN (AI_FACE_BACKEND=stub): the face calls answer from a config and look at no pixels, so
+# a browser run can steer the selfie step to each outcome. For end-to-end runs only; refused when AI_ENV=production.
+ai-stub:
+	AI_FACE_BACKEND=stub docker compose --profile ai up -d --build --wait --force-recreate ai
+
 ai-down:
 	docker compose --profile ai stop ai
 

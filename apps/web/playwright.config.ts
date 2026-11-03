@@ -7,6 +7,9 @@ import { defineConfig, devices } from '@playwright/test';
  * The OCR specs (kyc-extraction) also need the AI service: `make ai` (Docker) or `pnpm dev:ai`.
  */
 const video = process.env['E2E_VIDEO'] === 'on';
+// Another app may already hold :3000 on a developer machine: E2E_WEB_PORT moves the web app (and the API's CORS origin with it).
+const webPort = process.env['E2E_WEB_PORT'] ?? '3000';
+const webUrl = `http://localhost:${webPort}`;
 
 export default defineConfig({
   testDir: './e2e',
@@ -25,7 +28,7 @@ export default defineConfig({
       ]
     : 'list',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: webUrl,
     trace: 'retain-on-failure',
     // `E2E_VIDEO=on` records every test (the three journeys are the ones worth watching).
     video: video ? { mode: 'on', size: { width: 1280, height: 800 } } : 'off',
@@ -36,6 +39,7 @@ export default defineConfig({
     {
       command: 'pnpm --filter @kyc-setu/api run dev:server',
       cwd: '../..',
+      env: { WEB_ORIGIN: webUrl },
       url: 'http://localhost:4000/healthz',
       reuseExistingServer: !process.env['CI'],
       timeout: 120_000,
@@ -48,9 +52,9 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'pnpm --filter @kyc-setu/web run dev',
+      command: `pnpm --filter @kyc-setu/web exec next dev --port ${webPort}`,
       cwd: '../..',
-      url: 'http://localhost:3000',
+      url: webUrl,
       reuseExistingServer: !process.env['CI'],
       timeout: 120_000,
     },

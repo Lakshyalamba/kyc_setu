@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request, Response
 
+from app.config import get_settings
 from app.observability import render_metrics
 from app.schemas import Health
 
@@ -21,7 +22,7 @@ def readyz(request: Request, response: Response) -> Health:
     face = getattr(state, "face", None)
     face_error = getattr(state, "face_error", None)
     models = dict(engine.status if engine else {"detector": "error" if ocr_error else "loading", "en": "pending", "hi": "pending"})
-    models.update(face.status if face else {"face-detector": "error" if face_error else "loading", "face-recognizer": "error" if face_error else "loading"})
+    models.update({"face-detector": "stub", "face-recognizer": "stub"} if get_settings().face_backend == "stub" else face.status if face else {"face-detector": "error" if face_error else "loading", "face-recognizer": "error" if face_error else "loading"})
     import cv2
     import paddleocr
 
@@ -29,7 +30,8 @@ def readyz(request: Request, response: Response) -> Health:
     if face:
         versions.update(face.versions)
 
-    ready = engine is not None and face is not None
+    stub = get_settings().face_backend == "stub"
+    ready = engine is not None and (face is not None or stub)
     if not ready:
         response.status_code = 503
     failed = bool(ocr_error or face_error)

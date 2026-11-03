@@ -13,7 +13,8 @@ mkdir -p test-artifacts
 
 echo "==> starting the stack"
 make up
-docker compose --profile ai up -d --build --wait ai
+# The face calls are answered by the stand-in (it looks at no pixels), so each spec can steer the selfie step.
+AI_FACE_BACKEND=stub docker compose --profile ai up -d --build --wait ai
 
 echo "==> building the libraries, migrating and seeding"
 pnpm build:libs
