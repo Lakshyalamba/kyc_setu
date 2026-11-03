@@ -24,7 +24,9 @@ export type NewDocument = Omit<DocumentRecord, 'uploadedAt' | 'replacedById'>;
 
 export interface SignedUrlIssueRecord {
   id: string;
-  documentId: string;
+  /** The document the link is to, or null when it is to a selfie object (then `objectRef` says which). */
+  documentId: string | null;
+  objectRef: string | null;
   issuedToUserId: string;
   purpose: SignedUrlPurpose;
   expiresAt: Date;

@@ -35,6 +35,7 @@ import { createPrismaAuditExportStore } from '../../modules/audit/export.store.j
 import { createEphemeralSigner } from '../../modules/audit/signing.js';
 import { createPrismaOfficerStore } from '../../modules/officer/store.js';
 import { createPrismaRiskStore } from '../../modules/risk/store.js';
+import { createPrismaSelfieStore } from '../../modules/selfie/store.js';
 import type { VerificationEnqueuer } from '../../queue/verification.js';
 import { buildServices } from '../../services.js';
 import { parsePiiKey } from '@kyc-setu/shared/pii';
@@ -230,7 +231,10 @@ function cannedAi(
     confidence,
     bbox: bbox ?? { x: 0.1, y: 0.1, w: 0.3, h: 0.08 },
   });
+  const unused = () => Promise.reject(new Error('the seed reads documents only'));
   return {
+    motionCheck: unused,
+    faceMatch: unused,
     async extract(req: ExtractRequest): Promise<ExtractResponse> {
       const person = personaOf(req.sessionId);
       if (!person) throw new Error(`no persona for session ${req.sessionId}`);
@@ -319,6 +323,7 @@ export async function createSeeder(deps: { enqueuer?: VerificationEnqueuer } = {
     enqueueExtractions: async () => undefined,
     enqueueRisk: async () => undefined,
     enqueueNotification: async () => undefined,
+    enqueueSelfieChecks: async () => undefined,
   };
   const authStore = createPrismaAuthStore(prisma);
   const kycStore = createPrismaKycStore(prisma);
@@ -330,6 +335,7 @@ export async function createSeeder(deps: { enqueuer?: VerificationEnqueuer } = {
     objectStore: createS3ObjectStore(s3, env.S3_BUCKET),
     extractionStore: createPrismaExtractionStore(prisma),
     riskStore: createPrismaRiskStore(prisma),
+    selfieStore: createPrismaSelfieStore(prisma),
     officerStore: createPrismaOfficerStore(prisma),
     auditChainStore: createPrismaAuditChainStore(prisma),
     // Seeding never builds a packet: the export plumbing is present but unused.

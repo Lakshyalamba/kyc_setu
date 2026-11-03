@@ -331,7 +331,14 @@ export const docDeps = (audits: AuditEntry[]) => ({
 // ---- Extraction fakes ----
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { ExtractResponse, ExtractionDocumentType } from '@kyc-setu/shared';
+import type {
+  ExtractResponse,
+  ExtractionDocumentType,
+  FaceMatchRequest,
+  FaceMatchResponse,
+  MotionCheckRequest,
+  MotionCheckResponse,
+} from '@kyc-setu/shared';
 import {
   AiServiceError,
   type AiClient,
@@ -481,6 +488,7 @@ export function createFakeExtractionStore(
 }
 
 export interface FakeEnqueuer extends VerificationEnqueuer {
+  selfieChecks: { captureId: string; idDocumentId: string; motionCheck: boolean }[];
   queued: string[];
   riskQueued: { sessionId: string; run: number }[];
   notified: string[];
@@ -489,6 +497,14 @@ export interface FakeEnqueuer extends VerificationEnqueuer {
 
 export function createFakeEnqueuer(): FakeEnqueuer {
   const e: FakeEnqueuer = {
+    selfieChecks: [],
+    async enqueueSelfieChecks(input) {
+      if (e.failNext) {
+        e.failNext = false;
+        throw new Error('redis is down');
+      }
+      e.selfieChecks.push(input);
+    },
     queued: [],
     riskQueued: [],
     notified: [],
@@ -539,6 +555,12 @@ export function aiResponse(
 
 export interface FakeAiClient extends AiClient {
   calls: ExtractRequest[];
+  motionCalls: MotionCheckRequest[];
+  matchCalls: FaceMatchRequest[];
+  /** Decide each motion check. Default: a clean PASS. */
+  motion: (req: MotionCheckRequest) => MotionCheckResponse | Promise<MotionCheckResponse>;
+  /** Decide each face match. Default: a clear match (score 0.8) with tiny placeholder crops. */
+  match: (req: FaceMatchRequest) => FaceMatchResponse | Promise<FaceMatchResponse>;
   /** Decide each response. Default: a good result for the requested document. */
   respond: (req: ExtractRequest) => ExtractResponse | Promise<ExtractResponse>;
 }
@@ -546,6 +568,18 @@ export interface FakeAiClient extends AiClient {
 export function createFakeAiClient(): FakeAiClient {
   const client: FakeAiClient = {
     calls: [],
+    motionCalls: [],
+    matchCalls: [],
+    motion: (req) => motionResponse(req.captureId),
+    match: (req) => matchResponse(req.selfieCaptureId, req.idDocumentId),
+    async motionCheck(req) {
+      client.motionCalls.push(req);
+      return client.motion(req);
+    },
+    async faceMatch(req) {
+      client.matchCalls.push(req);
+      return client.match(req);
+    },
     respond: (req) => aiResponse(req.type, req.documentId),
     async extract(req) {
       client.calls.push(req);
@@ -553,6 +587,52 @@ export function createFakeAiClient(): FakeAiClient {
     },
   };
   return client;
+}
+
+const PIXEL_PNG =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
+/** A contract-valid motion-check response. */
+export function motionResponse(
+  captureId: string,
+  over: Partial<MotionCheckResponse> = {},
+): MotionCheckResponse {
+  return {
+    captureId,
+    method: 'MOTION_CHECK',
+    result: 'PASSED',
+    failureReason: null,
+    metrics: {
+      ssimPairs: [0.55, 0.5],
+      meanSsim: 0.525,
+      boxIouPairs: [0.93, 0.87],
+      facesPerFrame: [1, 1, 1],
+      sharpness: 50,
+      brightness: 150,
+    },
+    modelVersion: 'motion-check-1:fake',
+    ...over,
+  };
+}
+
+/** A contract-valid face-match response (a clear match unless overridden). */
+export function matchResponse(
+  selfieCaptureId: string,
+  idDocumentId: string,
+  over: Partial<FaceMatchResponse> = {},
+): FaceMatchResponse {
+  return {
+    selfieCaptureId,
+    idDocumentId,
+    score: 0.8,
+    embeddingVersion: 'fake-face-1',
+    reason: null,
+    idFaceCropPng: PIXEL_PNG,
+    selfieFaceCropPng: PIXEL_PNG,
+    idEmbedding: 'AAAAAA==',
+    selfieEmbedding: 'AAAAAA==',
+    ...over,
+  };
 }
 
 export const unreachableAi = () => new AiServiceError('AI service unreachable (TypeError)', true);
@@ -572,7 +652,9 @@ export function allDeps(
   const officerStore = createFakeOfficerStore(audits, kycStore, documentStore, riskStore, users);
   const auditChainStore = createFakeAuditChainStore();
   const exports = createFakeExportDeps(audits);
+  const selfieStore = createFakeSelfieStore(audits);
   return {
+    selfieStore,
     exports,
     auditChainStore,
     documentStore,
@@ -1091,4 +1173,95 @@ export function createFakeExportDeps(audits: AuditEntry[]): FakeExportDeps {
       },
     },
   };
+}
+
+// ---- Selfie fakes ----
+import type {
+  CaptureRecord,
+  FaceMatchRecord,
+  LivenessRecord,
+  SelfieStore,
+} from '../src/modules/selfie/store.js';
+
+export interface FakeSelfieStore extends SelfieStore {
+  captures: CaptureRecord[];
+  liveness: LivenessRecord[];
+  faceMatches: FaceMatchRecord[];
+}
+
+export function createFakeSelfieStore(audits: AuditEntry[]): FakeSelfieStore {
+  let n = 0;
+  const id = () => `00000000-0000-4000-8000-${String(++n).padStart(12, '0')}`;
+  const store: FakeSelfieStore = {
+    captures: [],
+    liveness: [],
+    faceMatches: [],
+    async activeCapture(sessionId) {
+      return (
+        store.captures.find((c) => c.sessionId === sessionId && c.replacedById === null) ?? null
+      );
+    },
+    async findCapture(cid) {
+      return store.captures.find((c) => c.id === cid) ?? null;
+    },
+    async capturesOf(sessionId) {
+      return store.captures.filter((c) => c.sessionId === sessionId);
+    },
+    async insertCapture(input, replaces, entries) {
+      if (replaces) {
+        const old = store.captures.find((c) => c.id === replaces);
+        if (old) old.replacedById = input.id;
+      }
+      const row: CaptureRecord = {
+        ...input,
+        capturedAt: new Date(),
+        confirmedAt: null,
+        replacedById: null,
+      };
+      store.captures.push(row);
+      audits.push(...entries);
+      return row;
+    },
+    async confirmCapture(cid, entry) {
+      const c = store.captures.find((x) => x.id === cid);
+      if (!c || c.confirmedAt || c.replacedById) return false;
+      c.confirmedAt = new Date();
+      audits.push(entry);
+      return true;
+    },
+    async livenessFor(cid) {
+      return store.liveness.find((l) => l.selfieCaptureId === cid) ?? null;
+    },
+    async insertLiveness(input, entry) {
+      if (store.liveness.some((l) => l.selfieCaptureId === input.selfieCaptureId)) return null;
+      const row = { ...input, id: id(), computedAt: new Date() };
+      store.liveness.push(row);
+      audits.push(entry);
+      return row;
+    },
+    async faceMatchFor(cid, docId) {
+      return (
+        [...store.faceMatches]
+          .reverse()
+          .find((m) => m.selfieCaptureId === cid && (!docId || m.idDocumentId === docId)) ?? null
+      );
+    },
+    async insertFaceMatch(input, entry) {
+      if (
+        store.faceMatches.some(
+          (m) =>
+            m.selfieCaptureId === input.selfieCaptureId && m.idDocumentId === input.idDocumentId,
+        )
+      )
+        return null;
+      const row = { ...input, id: id(), computedAt: new Date() };
+      store.faceMatches.push(row);
+      audits.push(entry);
+      return row;
+    },
+    async writeAudit(entry) {
+      audits.push(entry);
+    },
+  };
+  return store;
 }

@@ -1,9 +1,11 @@
 import { UnrecoverableError, Worker, type Job } from 'bullmq';
+import { AiServiceError } from '../modules/extraction/ai-client.js';
 import type { Redis } from 'ioredis';
 import { runWithContext } from '../observability/context.js';
 import type { ExtractionService } from '../modules/extraction/extraction.service.js';
 import type { NotificationService } from '../modules/officer/notify.js';
 import type { RiskService } from '../modules/risk/risk.service.js';
+import type { SelfieService } from '../modules/selfie/selfie.service.js';
 import {
   VERIFICATION_QUEUE,
   maxAttemptsFor,
@@ -23,6 +25,7 @@ export function createVerificationProcessor(
   backoffSeconds: number[],
   risk?: RiskService,
   notifier?: NotificationService,
+  selfie?: SelfieService,
 ) {
   const maxAttempts = maxAttemptsFor(backoffSeconds);
   const run = async (job: Job<VerificationJobData>) => {
@@ -31,6 +34,22 @@ export function createVerificationProcessor(
         throw new UnrecoverableError('notifications are not configured on this worker');
       const outcome = await notifier.send(job.data.decisionId); // a throw here is retried by BullMQ
       return outcome.sent ? { template: outcome.template } : { skipped: outcome.reason };
+    }
+    if (job.data.kind === 'liveness' || job.data.kind === 'face-match') {
+      if (!selfie)
+        throw new UnrecoverableError('the selfie service is not configured on this worker');
+      // A throw is retried by BullMQ with the same backoff as extraction; the service is idempotent, so a repeat is harmless.
+      try {
+        const outcome =
+          job.data.kind === 'liveness'
+            ? await selfie.runMotionCheck(job.data.captureId)
+            : await selfie.runFaceMatch(job.data.captureId, job.data.idDocumentId);
+        return outcome.kind === 'done' ? { done: true } : { skipped: outcome.reason };
+      } catch (err) {
+        if (err instanceof AiServiceError && !err.retryable)
+          throw new UnrecoverableError(err.message);
+        throw err;
+      }
     }
     if (job.data.kind === 'risk') {
       if (!risk) throw new UnrecoverableError('risk service is not configured on this worker');
@@ -81,6 +100,7 @@ export function createVerificationWorker(opts: {
   extraction: ExtractionService;
   risk?: RiskService;
   notifier?: NotificationService;
+  selfie?: SelfieService;
   backoffSeconds: number[];
   concurrency?: number;
   /** Defaults to the real queue; tests pass a unique name so they can't collide with a running dev worker. */
@@ -88,7 +108,13 @@ export function createVerificationWorker(opts: {
 }): Worker<VerificationJobData> {
   const worker = new Worker<VerificationJobData>(
     opts.queueName ?? VERIFICATION_QUEUE,
-    createVerificationProcessor(opts.extraction, opts.backoffSeconds, opts.risk, opts.notifier),
+    createVerificationProcessor(
+      opts.extraction,
+      opts.backoffSeconds,
+      opts.risk,
+      opts.notifier,
+      opts.selfie,
+    ),
     {
       connection: opts.connection,
       concurrency: opts.concurrency ?? 2,

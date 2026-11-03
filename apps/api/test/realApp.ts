@@ -10,6 +10,7 @@ import { createPrismaExtractionStore } from '../src/modules/extraction/store.js'
 import { createPrismaKycStore } from '../src/modules/kyc/store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
+import { createPrismaSelfieStore } from '../src/modules/selfie/store.js';
 import {
   createFakeAiClient,
   createFakeEnqueuer,
@@ -40,6 +41,7 @@ export function createRealApp(prisma: PrismaClient, overrides: Partial<AppDeps> 
     ),
     extractionStore: createPrismaExtractionStore(safe),
     riskStore: createPrismaRiskStore(safe),
+    selfieStore: createPrismaSelfieStore(safe),
     officerStore: createPrismaOfficerStore(safe),
     auditChainStore: createPrismaAuditChainStore(safe),
     exports: createFakeExportDeps([]),

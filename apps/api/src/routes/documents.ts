@@ -27,6 +27,7 @@ import {
   type DocumentsService,
 } from '../modules/documents/documents.service.js';
 import type { RequestMeta } from '../modules/kyc/kyc.service.js';
+import type { SelfieService } from '../modules/selfie/selfie.service.js';
 
 const metaOf = (req: Request): RequestMeta => ({
   ip: req.ip ?? null,
@@ -225,8 +226,12 @@ async function authenticateViewer(req: Request, purpose: string, env: Env) {
  * authenticate as the user it was issued to: a session cookie for people, a short-lived service
  * token for the AI service. A leaked URL is useless to anyone else.
  */
-export function createFilesRouter(deps: { docs: DocumentsService; env: Env }): Router {
-  const { docs, env } = deps;
+export function createFilesRouter(deps: {
+  docs: DocumentsService;
+  selfie: SelfieService;
+  env: Env;
+}): Router {
+  const { docs, selfie, env } = deps;
   const router = Router();
 
   router.get('/:token', async (req, res) => {
@@ -240,7 +245,9 @@ export function createFilesRouter(deps: { docs: DocumentsService; env: Env }): R
     if (!claims) throw unauthorized();
     if (claims.userId !== issue.issuedToUserId) throw forbidden();
 
-    const { bytes, mimeType } = await docs.readDocument(issue, doc, claims.userId, metaOf(req));
+    const { bytes, mimeType } = doc
+      ? await docs.readDocument(issue, doc, claims.userId, metaOf(req))
+      : await selfie.readObject(issue, claims.userId, metaOf(req));
 
     res.status(200);
     res.setHeader('Content-Type', mimeType);

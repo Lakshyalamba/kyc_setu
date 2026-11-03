@@ -409,7 +409,13 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
       if (!doc) throw new AppError(404, 'DOCUMENT_NOT_FOUND', 'Document not found');
       const expiresAt = new Date(now().getTime() + AI_INTERNAL_LINK_TTL_SECONDS * 1000);
       const issue = await store.createSignedUrlIssue(
-        { documentId: doc.id, issuedToUserId: serviceUserId, purpose: 'AI_INTERNAL', expiresAt },
+        {
+          documentId: doc.id,
+          objectRef: null,
+          issuedToUserId: serviceUserId,
+          purpose: 'AI_INTERNAL',
+          expiresAt,
+        },
         (i) => ({
           ...audit(serviceUserId, AUDIT_ACTIONS.DOCUMENT_SIGNED_URL_ISSUED, 'Document', doc.id, {
             documentId: doc.id,
@@ -435,6 +441,42 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
     },
 
     /**
+     * A link to a stored object that is not a document (a selfie frame or an aligned face crop). The caller says what it is
+     * (`objectRef`), who may use the link and for how long, and supplies the audit row; the proxy resolves it with the
+     * selfie service. Same token, same checks, same one-link-one-row audit trail as a document link.
+     */
+    async issueObjectUrl(args: {
+      objectRef: string;
+      issuedToUserId: string;
+      purpose: SignedUrlPurpose;
+      ttlSeconds: number;
+      audit: (issue: SignedUrlIssueRecord) => AuditEntry;
+    }): Promise<{ url: string; expiresAt: Date }> {
+      const expiresAt = new Date(now().getTime() + args.ttlSeconds * 1000);
+      const issue = await store.createSignedUrlIssue(
+        {
+          documentId: null,
+          objectRef: args.objectRef,
+          issuedToUserId: args.issuedToUserId,
+          purpose: args.purpose,
+          expiresAt,
+        },
+        args.audit,
+      );
+      const token = createFileToken(
+        {
+          issueId: issue.id,
+          documentId: args.objectRef,
+          purpose: args.purpose,
+          issuedToUserId: args.issuedToUserId,
+          expiresAtMs: expiresAt.getTime(),
+        },
+        env.FILE_URL_SECRET,
+      );
+      return { url: `${env.API_PUBLIC_URL}/files/${token}`, expiresAt };
+    },
+
+    /**
      * An officer's 5-minute link to one document. Role checks happen at the route; every link is its own
      * SignedUrlIssue row and its own audit row, because the trail of who was shown what is the point.
      */
@@ -445,7 +487,13 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
     ): Promise<SignedUrlRef> {
       const expiresAt = new Date(now().getTime() + SIGNED_URL_TTL_SECONDS * 1000);
       const issue = await store.createSignedUrlIssue(
-        { documentId: doc.id, issuedToUserId: officerId, purpose: 'OFFICER_REVIEW', expiresAt },
+        {
+          documentId: doc.id,
+          objectRef: null,
+          issuedToUserId: officerId,
+          purpose: 'OFFICER_REVIEW',
+          expiresAt,
+        },
         (i) =>
           audit(officerId, AUDIT_ACTIONS.DOCUMENT_SIGNED_URL_ISSUED, 'Document', doc.id, {
             documentId: doc.id,
@@ -492,7 +540,7 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
 
       const expiresAt = new Date(now().getTime() + SIGNED_URL_TTL_SECONDS * 1000);
       const issue = await store.createSignedUrlIssue(
-        { documentId: doc.id, issuedToUserId: userId, purpose, expiresAt },
+        { documentId: doc.id, objectRef: null, issuedToUserId: userId, purpose, expiresAt },
         (i) =>
           audit(userId, AUDIT_ACTIONS.DOCUMENT_SIGNED_URL_ISSUED, 'Document', doc.id, {
             documentId: doc.id,
@@ -524,9 +572,12 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
      * Step 1 of the proxy: structure, expiry, and the MAC recomputed from the stored issue row.
      * Every failure other than expiry looks identical (404) so tokens can't be probed.
      */
-    async resolveToken(
-      token: string,
-    ): Promise<{ issue: SignedUrlIssueRecord; doc: DocumentRecord; parsed: ParsedToken }> {
+    async resolveToken(token: string): Promise<{
+      issue: SignedUrlIssueRecord;
+      /** The document the link is to, or null when it is to a selfie object (`issue.objectRef`). */
+      doc: DocumentRecord | null;
+      parsed: ParsedToken;
+    }> {
       const notFound = () => new AppError(404, 'NOT_FOUND', 'Not found');
       const parsed = parseFileToken(token);
       if (!parsed) throw notFound();
@@ -535,13 +586,15 @@ export function createDocumentsService(deps: DocumentsServiceDeps) {
       }
       const issue = await store.findIssue(parsed.issueId);
       if (!issue) throw notFound();
-      const doc = await store.findById(issue.documentId);
-      if (!doc) throw notFound();
+      const doc = issue.documentId ? await store.findById(issue.documentId) : null;
+      if (issue.documentId && !doc) throw notFound();
+      const target = issue.documentId ?? issue.objectRef;
+      if (!target) throw notFound();
       const valid = verifyFileToken(
         parsed,
         {
           issueId: issue.id,
-          documentId: issue.documentId,
+          documentId: target,
           purpose: issue.purpose,
           issuedToUserId: issue.issuedToUserId,
           expiresAtMs: issue.expiresAt.getTime(),

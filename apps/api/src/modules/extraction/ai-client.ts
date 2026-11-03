@@ -1,5 +1,11 @@
 import {
+  faceMatchResponseSchema,
+  motionCheckResponseSchema,
   extractResponseSchema,
+  type FaceMatchRequest,
+  type FaceMatchResponse,
+  type MotionCheckRequest,
+  type MotionCheckResponse,
   type ExtractionDocumentType,
   type ExtractResponse,
 } from '@kyc-setu/shared';
@@ -30,6 +36,10 @@ export interface ExtractRequest {
 
 export interface AiClient {
   extract(req: ExtractRequest): Promise<ExtractResponse>;
+  /** The motion check on three frames. Every URL is a short-lived signed link the service fetches. */
+  motionCheck(req: MotionCheckRequest, serviceToken: string): Promise<MotionCheckResponse>;
+  /** The face on the ID against the face in the selfie. Returns evidence (score, crops, embeddings), not a decision. */
+  faceMatch(req: FaceMatchRequest, serviceToken: string): Promise<FaceMatchResponse>;
 }
 
 export function createHttpAiClient(
@@ -76,7 +86,52 @@ export function createHttpAiClient(
       }
       return parsed.data;
     },
+
+    async motionCheck(req, serviceToken) {
+      const body = await postJson('/face/liveness', req, serviceToken);
+      const parsed = motionCheckResponseSchema.safeParse(body);
+      if (!parsed.success || parsed.data.captureId !== req.captureId)
+        throw new AiServiceError('AI service response violated the contract', false);
+      return parsed.data;
+    },
+
+    async faceMatch(req, serviceToken) {
+      const body = await postJson('/face/match', req, serviceToken);
+      const parsed = faceMatchResponseSchema.safeParse(body);
+      if (
+        !parsed.success ||
+        parsed.data.selfieCaptureId !== req.selfieCaptureId ||
+        parsed.data.idDocumentId !== req.idDocumentId
+      )
+        throw new AiServiceError('AI service response violated the contract', false);
+      return parsed.data;
+    },
   };
+
+  /** One JSON POST to the service with the shared secret and the caller's request id; maps failures like `extract` does. */
+  async function postJson(path: string, payload: unknown, serviceToken: string): Promise<unknown> {
+    let res: Response;
+    try {
+      res = await fetchImpl(`${env.AI_SERVICE_URL}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Internal-Key': env.AI_INTERNAL_KEY,
+          'X-Fetch-Authorization': `Bearer ${serviceToken}`,
+          ...(currentContext() ? { 'X-Request-Id': currentContext()!.requestId } : {}),
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(env.AI_REQUEST_TIMEOUT_MS),
+      });
+    } catch (err) {
+      throw new AiServiceError(`AI service unreachable (${(err as Error).name})`, true);
+    }
+    if (!res.ok) {
+      const retryable = res.status >= 500 || res.status === 408 || res.status === 429;
+      throw new AiServiceError(`AI service returned HTTP ${res.status}`, retryable, res.status);
+    }
+    return res.json().catch(() => null);
+  }
   // Wall time of the call as the worker sees it (includes the service fetching the document).
   return {
     async extract(req) {
@@ -91,5 +146,7 @@ export function createHttpAiClient(
         throw err;
       }
     },
+    motionCheck: (req, token) => client.motionCheck(req, token),
+    faceMatch: (req, token) => client.faceMatch(req, token),
   };
 }

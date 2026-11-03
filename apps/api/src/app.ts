@@ -21,6 +21,7 @@ import type { QueueDepthSource } from './observability/metrics.js';
 import { createHealthRouter, type DependencyProbes, type HealthProbe } from './routes/health.js';
 import { createOfficerRouter } from './routes/officer.js';
 import { createKycRouter } from './routes/kyc.js';
+import { createSelfieRouter } from './routes/selfie.js';
 import { createDevRiskRouter, createRiskRouter } from './routes/risk.js';
 
 /** A router and where it is mounted, kept on `app.locals.mounts` for the route conformance test. */
@@ -66,6 +67,7 @@ export function createApp(deps: AppDeps): Express {
     extraction,
     risk,
     officer,
+    selfie,
     customerStatus,
     auditChain,
     auditExport,
@@ -91,11 +93,12 @@ export function createApp(deps: AppDeps): Express {
   mount('/kyc', createKycRouter({ kyc, requireCustomer, limiters }));
   mount('/kyc', createDocumentsRouter({ docs, requireCustomer }));
   mount('/kyc', createExtractionRouter({ extraction, requireCustomer }));
+  mount('/kyc', createSelfieRouter({ selfie, requireCustomer }));
   mount('/kyc', createCustomerStatusRouter({ status: customerStatus, requireCustomer }));
   mount('/officer', createOfficerRouter({ officer, guard, limiters }));
   mount('/audit', createAuditRouter({ chain: auditChain, exporter: auditExport, officer, guard }));
   mount('/admin', createAdminRouter({ auth, retention, guard }));
-  mount('/files', createFilesRouter({ docs, env }));
+  mount('/files', createFilesRouter({ docs, selfie, env }));
 
   if (env.NODE_ENV !== 'production') {
     // Parser-tuning and signal-injection aids for development. Not registered in production.

@@ -12,6 +12,8 @@ export const VERIFICATION_QUEUE = 'verification';
 export const EXTRACT_JOB = 'extract';
 export const RISK_JOB = 'risk';
 export const NOTIFY_JOB = 'notify';
+export const LIVENESS_JOB = 'liveness';
+export const FACE_MATCH_JOB = 'face-match';
 
 /** Every job remembers the request that caused it, so one id follows a customer's action through the worker and the AI service. */
 interface JobTrace {
@@ -33,8 +35,22 @@ export interface NotifyJobData extends JobTrace {
   kind: 'notify';
 }
 
+/** The motion check on a selfie capture. */
+export interface LivenessJobData extends JobTrace {
+  captureId: string;
+  kind: 'liveness';
+}
+
+/** The face match between a selfie capture and the session's Aadhaar front. `idDocumentId` pins which document. */
+export interface FaceMatchJobData extends JobTrace {
+  captureId: string;
+  idDocumentId: string;
+  kind: 'face-match';
+}
+
 /** Everything the verification queue carries. */
-export type VerificationJobData = ExtractJobData | RiskJobData | NotifyJobData;
+export type VerificationJobData =
+  ExtractJobData | RiskJobData | NotifyJobData | LivenessJobData | FaceMatchJobData;
 
 /** What the document-submit flow needs from the queue. */
 export interface VerificationEnqueuer {
@@ -43,6 +59,12 @@ export interface VerificationEnqueuer {
   enqueueRisk(sessionId: string, run: number): Promise<void>;
   /** Tells the customer about an officer's decision. One job per decision. */
   enqueueNotification(decisionId: string): Promise<void>;
+  /** After a selfie is stored: the motion check (unless the customer used the file-upload fallback) and the face match. */
+  enqueueSelfieChecks(input: {
+    captureId: string;
+    idDocumentId: string;
+    motionCheck: boolean;
+  }): Promise<void>;
 }
 
 /** 1 first attempt + one retry per configured backoff delay. */
@@ -69,9 +91,26 @@ export function createVerificationQueue(
 export const extractJobId = (documentId: string) => `extract-${documentId}`;
 export const riskJobId = (sessionId: string, run: number) => `risk-${sessionId}-${run}`;
 export const notifyJobId = (decisionId: string) => `notify-${decisionId}`;
+export const livenessJobId = (captureId: string) => `liveness-${captureId}`;
+export const faceMatchJobId = (captureId: string, idDocumentId: string) =>
+  `face-match-${captureId}-${idDocumentId}`;
 
 export function createBullEnqueuer(queue: Queue<VerificationJobData>): VerificationEnqueuer {
   return {
+    async enqueueSelfieChecks({ captureId, idDocumentId, motionCheck }) {
+      if (motionCheck) {
+        await queue.add(
+          LIVENESS_JOB,
+          { captureId, kind: 'liveness', ...trace() },
+          { jobId: livenessJobId(captureId) },
+        );
+      }
+      await queue.add(
+        FACE_MATCH_JOB,
+        { captureId, idDocumentId, kind: 'face-match', ...trace() },
+        { jobId: faceMatchJobId(captureId, idDocumentId) },
+      );
+    },
     async enqueueNotification(decisionId) {
       await queue.add(
         NOTIFY_JOB,

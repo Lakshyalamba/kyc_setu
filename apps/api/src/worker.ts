@@ -16,6 +16,7 @@ import { createPrismaAuditExportStore } from './modules/audit/export.store.js';
 import { loadSigner } from './modules/audit/signing.js';
 import { createPrismaOfficerStore } from './modules/officer/store.js';
 import { createPrismaRiskStore } from './modules/risk/store.js';
+import { createPrismaSelfieStore } from './modules/selfie/store.js';
 import { createPrismaKycStore } from './modules/kyc/store.js';
 import { createRedis } from './queue/connection.js';
 import { processPing } from './queue/jobs/ping.js';
@@ -70,7 +71,7 @@ const s3 = createS3Client({
   secretAccessKey: env.S3_SECRET_KEY,
 });
 const auditQueue = createAuditQueue(createRedis(env.REDIS_URL));
-const { extraction, risk, notifier, auditChain, auditExport, retention } = buildServices({
+const { extraction, risk, selfie, notifier, auditChain, auditExport, retention } = buildServices({
   env,
   store,
   kycStore: createPrismaKycStore(prisma),
@@ -78,6 +79,7 @@ const { extraction, risk, notifier, auditChain, auditExport, retention } = build
   objectStore: createS3ObjectStore(s3, env.S3_BUCKET),
   extractionStore,
   riskStore: createPrismaRiskStore(prisma),
+  selfieStore: createPrismaSelfieStore(prisma),
   officerStore: createPrismaOfficerStore(prisma),
   auditChainStore: createPrismaAuditChainStore(prisma),
   exports: {
@@ -97,6 +99,7 @@ const verificationWorker = createVerificationWorker({
   extraction,
   risk,
   notifier,
+  selfie,
   backoffSeconds: env.EXTRACTION_BACKOFF_SECONDS,
   concurrency: 2,
 });

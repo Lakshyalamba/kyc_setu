@@ -327,14 +327,17 @@ model Extraction {
 /// One row per signed-URL grant. The row id is the public part of the URL token.
 model SignedUrlIssue {
   id             String           @id @default(uuid()) @db.Uuid
-  documentId     String           @db.Uuid
+  /// A link is to ONE stored object: a document (documentId) or a selfie object (objectRef); a CHECK in the migration says which.
+  documentId     String?          @db.Uuid
+  /// e.g. `selfie:<captureId>:frame:2`, `selfie:<captureId>:crop:id`. Resolved by the selfie service, not by a foreign key.
+  objectRef      String?
   issuedToUserId String           @db.Uuid
   purpose        SignedUrlPurpose
   expiresAt      DateTime
   issuedAt       DateTime         @default(now())
 
-  document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
-  user     User     @relation(fields: [issuedToUserId], references: [id], onDelete: Restrict)
+  document Document? @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  user     User      @relation(fields: [issuedToUserId], references: [id], onDelete: Restrict)
 
   @@index([documentId])
   @@map("signed_url_issues")
@@ -527,6 +530,8 @@ model SelfieCapture {
   /// User agent and screen size, as the browser reports them. Nothing else: no fingerprinting.
   deviceMeta       Json           @default("{}") @db.JsonB
   capturedAt       DateTime       @default(now())
+  /// When the customer chose to go on after a failed check instead of retaking (or the retake was already used). Null until then.
+  confirmedAt      DateTime?
   replacedById     String?        @unique @db.Uuid
 
   session    KycSession      @relation(fields: [sessionId], references: [id], onDelete: Restrict)
@@ -564,7 +569,7 @@ model LivenessResult {
 model FaceMatch {
   id               String            @id @default(uuid()) @db.Uuid
   sessionId        String            @db.Uuid
-  selfieCaptureId  String            @unique @db.Uuid
+  selfieCaptureId  String            @db.Uuid
   idDocumentId     String            @db.Uuid
   score            Float
   threshold        Float
@@ -587,6 +592,8 @@ model FaceMatch {
   selfieCapture SelfieCapture @relation(fields: [selfieCaptureId], references: [id], onDelete: Restrict)
   idDocument    Document      @relation(fields: [idDocumentId], references: [id], onDelete: Restrict)
 
+  /// One match per selfie and ID document: a resubmitted Aadhaar front is compared again, the old row stays.
+  @@unique([selfieCaptureId, idDocumentId])
   @@index([sessionId, computedAt])
   @@map("face_matches")
 }

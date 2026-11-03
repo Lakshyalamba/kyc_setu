@@ -21,6 +21,7 @@ import { createPrismaKycStore } from '../src/modules/kyc/store.js';
 import { createPrismaAuditChainStore } from '../src/modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
+import { createPrismaSelfieStore } from '../src/modules/selfie/store.js';
 import { createRedis } from '../src/queue/connection.js';
 import { createBullEnqueuer, createVerificationQueue } from '../src/queue/verification.js';
 import { buildServices } from '../src/services.js';
@@ -89,6 +90,7 @@ describe.skipIf(!up)('officer workbench (real infra)', () => {
       objectStore: createS3ObjectStore(s3, bucket),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
+      selfieStore: createPrismaSelfieStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
       exports: createFakeExportDeps([]),

@@ -28,6 +28,7 @@ import { encryptForStorage } from '../src/modules/kyc/personal-codec.js';
 import { createPrismaKycStore } from '../src/modules/kyc/store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
+import { createPrismaSelfieStore } from '../src/modules/selfie/store.js';
 import { createAuditEnqueuer, createAuditQueue } from '../src/queue/audit.js';
 import { createRedis } from '../src/queue/connection.js';
 import { buildServices } from '../src/services.js';
@@ -98,6 +99,7 @@ describe.skipIf(!up)('signed session packets (real infra)', () => {
       objectStore: createS3ObjectStore(s3, bucket),
       extractionStore: createPrismaExtractionStore(safe),
       riskStore: createPrismaRiskStore(safe),
+      selfieStore: createPrismaSelfieStore(safe),
       officerStore: createPrismaOfficerStore(safe),
       auditChainStore: createPrismaAuditChainStore(safe),
       exports: {

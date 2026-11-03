@@ -12,6 +12,7 @@ import { createPrismaExtractionStore } from '../src/modules/extraction/store.js'
 import { createPrismaAuditChainStore } from '../src/modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
+import { createPrismaSelfieStore } from '../src/modules/selfie/store.js';
 import { createPrismaDocumentStore } from '../src/modules/documents/store.js';
 import { createPrismaKycStore } from '../src/modules/kyc/store.js';
 import { createPrismaAuthStore } from '../src/modules/auth/store.js';
@@ -33,6 +34,7 @@ const noopEnqueuer = {
   enqueueExtractions: async () => undefined,
   enqueueRisk: async () => undefined,
   enqueueNotification: async () => undefined,
+  enqueueSelfieChecks: async () => undefined,
 };
 
 const up = process.env['INFRA_UP'] === '1';
@@ -83,6 +85,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       objectStore: createS3ObjectStore(s3, process.env['S3_BUCKET'] ?? 'kyc-documents'),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
+      selfieStore: createPrismaSelfieStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
       exports: createFakeExportDeps([]),
@@ -126,6 +129,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       objectStore: createS3ObjectStore(s3, process.env['S3_BUCKET'] ?? 'kyc-documents'),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
+      selfieStore: createPrismaSelfieStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
       exports: createFakeExportDeps([]),
@@ -217,6 +221,7 @@ describe.skipIf(!up)('integration (postgres + redis)', () => {
       objectStore: createS3ObjectStore(s3, bucket),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
+      selfieStore: createPrismaSelfieStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
       exports: createFakeExportDeps([]),

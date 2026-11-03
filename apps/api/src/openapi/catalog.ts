@@ -30,6 +30,7 @@ export type Tag =
   | 'Authentication'
   | 'Customer · KYC session'
   | 'Customer · Documents'
+  | 'Customer · Selfie'
   | 'Customer · Status'
   | 'Officer · Review'
   | 'Audit'
@@ -41,6 +42,8 @@ export const TAG_DESCRIPTIONS: Record<Tag, string> = {
   Authentication: 'Sign-up and sign-in for customers and staff. Sessions are HTTP-only cookies.',
   'Customer · KYC session':
     'A customer’s own application: contact, consent, personal details. Only the customer who owns the session can use these.',
+  'Customer · Selfie':
+    'The selfie: three frames for a quick anti-spoofing check and a face comparison with the Aadhaar photo. The pictures are never returned.',
   'Customer · Documents':
     'Uploading, listing and removing identity documents, and the OCR results the customer may see.',
   'Customer · Status': 'Where the application stands and the approval slip once approved.',
@@ -267,6 +270,80 @@ export const CATALOG: Record<string, OperationDoc> = {
     summary: 'OCR status of one document',
     tag: 'Customer · Documents',
     errors: { 403: owner403 },
+  },
+  'POST /kyc/sessions/{id}/selfie': {
+    summary: 'Take the selfie',
+    description:
+      'Multipart: `frame0`, `frame1`, `frame2` (three JPEG frames shot about 300 ms apart) and `best`, which must be byte-identical to `frame1` (the best frame is the middle one by position; a client cannot choose a flattering frame). Alternatively a single `file` (JPEG or PNG): the file-upload fallback for people who cannot use the camera, which is recorded as `livenessMethod: NONE` and gets no motion check. Each picture is checked by its bytes, encrypted with its own key and stored; none is ever returned to the customer. Moves the session to `SELFIE_CAPTURED` and queues the motion check and the face match.',
+    tag: 'Customer · Selfie',
+    status: 201,
+    errors: {
+      400: 'Not three frames plus the middle one as best, nor a single file.',
+      404: notYours,
+      409: 'The documents have not been read yet, or a selfie already exists (use the retake route).',
+      413: 'A picture is too large.',
+      415: 'A picture is not a JPEG or PNG.',
+    },
+    manual: {
+      requestBody: {
+        contentType: 'multipart/form-data',
+        description:
+          'Either the four named frames or one `file`; `screenWidth` and `screenHeight` are optional.',
+        schema: {
+          type: 'object',
+          properties: {
+            frame0: { type: 'string', format: 'binary' },
+            frame1: { type: 'string', format: 'binary' },
+            frame2: { type: 'string', format: 'binary' },
+            best: { type: 'string', format: 'binary' },
+            file: { type: 'string', format: 'binary' },
+            screenWidth: { type: 'integer' },
+            screenHeight: { type: 'integer' },
+          },
+        },
+      },
+    },
+  },
+  'POST /kyc/sessions/{id}/selfie/retake': {
+    summary: 'Retake the selfie',
+    description:
+      'The same body as the first selfie. Allowed once, while the session is `SELFIE_CAPTURED`, and only if the first attempt was not accepted (a failed motion check or a failed face comparison, or a check still pending). The old capture is kept and marked replaced; checks for it that are still queued are ignored. After the retake the result is final: further changes need an officer.',
+    tag: 'Customer · Selfie',
+    status: 201,
+    errors: {
+      404: notYours,
+      409: 'No selfie to retake, the one retake is used, or the selfie was accepted.',
+      415: 'A picture is not a JPEG or PNG.',
+    },
+    manual: {
+      requestBody: {
+        contentType: 'multipart/form-data',
+        schema: {
+          type: 'object',
+          properties: {
+            frame0: { type: 'string', format: 'binary' },
+            frame1: { type: 'string', format: 'binary' },
+            frame2: { type: 'string', format: 'binary' },
+            best: { type: 'string', format: 'binary' },
+            file: { type: 'string', format: 'binary' },
+          },
+        },
+      },
+    },
+  },
+  'GET /kyc/sessions/{id}/selfie/status': {
+    summary: 'Where the selfie checks stand',
+    description:
+      'Whether the quick anti-spoofing check and the face comparison have finished, and the coarse outcome (`AUTO_PASS`, `REVIEW`, `AUTO_FAIL`). **Never a score, a metric or a picture.** `canRetake` says whether the one retake is on offer.',
+    tag: 'Customer · Selfie',
+    errors: { 404: notYours },
+  },
+  'POST /kyc/sessions/{id}/selfie/continue': {
+    summary: 'Continue without retaking',
+    description:
+      'After a failed check, accepts the result as it is so the application goes on to review. Without it the application waits for the customer to retake or continue.',
+    tag: 'Customer · Selfie',
+    errors: { 404: notYours, 409: 'The checks have not finished, or this was already confirmed.' },
   },
   'GET /kyc/status': {
     summary: 'Where the application stands',

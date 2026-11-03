@@ -18,6 +18,7 @@ import { createPrismaExtractionStore } from '../src/modules/extraction/store.js'
 import { createPrismaAuditChainStore } from '../src/modules/audit/chain.store.js';
 import { createPrismaOfficerStore } from '../src/modules/officer/store.js';
 import { createPrismaRiskStore } from '../src/modules/risk/store.js';
+import { createPrismaSelfieStore } from '../src/modules/selfie/store.js';
 import { hashPassword } from '../src/lib/password.js';
 import { encryptForStorage } from '../src/modules/kyc/personal-codec.js';
 import { panBlindIndex } from '../src/modules/extraction/pii.js';
@@ -135,6 +136,7 @@ describe.skipIf(!up)('extraction pipeline (real infra, fake AI over HTTP)', () =
       objectStore: createS3ObjectStore(s3, bucket),
       extractionStore: createPrismaExtractionStore(prisma),
       riskStore: createPrismaRiskStore(prisma),
+      selfieStore: createPrismaSelfieStore(prisma),
       officerStore: createPrismaOfficerStore(prisma),
       auditChainStore: createPrismaAuditChainStore(prisma),
       exports: createFakeExportDeps([]),

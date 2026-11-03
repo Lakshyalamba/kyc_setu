@@ -105,6 +105,13 @@ export const AUDIT_ACTIONS = {
   AUDIT_EXPORT_FAILED: 'audit.export.failed',
   AUDIT_EXPORT_LINK_ISSUED: 'audit.export.link_issued',
   RETENTION_DRY_RUN: 'retention.dry_run',
+  SELFIE_CAPTURED: 'selfie.captured',
+  SELFIE_REPLACED: 'selfie.replaced',
+  SELFIE_FALLBACK_USED: 'selfie.fallback_used',
+  SELFIE_CONFIRMED: 'selfie.confirmed',
+  MOTION_CHECK_COMPLETED: 'selfie.motion_check_completed',
+  FACE_MATCH_COMPLETED: 'selfie.face_match_completed',
+  SELFIE_LINK_ISSUED: 'selfie.link_issued',
 } as const;
 
 /** A signed session packet may be downloaded for an hour after it is built. */
@@ -238,6 +245,11 @@ export const DOCUMENT_TYPE_LABELS: Record<(typeof DOCUMENT_TYPES)[number], strin
 
 /** A session can be sent back to the customer this many times; after that the officer must decide. */
 export const MAX_RESUBMISSIONS = 2;
+
+/** One retake after a failed check; after it the result is final and any further change needs an officer. */
+export const MAX_SELFIE_RETAKES = 1;
+/** A selfie frame is a 480x640 JPEG; this is generous. The whole upload is four such frames. */
+export const MAX_SELFIE_FRAME_BYTES = 1024 * 1024;
 /** Notes the customer will read must say something. */
 export const DECISION_NOTE_MIN = 5;
 export const DECISION_NOTE_MAX = 1000;

@@ -39,6 +39,8 @@ import {
   type RetentionService,
 } from './modules/retention/retention.service.js';
 import { createRiskService, type RiskService } from './modules/risk/risk.service.js';
+import { createSelfieService, type SelfieService } from './modules/selfie/selfie.service.js';
+import type { SelfieStore } from './modules/selfie/store.js';
 import type { RiskStore } from './modules/risk/store.js';
 import type { VerificationEnqueuer } from './queue/verification.js';
 
@@ -51,6 +53,7 @@ export interface ServiceDeps {
   objectStore: ObjectStore;
   extractionStore: ExtractionStore;
   riskStore: RiskStore;
+  selfieStore: SelfieStore;
   officerStore: OfficerStore;
   auditChainStore: AuditChainStore;
   /** Signed session packets: the request table, the private bucket, the queue and the signing key. */
@@ -69,6 +72,7 @@ export interface Services {
   docs: DocumentsService;
   extraction: ExtractionService;
   risk: RiskService;
+  selfie: SelfieService;
   officer: OfficerService;
   notifier: NotificationService;
   customerStatus: CustomerStatusService;
@@ -131,6 +135,22 @@ export function buildServices(deps: ServiceDeps): Services {
     ...deps.kycOverrides,
   });
   later.advance = (sessionId) => extraction.advanceIfReady(sessionId);
+  const selfie = createSelfieService({
+    env,
+    store: deps.selfieStore,
+    kycStore: deps.kycStore,
+    documentStore: deps.documentStore,
+    documents: docs,
+    objects: deps.objectStore,
+    kms,
+    piiKey,
+    enqueuer: deps.enqueuer,
+    ai: deps.aiClient,
+    auth: deps.store,
+    // Once both checks are in, the risk assessment can run.
+    onChecksChanged: (sessionId) => risk.onInputsChanged(sessionId),
+    ...deps.kycOverrides,
+  });
   const officer = createOfficerService({
     env,
     store: deps.officerStore,
@@ -180,6 +200,7 @@ export function buildServices(deps: ServiceDeps): Services {
     docs,
     extraction,
     risk,
+    selfie,
     officer,
     notifier,
     customerStatus,

@@ -114,7 +114,7 @@ erDiagram
   face_matches {
     string id PK
     string sessionId FK
-    string selfieCaptureId UK,FK
+    string selfieCaptureId FK
     string idDocumentId FK
     FaceMatchDecision decision
   }
@@ -125,7 +125,7 @@ erDiagram
   kyc_sessions ||--o{ documents : "session"
   documents |o--o{ documents : "replacedBy"
   documents ||--o{ extractions : "document"
-  documents ||--o{ signed_url_issues : "document"
+  documents |o--o{ signed_url_issues : "document"
   users ||--o{ signed_url_issues : "user"
   kyc_sessions ||--o{ risk_assessments : "session"
   kyc_sessions ||--o{ biometric_signals : "session"

@@ -11,6 +11,7 @@ import { loadSigner } from './modules/audit/signing.js';
 import { createAuditEnqueuer, createAuditQueue } from './queue/audit.js';
 import { createPrismaOfficerStore } from './modules/officer/store.js';
 import { createPrismaRiskStore } from './modules/risk/store.js';
+import { createPrismaSelfieStore } from './modules/selfie/store.js';
 import { createBullEnqueuer, createVerificationQueue } from './queue/verification.js';
 import { assertBucketPrivate, createS3ObjectStore } from './modules/documents/object-store.js';
 import { createPrismaDocumentStore } from './modules/documents/store.js';
@@ -67,6 +68,7 @@ const app = createApp({
   objectStore: createS3ObjectStore(s3, env.S3_BUCKET),
   extractionStore: createPrismaExtractionStore(prisma),
   riskStore: createPrismaRiskStore(prisma),
+  selfieStore: createPrismaSelfieStore(prisma),
   officerStore: createPrismaOfficerStore(prisma),
   auditChainStore: createPrismaAuditChainStore(prisma),
   exports: {
