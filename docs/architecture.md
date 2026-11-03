@@ -174,8 +174,8 @@ so that scale is a deployment question.
 
 ## What is deliberately simulated
 
-The selfie, face match and liveness steps do not exist; a development-only endpoint injects the signals a real step would
-produce, and everything downstream of those signals is real. There is no SMS or e-mail provider (the one-time code is shown on
+The face-match thresholds are not calibrated on real faces and the "liveness" check is only a motion check (see
+[calibration](calibration.md)). There is no SMS or e-mail provider (the one-time code is shown on
 screen outside production, and notifications are log lines). The KMS and the audit-packet signing key are development stand-ins.
 There is no integration with any government service (DigiLocker, Aadhaar eKYC), no AML screening, no video KYC, and no
 tenancy. [README: intentionally not built](../README.md#intentionally-not-built) says why for each.

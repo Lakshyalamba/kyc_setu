@@ -10,9 +10,9 @@ anyone who wants to see what a careful implementation of that workflow looks lik
 you can read, an audit log you can verify, and honest notes on what is missing.
 
 What is realistic: the architecture, the encryption, the permission model, the review workflow and the audit trail are built
-the way a real system would need them. What is deliberately simulated: the **selfie, face match and liveness step is not built**
-(a development endpoint records the signals it would), the mobile OTP is shown on screen instead of sent, notifications are log
-lines, and the key-management service and signing key are development stand-ins. All people, documents, PANs and Aadhaar
+the way a real system would need them. What is deliberately simulated: the mobile OTP is shown on screen instead of sent,
+notifications are log lines, **the face-match thresholds are not calibrated on real faces** and the "liveness" check is only a
+motion check, and the key-management service and signing key are development stand-ins. All people, documents, PANs and Aadhaar
 numbers are invented and visibly fake. [The full list is below.](#what-is-real-and-what-is-simulated)
 
 ## See it work
@@ -21,8 +21,10 @@ numbers are invented and visibly fake. [The full list is below.](#what-is-real-a
 
 About 70 seconds, recorded by a script ([`apps/web/e2e/demo`](apps/web/e2e/demo/full-flow.spec.ts)) against the real stack: a
 customer signs up and uploads four documents; the OCR service reads them; an officer reviews the evidence and the risk
-breakdown and approves; the customer's screen says so; an auditor verifies the audit chain. (The selfie step is shown as what it
-is, not built: the recording says where a development endpoint stands in.) A [hand-drawn architecture picture](docs/media/architecture.svg)
+breakdown and approves; the customer's screen says so; an auditor verifies the audit chain. **The committed clip predates the
+selfie step** (it ends at "Selfie: coming next" and an officer-side signal stands in); the recording script now takes the selfie
+through the screen, with a canvas for the camera and a stand-in AI service for the face check, and `pnpm demo:record` makes a new
+clip. A [hand-drawn architecture picture](docs/media/architecture.svg)
 is in `docs/media`.
 
 ## Run it
@@ -47,18 +49,18 @@ serves a stand-in that answers with canned readings.
 
 The seed leaves you with these (all passwords are `password123`; staff sign in at `/officer/login`, customers at `/login`):
 
-| Login                                                              | Role / state                                                           |
-| ------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| `lead@kycsetu.dev`                                                 | Officer lead: reviews, unlocks accounts, runs the retention dry run    |
-| `priya.officer@kycsetu.dev`, `arjun.officer@kycsetu.dev`           | Officers: claim from the queue, review, decide                         |
-| `auditor@kycsetu.dev`                                              | Auditor: read-only; verifies the audit chain, exports a signed packet  |
-| `customer1@kycsetu.dev`                                            | Just signed up; no application yet                                     |
-| `customer2@kycsetu.dev`                                            | `DRAFT`: mobile verified, consent accepted                             |
-| `customer3@kycsetu.dev`                                            | `DOCS_UPLOADED`: OCR still pending; run `pnpm dev` and watch it finish |
-| `customer4@kycsetu.dev`                                            | Under review, **LOW** risk, all clean: the one to approve              |
-| `customer5@kycsetu.dev`                                            | Under review, **MEDIUM**: the typed name differs from both cards       |
-| `customer6@kycsetu.dev`                                            | Under review, **HIGH**: a different face on the cards, liveness failed |
-| `history.approved1@…`, `history.approved2@…`, `history.rejected@…` | Earlier decisions, for the auditor's search and the duplicate rules    |
+| Login                                                              | Role / state                                                               |
+| ------------------------------------------------------------------ | -------------------------------------------------------------------------- |
+| `lead@kycsetu.dev`                                                 | Officer lead: reviews, unlocks accounts, runs the retention dry run        |
+| `priya.officer@kycsetu.dev`, `arjun.officer@kycsetu.dev`           | Officers: claim from the queue, review, decide                             |
+| `auditor@kycsetu.dev`                                              | Auditor: read-only; verifies the audit chain, exports a signed packet      |
+| `customer1@kycsetu.dev`                                            | Just signed up; no application yet                                         |
+| `customer2@kycsetu.dev`                                            | `DRAFT`: mobile verified, consent accepted                                 |
+| `customer3@kycsetu.dev`                                            | `DOCS_UPLOADED`: OCR still pending; run `pnpm dev` and watch it finish     |
+| `customer4@kycsetu.dev`                                            | Under review, **LOW** risk, all clean: the one to approve                  |
+| `customer5@kycsetu.dev`                                            | Under review, **MEDIUM**: the typed name differs from both cards           |
+| `customer6@kycsetu.dev`                                            | Under review, **HIGH**: a different face on the cards, motion check failed |
+| `history.approved1@…`, `history.approved2@…`, `history.rejected@…` | Earlier decisions, for the auditor's search and the duplicate rules        |
 
 Every PAN in the seed starts `TEST` and every Aadhaar number starts `9999 0000`: invented, checksum-valid, nobody's.
 More: [ports, commands and every environment variable](docs/configuration.md).
@@ -97,7 +99,7 @@ stateDiagram-v2
     CONSENT_GIVEN --> PERSONAL_SUBMITTED
     PERSONAL_SUBMITTED --> DOCS_UPLOADED
     DOCS_UPLOADED --> DOCS_EXTRACTED: worker reads the documents
-    DOCS_EXTRACTED --> SELFIE_CAPTURED: not built; a dev endpoint stands in
+    DOCS_EXTRACTED --> SELFIE_CAPTURED: customer's selfie stored; face match and motion check run
     SELFIE_CAPTURED --> SUBMITTED: risk assessed
     SUBMITTED --> UNDER_REVIEW
     UNDER_REVIEW --> APPROVED
@@ -110,7 +112,7 @@ stateDiagram-v2
 
 ## What's inside
 
-Nine phases (0 to 8). **Phase 4 is not in this repository.**
+Nine phases (0 to 8).
 
 - **Phase 0, foundations.** pnpm monorepo, Docker Compose infrastructure, Express and BullMQ, Prisma, typed config, an
   append-only audit log, CI. → [configuration](docs/configuration.md), [data model](docs/data-model.md)
@@ -120,9 +122,10 @@ Nine phases (0 to 8). **Phase 4 is not in this repository.**
   a signature pad that works with a finger. → [Documents](docs/features.md#documents-phase-2)
 - **Phase 3, OCR.** A stateless FastAPI service running PaddleOCR (English and Hindi), parsers for PAN and Aadhaar with
   checksums, confidences and boxes; a worker with retries. → [OCR extraction](docs/features.md#ocr-extraction-phase-3)
-- **Phase 4, selfie, face match, liveness: not built.** The risk engine and the review page already consume their results through
-  a defined interface; a development endpoint injects them. See [what is not built](#intentionally-not-built).
-- **Phase 5, risk.** Seventeen named rules, weights, bands and floors in one file; deterministic, versioned, explainable.
+- **Phase 4, selfie, face match, motion check.** In-browser capture (three frames, encrypted like documents), a face match on
+  YuNet and SFace, a motion check that catches a still photograph and nothing cleverer; thresholds that are **not calibrated on
+  real faces**. → [calibration](docs/calibration.md), [device pass](docs/device-pass.md), [AI service](services/ai/README.md#face-models-phase-4)
+- **Phase 5, risk.** Eighteen named rules, weights, bands and floors in one file; deterministic, versioned, explainable.
   → [risk engine](docs/risk-engine.md)
 - **Phase 6, the officer's side.** A queue ordered by risk, a one-request review page with every piece of evidence and its
   box on the image, soft claims, audited Aadhaar reveal, approve / reject / send back, and the customer's screens follow.
@@ -152,16 +155,16 @@ a denial is a 403 that names the missing permission and is audited; a test runs 
 
 ## What is real and what is simulated
 
-| Real                                                                            | Simulated or a stand-in                                                              |
-| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| Sign-in, sessions, roles, lockout, rate limits                                  | **Selfie, face match, liveness**: a development endpoint injects the signals         |
-| Encrypted uploads, per-file keys, signed expiring links                         | Mobile OTP: shown on screen outside production; no SMS provider                      |
-| OCR with the real PaddleOCR models on the synthetic cards                       | E-mail and notifications: a log line and an audit row                                |
-| Cross-document validation and the risk rules                                    | KMS: a master key from an environment variable; the AWS client is a stub             |
-| The review workflow, the decision snapshot, the customer's follow-up            | The audit-packet signing key: a file in `infra/dev-keys/`                            |
-| The append-only audit log, the hash chain, signed packets that verify offline   | Retention: written down and dry-run only; nothing is purged                          |
-| Metrics, structured logs, readiness, an OpenAPI reference                       | The load test: the OCR service is mocked, to measure the pipeline and not the models |
-| Tests: 800+, coverage gates, 30 browser tests (recorded on video), a load smoke | All people, documents and numbers                                                    |
+| Real                                                                            | Simulated or a stand-in                                                                |
+| ------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Sign-in, sessions, roles, lockout, rate limits                                  | **Face-match thresholds**: set from a published number, never calibrated on real faces |
+| Encrypted uploads, per-file keys, signed expiring links; selfie frames the same | Mobile OTP: shown on screen outside production; no SMS provider                        |
+| OCR with the real PaddleOCR models on the synthetic cards                       | E-mail and notifications: a log line and an audit row                                  |
+| Cross-document validation and the risk rules                                    | KMS: a master key from an environment variable; the AWS client is a stub               |
+| The review workflow, the decision snapshot, the customer's follow-up            | The audit-packet signing key: a file in `infra/dev-keys/`                              |
+| The append-only audit log, the hash chain, signed packets that verify offline   | Retention: written down and dry-run only; nothing is purged                            |
+| Metrics, structured logs, readiness, an OpenAPI reference                       | The load test: the OCR service is mocked, to measure the pipeline and not the models   |
+| Tests: 800+, coverage gates, 30 browser tests (recorded on video), a load smoke | All people, documents and numbers                                                      |
 
 ## Working on it
 
@@ -184,17 +187,16 @@ machine), [`packages/risk/src/config.ts`](packages/risk/src/config.ts) (every nu
 
 ## Intentionally not built
 
-| Not built                                             | Why                                                                                                                                                                                                                           |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Selfie capture, face match and liveness (Phase 4)** | Not finished, and the one real gap: everything downstream is built and tested around it, and a development endpoint stands in. Real liveness is hard to build and harder to trust, and needs data this project does not have. |
-| Video KYC                                             | A different product: a scheduled call with an agent, recording and its own retention rules                                                                                                                                    |
-| DigiLocker and Aadhaar offline eKYC                   | They need registration with, and credentials from, the issuing authorities, which a portfolio project cannot have                                                                                                             |
-| AML and sanctions screening                           | Needs licensed watchlist data and a case-management process; out of scope of identity verification                                                                                                                            |
-| Production-grade liveness and deepfake resistance     | See Phase 4                                                                                                                                                                                                                   |
-| Multi-tenancy                                         | One bank, one deployment. Row-level isolation per tenant would touch every table and every test, and teaches nothing the rest does not                                                                                        |
-| Real e-mail and SMS                                   | Needs provider accounts and templates; the seams (`notify`, the OTP sender) are single functions                                                                                                                              |
-| A real KMS, an HSM and key rotation                   | The interfaces are there; see [security.md](docs/security.md)                                                                                                                                                                 |
-| Anything that claims compliance with a regulation     | It would be untrue. This is a **KYC-style workflow**; whether a real deployment satisfies any rule is for that bank to establish                                                                                              |
+| Not built                                              | Why                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Production-grade liveness (passive, anti-spoofing)** | The selfie step is built, but its "liveness" is a motion check on three frames: it catches a photograph held still, not a replayed video, a mask or a deepfake. A passive anti-spoofing model (MiniFASNet and similar) is the backlog item; it needs training data and a licence check this project has not done. |
+| Video KYC                                              | A different product: a scheduled call with an agent, recording and its own retention rules                                                                                                                                                                                                                        |
+| DigiLocker and Aadhaar offline eKYC                    | They need registration with, and credentials from, the issuing authorities, which a portfolio project cannot have                                                                                                                                                                                                 |
+| AML and sanctions screening                            | Needs licensed watchlist data and a case-management process; out of scope of identity verification                                                                                                                                                                                                                |
+| Multi-tenancy                                          | One bank, one deployment. Row-level isolation per tenant would touch every table and every test, and teaches nothing the rest does not                                                                                                                                                                            |
+| Real e-mail and SMS                                    | Needs provider accounts and templates; the seams (`notify`, the OTP sender) are single functions                                                                                                                                                                                                                  |
+| A real KMS, an HSM and key rotation                    | The interfaces are there; see [security.md](docs/security.md)                                                                                                                                                                                                                                                     |
+| Anything that claims compliance with a regulation      | It would be untrue. This is a **KYC-style workflow**; whether a real deployment satisfies any rule is for that bank to establish                                                                                                                                                                                  |
 
 The honest list of security gaps is in [security.md](docs/security.md#not-built-on-purpose-or-not-yet).
 
@@ -214,9 +216,10 @@ This project stands on others' work. What it actually uses:
 | [Playwright](https://playwright.dev)                                                                                                             | Browser tests and the recorded demo                      | Apache-2.0          |
 | [Mermaid](https://mermaid.js.org)                                                                                                                | Diagrams in the documentation                            | MIT                 |
 
-**insightface and RetinaFace** were planned for the face-match phase and **are not used**, since that phase is not built. If it
-is built: the insightface code is MIT, but its published pretrained model packs are licensed for non-commercial research use,
-which would matter for anything a bank deploys. Check before adopting them.
+**insightface and RetinaFace** were considered for the face-match step and **are not used**: the insightface code is MIT, but its
+published pretrained model packs are licensed for non-commercial research use, which would matter for anything a bank deploys.
+The step uses YuNet (MIT) and SFace (Apache-2.0) from the OpenCV Zoo instead; what is and is not known about how SFace was
+trained is in [services/ai/README.md](services/ai/README.md#face-models-phase-4).
 
 The sample documents and faces are drawn by [`scripts/sample-docs/make_samples.py`](scripts/sample-docs/make_samples.py) with
 Pillow: invented people, invented numbers, three cartoon avatars, every card stamped "SAMPLE DOCUMENT - NOT REAL". No real

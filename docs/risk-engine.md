@@ -6,10 +6,10 @@ clock of its own. There is no machine learning in it. Every point of the score b
 it fired, so an officer can disagree with a rule instead of arguing with a number.
 
 ```
-typed details + what OCR read + face and liveness signals + duplicate checks
+typed details + what OCR read + the face-match decision and motion-check result + duplicate checks
         │
         ▼
-17 rules, each: applicable? → passed, or a penalty and a reason
+18 rules, each: applicable? → passed, or a penalty and a reason
         │
         ▼
 sum of penalties, clamped to 0..100  →  band from the table  →  raised by band floors and hard fails
@@ -44,14 +44,15 @@ sum of penalties, clamped to 0..100  →  band from the table  →  raised by ba
 | `extraction-unusable`        | data integrity |                    30 | a document came back as the wrong kind, unparseable, or errored         |
 | `low-ocr-confidence`         | quality        |                    10 | any key field was read with confidence under 0.6                        |
 | `document-quality-poor`      | quality        |                    10 | any document was too blurry or small to trust                           |
-| `face-match-below-threshold` | biometric      |             35 → HIGH | the face on the documents does not match the selfie (score < 0.65)      |
-| `face-match-borderline`      | biometric      |                    15 | score from 0.65 up to 0.75: a human should look                         |
-| `liveness-failed`            | biometric      |                    25 | the motion check failed                                                 |
+| `face-match-below-threshold` | biometric      |             35 → HIGH | the face match decided `AUTO_FAIL` (score below 0.30)                   |
+| `face-match-borderline`      | biometric      |                    15 | the face match decided `REVIEW` (0.30 up to 0.50): a human should look  |
+| `liveness-failed`            | biometric      |                    25 | the motion check failed or was inconclusive                             |
+| `liveness-method-none`       | biometric      |                    15 | the selfie was uploaded as a file, so no motion check was possible      |
 | `duplicate-pan-approved`     | duplicate      |             40 → HIGH | the PAN belongs to an approved application of a different customer      |
 | `duplicate-aadhaar-approved` | duplicate      |             40 → HIGH | the same, for the Aadhaar number                                        |
 | `age-ineligible`             | data integrity | 100 → HIGH, hard fail | the youngest date of birth from any source is under 18                  |
 
-An 18th, `rule-evaluation-error` (20 points), is the engine's own: if a rule throws, the run records that instead of crashing,
+The engine's own `rule-evaluation-error` (20 points) comes on top of these, is the engine's own: if a rule throws, the run records that instead of crashing,
 so a bug in one rule makes the application look worse, never better.
 
 ### Skipped is not passed
@@ -69,11 +70,11 @@ and every `details` object in a fired rule is numbers and rule ids, never a name
 
 ## Three applications from the demo seed
 
-| Customer               | What happened                                                            | Rules that fired                                          | Score | Band   |
-| ---------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------- | ----: | ------ |
-| `customer4` (Anita R.) | everything agrees; face 0.93, liveness passed                            | none                                                      |     0 | LOW    |
-| `customer5` (Mira I.)  | typed "Mira Iyar"; both cards say "Meera Iyer"; face 0.90                | `name-mismatch-form-pan` (15)                             |    15 | MEDIUM |
-| `customer6` (Arjun M.) | a different face on the cards than in the selfie (0.22); liveness failed | `face-match-below-threshold` (35), `liveness-failed` (25) |    60 | HIGH   |
+| Customer               | What happened                                                                | Rules that fired                                          | Score | Band   |
+| ---------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------- | ----: | ------ |
+| `customer4` (Anita R.) | everything agrees; face 0.93, motion check passed                            | none                                                      |     0 | LOW    |
+| `customer5` (Mira I.)  | typed "Mira Iyar"; both cards say "Meera Iyer"; face 0.90                    | `name-mismatch-form-pan` (15)                             |    15 | MEDIUM |
+| `customer6` (Arjun M.) | a different face on the cards than in the selfie (0.22); motion check failed | `face-match-below-threshold` (35), `liveness-failed` (25) |    60 | HIGH   |
 
 Only the second one is interesting arithmetically: 15 is the lowest score that is MEDIUM, which is the point of the next section.
 

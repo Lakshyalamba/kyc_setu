@@ -1,14 +1,13 @@
 # Feature reference, phase by phase
 
 What each phase built, in enough detail to find your way around its code. The [README](../README.md) is the front door; this is
-the back of the house. Phases 1 to 3 and 5 to 7 are here; Phase 4 (the selfie, face match and liveness) is **not in this
-repository** and several sections below say where it plugs in. Phase 8 is the polish and the documentation you are reading,
+the back of the house. Phases 1 to 7 are here (Phase 4 is [the selfie section](#selfie-face-match-and-motion-check-phase-4)). Phase 8 is the polish and the documentation you are reading,
 and lives in the other pages in this folder ([architecture](architecture.md), [security](security.md),
 [risk engine](risk-engine.md), [state machine](state-machine.md), [data model](data-model.md), [API](api.md),
 [testing](testing.md), [performance](performance.md)).
 
 Sections: [KYC flow](#kyc-flow-phase-1) · [Documents](#documents-phase-2) · [OCR](#ocr-extraction-phase-3) ·
-[Risk engine](#risk-engine-phase-5) · [Officer review](#officer-review-phase-6) ·
+[Selfie](#selfie-face-match-and-motion-check-phase-4) · [Risk engine](#risk-engine-phase-5) · [Officer review](#officer-review-phase-6) ·
 [Audit integrity and access control](#audit-integrity-and-access-control-phase-7) · [Design notes](#design-notes)
 
 ## KYC flow (Phase 1)
@@ -126,6 +125,40 @@ worker ──(5) validate, encrypt, write `extractions`, audit, maybe advance th
   exercise the failure statuses). The samples are generated, clearly fake ("SAMPLE DOCUMENT - NOT REAL") and must
   never be replaced with real documents.
 
+## Selfie, face match and motion check (Phase 4)
+
+**Read this first:** the face-match thresholds are **not calibrated on real faces** ([calibration.md](calibration.md)), and the
+"liveness" check is a **motion check**: it catches a photograph held still in front of the camera and nothing cleverer (not a
+replayed video, a mask or a deepfake). The screens and the officer's page say so in those words.
+
+- **The customer's screen** (`/kyc/selfie`): it explains why before it asks for the camera, opens the front camera only on a tap,
+  shows an oval to fit your face in (MediaPipe BlazeFace, served by us, draws the hint; its result is advisory and **never sent**),
+  counts down 3-2-1 and takes three JPEGs (480x640, quality 0.9) 300 ms apart, flashing each time. The best frame is the middle one
+  by position: nothing in the browser picks a flattering frame, and the server insists on the same rule. A blocked camera gets
+  recovery text and a file-upload fallback (recorded as method `NONE`: no motion check, and the risk rule `liveness-method-none`
+  adds 15 points). The screen then shows progress ("a quick anti-spoofing check", "comparing your face with your ID", "finalizing").
+  Customer copy never says "liveness" and never shows a score.
+- **What the customer is told.** Good result: continue. A borderline match: "Your submission needs an officer to look at it, which
+  is normal — no action from you." A failed check: one retake, with advice about light and glasses and no accusation, or carry on
+  with the selfie they have. After the retake an officer looks at it.
+- **Storage.** Each picture is its own AES-256-GCM envelope (as documents are); the aligned crops and the embeddings are
+  encrypted with the personal-data key. Pictures are never returned to the customer. Officers see them through short-lived
+  links (`selfie.link_issued`, one officer, five minutes).
+- **The checks run on the server, in the worker.** `POST /face/liveness` compares the three frames inside the face box (SSIM)
+  and checks the face stays in frame and the picture is sharp and lit; `POST /face/match` embeds the Aadhaar photo and the best
+  frame (YuNet detector, SFace recogniser) and returns the cosine similarity, the aligned crops and the embeddings as evidence.
+  The service is stateless: it fetches pictures by signed link and writes nothing. The worker turns the score into a decision
+  with the thresholds in `packages/shared/src/face/thresholds.ts` and stores the thresholds in force with each result.
+- **Routes** (customer): `POST /kyc/sessions/:id/selfie`, `.../selfie/retake`, `GET .../selfie/status` (coarse outcome, never the
+  score), `POST .../selfie/continue`. One retake per application, only before submission.
+- **Audit:** `selfie.captured`, `selfie.replaced`, `selfie.fallback_used`, `selfie.confirmed`, `selfie.motion_check_completed`,
+  `selfie.face_match_completed` (score and decision, never embeddings), `selfie.link_issued`.
+- **Models and licences:** YuNet (MIT) and SFace (Apache-2.0), with what is and is not known about their training data, in
+  [services/ai/README.md](../services/ai/README.md#face-models-phase-4). Face embeddings are never logged or put in metrics.
+- **Testing without a face:** `AI_FACE_BACKEND=stub` makes the AI service answer the two face calls from a config (`make
+ai-stub`), and `/dev/ai-mock` does the same for the API; neither looks at pixels. The real models run in the AI test suite.
+- **Backlog, not built:** a passive anti-spoofing model (MiniFASNet and similar) behind the motion check.
+
 ## Risk engine (Phase 5)
 
 [`packages/risk`](../packages/risk/README.md) is a pure function from a case's signals to a score (0-100), a band
@@ -135,21 +168,21 @@ byte-identical output, and there is no machine learning. All weights, thresholds
 `packages/risk/src/config.ts`; the rule table and the tuning guide are in the package README.
 
 ```
-extraction + typed details + face match + liveness + prior approvals
+extraction + typed details + face match decision + motion check + prior approvals
         │  (worker: decrypts, compares full PAN/Aadhaar, hashes → booleans)
         ▼
  runRiskEngine  ──▶  RiskAssessment (append-only row)  ──▶  SELFIE_CAPTURED → SUBMITTED → UNDER_REVIEW
 ```
 
-| Route                                   | Who                            | Purpose                                                                                                             |
-| --------------------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `GET /kyc/sessions/:id/risk`            | officers / the owning customer | Officers: the whole assessment. The customer: `{ band }` and nothing else                                           |
-| `POST /kyc/sessions/:id/risk/recompute` | `OFFICER`, `OFFICER_LEAD`      | Re-run on current data; appends a new row, leaves the session's state alone                                         |
-| `GET /dev/risk/preview?sessionId=`      | dev only, officer              | Run the engine without saving anything (for tuning)                                                                 |
-| `POST /dev/sessions/:id/biometrics`     | dev only, officer              | **Stand-in for Phase 4**: records a face-match score and liveness result and moves the session to `SELFIE_CAPTURED` |
+| Route                                   | Who                            | Purpose                                                                     |
+| --------------------------------------- | ------------------------------ | --------------------------------------------------------------------------- |
+| `GET /kyc/sessions/:id/risk`            | officers / the owning customer | Officers: the whole assessment. The customer: `{ band }` and nothing else   |
+| `POST /kyc/sessions/:id/risk/recompute` | `OFFICER`, `OFFICER_LEAD`      | Re-run on current data; appends a new row, leaves the session's state alone |
+| `GET /dev/risk/preview?sessionId=`      | dev only, officer              | Run the engine without saving anything (for tuning)                         |
 
-- **Triggering.** When a session is at `SELFIE_CAPTURED` and both a face-match score and a liveness result exist, a
-  `risk` job goes on the verification queue. The worker evaluates, stores the assessment, then performs
+- **Triggering.** When a session is at `SELFIE_CAPTURED` and both the face match and the motion check have a result (and the
+  customer is not in the middle of choosing between a retake and carrying on), a `risk` job goes on the verification queue; the
+  run is serialised per session by a database lock. The worker evaluates, stores the assessment, then performs
   `SELFIE_CAPTURED → SUBMITTED → UNDER_REVIEW` as two separate persisted (and audited) transitions. A retry after a crash
   between them only finishes the second. Extraction completing does not need to trigger it, because a session cannot
   reach `SELFIE_CAPTURED` before its documents are extracted.
@@ -161,16 +194,13 @@ extraction + typed details + face match + liveness + prior approvals
   full-number check) and passes booleans. The stored input summary and the audit rows contain scores, booleans and rule
   ids only.
 - **Audit:** `risk.job_enqueued`; `risk.evaluated` (`score`, `band`, `engineVersion`, `ruleCount`, `hardFail`);
-  `risk.recomputed` (actor, previous and new band and score, rules added and removed); `risk.failed`;
-  `dev.biometrics_injected`.
+  `risk.recomputed` (actor, previous and new band and score, rules added and removed); `risk.failed`.
 - **The customer** ends on an "under review" screen that says nothing about the outcome. The band is available to the
   owning customer by API because the brief asked for it; consider removing it, since telling a customer their risk
   rating is generally discouraged in AML practice.
-- **Dev signals are never trusted in production.** The injector refuses to run there, and the risk worker ignores
-  `DEV_INJECTED` biometric rows when `NODE_ENV=production`.
 - **Try it:** with everything running (`make ai`, `pnpm dev`), `pnpm demo:risk` runs a fresh customer all the way to an
   assessment. Scenarios: `--scenario clean | stranger | borderline | liveness | typo-pan | duplicate-pan | underage`,
-  plus `--recompute` / `--recompute-worse-face`. (`duplicate-pan` marks a first session APPROVED directly in the dev
+  plus `--recompute`; the face scores come from the API running against `/dev/ai-mock`. (`duplicate-pan` marks a first session APPROVED directly in the dev
   database rather than through an officer decision, and restores it afterwards.)
 
 ## Officer review (Phase 6)
@@ -241,9 +271,9 @@ cannot claim, reveal or decide.
 - **Audit:** `officer.review_opened`, `assignment.claimed` / `released` / `taken_over`, `aadhaar.revealed`,
   `decision.recorded` (`decisionId`, `decision`, `reasonCode`, `officerId`: no notes, no personal values),
   `kyc.documents.cleared`, `notification.queued` / `sent`, `kyc.approval_slip_downloaded`.
-- **What is not real yet** (Phase 4): there is no selfie, so the face-match section shows the score, the thresholds and the
-  liveness result from the dev injector and "not cropped yet / no selfie on file" where the two aligned crops and the
-  three motion frames will go. The payload already has the fields (`aadhaarCropUrl`, `selfieCropUrl`, `frameUrls`).
+- **The face section** shows the two aligned crops the score came from, the score as a cosine similarity with the thresholds
+  in force (and "not yet calibrated on real faces"), the embedding model in a tooltip, and a motion-check panel with the three
+  frames and "Motion check is not production-grade liveness. Use judgment." No result can be entered from the page.
 - **Try it:** `pnpm seed` (after `make up` and `pnpm db:migrate`) wipes the local stack and creates the demo: three applications
   under review (LOW, MEDIUM, HIGH), one left at `DOCS_UPLOADED` for the worker to finish, earlier approvals and a rejection,
   and prints the logins. Applications are made through the real upload, extraction and risk code, with the OCR service replaced
@@ -343,7 +373,7 @@ manifest.json   session + status timeline, consent version and exact text, risk 
 personal.json   masked, for the role that asked          extractions.json  raw OCR text decrypted, identifiers masked
 documents/      the uploaded files, decrypted, byte for byte           risk.json   every assessment with its inputs
 decisions.json  with their snapshots                    audit.jsonl   every audit row of the session, oldest first
-face/           recorded signals and a note: crops and frames do not exist until Phase 4
+face/           the recorded results and versions, and a note: the pictures and embeddings are NOT in the packet
 files.sha256 (+ .sig)  signing-public-key.pem  verify.sh
 ```
 

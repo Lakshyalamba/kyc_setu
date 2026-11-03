@@ -12,7 +12,7 @@ stateDiagram-v2
     CONSENT_GIVEN --> PERSONAL_SUBMITTED: personal details submitted
     PERSONAL_SUBMITTED --> DOCS_UPLOADED: all four documents submitted
     DOCS_UPLOADED --> DOCS_EXTRACTED: worker has read all three
-    DOCS_EXTRACTED --> SELFIE_CAPTURED: face and liveness signals recorded
+    DOCS_EXTRACTED --> SELFIE_CAPTURED: the customer's selfie stored
     SELFIE_CAPTURED --> SUBMITTED: risk assessed
     SUBMITTED --> UNDER_REVIEW: queued for officers
     UNDER_REVIEW --> APPROVED: officer approves
@@ -32,25 +32,26 @@ stateDiagram-v2
 
 ## The states
 
-| Status               | Meaning                                                                  | Who is waiting for whom     |
-| -------------------- | ------------------------------------------------------------------------ | --------------------------- |
-| `DRAFT`              | Session created. Contact (mobile OTP) is verified during this state      | the customer                |
-| `CONSENT_GIVEN`      | The customer accepted a specific version of the consent text             | the customer                |
-| `PERSONAL_SUBMITTED` | Details typed and submitted; they are now locked                         | the customer (uploading)    |
-| `DOCS_UPLOADED`      | PAN, Aadhaar front and back and a signature uploaded and submitted       | the worker (OCR)            |
-| `DOCS_EXTRACTED`     | Every document has a finished extraction                                 | the selfie step (see below) |
-| `SELFIE_CAPTURED`    | Face-match and liveness signals exist                                    | the worker (risk engine)    |
-| `SUBMITTED`          | Risk assessed. Lasts a moment: it is persisted so the audit log shows it | the worker                  |
-| `UNDER_REVIEW`       | In the officers' queue                                                   | an officer                  |
-| `APPROVED`           | An officer approved. Terminal                                            | nobody                      |
-| `REJECTED`           | An officer rejected, with a reason. Terminal                             | nobody                      |
-| `RESUBMIT_REQUESTED` | An officer asked for specific documents again                            | the customer                |
-| `EXPIRED`            | The application sat unfinished past its 24 hours. Terminal               | nobody                      |
+| Status               | Meaning                                                                    | Who is waiting for whom  |
+| -------------------- | -------------------------------------------------------------------------- | ------------------------ |
+| `DRAFT`              | Session created. Contact (mobile OTP) is verified during this state        | the customer             |
+| `CONSENT_GIVEN`      | The customer accepted a specific version of the consent text               | the customer             |
+| `PERSONAL_SUBMITTED` | Details typed and submitted; they are now locked                           | the customer (uploading) |
+| `DOCS_UPLOADED`      | PAN, Aadhaar front and back and a signature uploaded and submitted         | the worker (OCR)         |
+| `DOCS_EXTRACTED`     | Every document has a finished extraction                                   | the customer (selfie)    |
+| `SELFIE_CAPTURED`    | A selfie is stored; the face match and motion check run, then the risk job | the worker (risk engine) |
+| `SUBMITTED`          | Risk assessed. Lasts a moment: it is persisted so the audit log shows it   | the worker               |
+| `UNDER_REVIEW`       | In the officers' queue                                                     | an officer               |
+| `APPROVED`           | An officer approved. Terminal                                              | nobody                   |
+| `REJECTED`           | An officer rejected, with a reason. Terminal                               | nobody                   |
+| `RESUBMIT_REQUESTED` | An officer asked for specific documents again                              | the customer             |
+| `EXPIRED`            | The application sat unfinished past its 24 hours. Terminal                 | nobody                   |
 
-**What is not built.** The selfie step (Phase 4: capture, face match, liveness) does not exist. The customer sees "Selfie:
-coming next", and the edge `DOCS_EXTRACTED → SELFIE_CAPTURED` is fired by a development-only signal injector
-(`POST /dev/sessions/:id/biometrics`, not mounted in production) that records the face-match score and liveness result a real
-selfie step would. Everything after that edge is real.
+**The selfie step.** Uploading the selfie fires `DOCS_EXTRACTED → SELFIE_CAPTURED` and queues two checks (a motion check on the
+three frames, a face match against the Aadhaar front). The risk job runs when both are done. If one failed and the customer's
+one retake is still on offer, it waits for them to retake or to continue with the selfie they have; a retake replaces the
+capture (the old one is kept, marked replaced) and the checks run again. An officer can also ask for a selfie retake
+(`SELFIE_RETAKE`), which sends the application back through `RESUBMIT_REQUESTED`.
 
 ## Every transition
 
@@ -60,7 +61,7 @@ selfie step would. Everything after that edge is real.
 | 2   | `CONSENT_GIVEN → PERSONAL_SUBMITTED`  | `POST /kyc/sessions/:id/personal/submit`                | consent recorded; details complete              | the customer           |
 | 3   | `PERSONAL_SUBMITTED → DOCS_UPLOADED`  | `POST /kyc/sessions/:id/documents/submit`               | all four document types present                 | the customer           |
 | 4   | `DOCS_UPLOADED → DOCS_EXTRACTED`      | verification worker, after the last extraction finishes | none (idempotent)                               | system                 |
-| 5   | `DOCS_EXTRACTED → SELFIE_CAPTURED`    | the signal injector (today), the selfie step (later)    | none                                            | the injecting officer  |
+| 5   | `DOCS_EXTRACTED → SELFIE_CAPTURED`    | `POST /kyc/sessions/:id/selfie`                         | three frames and the best one, or one picture   | the customer           |
 | 6   | `SELFIE_CAPTURED → SUBMITTED`         | risk job, after it records an assessment                | none                                            | system                 |
 | 7   | `SUBMITTED → UNDER_REVIEW`            | the same job, as a second persisted step                | none; a retry finishes a half-done run          | system                 |
 | 8   | `UNDER_REVIEW → APPROVED`             | `POST /officer/sessions/:id/decisions`                  | the officer holds the claim; compare-and-set    | the officer            |

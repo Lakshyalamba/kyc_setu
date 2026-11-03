@@ -11,14 +11,14 @@ here too.
 
 ## What is kept, and for how long
 
-| What                                         | How long                      | Why                                                                                                                                                                  |
-| -------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Identity documents (PAN, Aadhaar, signature) | 7 years after the decision    | Banks and regulators may ask to see the documents behind a KYC decision for years afterwards.                                                                        |
-| Raw text read from documents by OCR          | 90 days after it was read     | It exists to debug the reader and to compare what you typed with what is printed. The structured fields are what the decision uses, so the full text is short-lived. |
-| Face embeddings                              | 7 years after the decision    | To show how a face match was reached if the decision is questioned. **Not stored yet**: there is no selfie step.                                                     |
-| Selfie and liveness frames                   | 7 years after they were taken | Evidence for the liveness and face-match checks. **Not stored yet.**                                                                                                 |
-| The audit log and its daily hash chain       | Indefinitely                  | It is the evidence that everything else was handled properly. It holds identifiers and actions, not documents or typed details, and it can only be added to.         |
-| The text of each consent you accepted        | Indefinitely                  | What you agreed to must stay exactly as you saw it, however the wording changes later. It is not personal data about you.                                            |
+| What                                         | How long                      | Why                                                                                                                                                                             |
+| -------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Identity documents (PAN, Aadhaar, signature) | 7 years after the decision    | Banks and regulators may ask to see the documents behind a KYC decision for years afterwards.                                                                                   |
+| Raw text read from documents by OCR          | 90 days after it was read     | It exists to debug the reader and to compare what you typed with what is printed. The structured fields are what the decision uses, so the full text is short-lived.            |
+| Face embeddings                              | 7 years after the decision    | To show how a face match was reached if the decision is questioned. Stored, encrypted with the personal-data key; **nothing purges them yet** (retention is dry-run only).      |
+| Selfie and liveness frames                   | 7 years after they were taken | Evidence for the motion check and the face match: the three frames, the best frame and the two aligned face crops, each encrypted like a document. **Nothing purges them yet.** |
+| The audit log and its daily hash chain       | Indefinitely                  | It is the evidence that everything else was handled properly. It holds identifiers and actions, not documents or typed details, and it can only be added to.                    |
+| The text of each consent you accepted        | Indefinitely                  | What you agreed to must stay exactly as you saw it, however the wording changes later. It is not personal data about you.                                                       |
 
 "The decision" means the officer's final approval or rejection. An application that is still being reviewed has no
 decision yet, so its documents are not yet counting down.

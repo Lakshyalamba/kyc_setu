@@ -1,4 +1,4 @@
-# services/ai: OCR and field extraction
+# services/ai: OCR, field extraction and face checks
 
 A stateless FastAPI service. **Image in, JSON out.** It never reads Postgres and never writes to object
 storage: the Node worker (`apps/api`) hands it a short-lived link, the service downloads the document,
@@ -8,10 +8,12 @@ runs the pipeline and returns the result. All database writes happen in the work
 POST /extract/pan       { documentId, signedUrl, sessionId }
 POST /extract/aadhaar   { documentId, signedUrl, sessionId, documentType: "AADHAAR_FRONT" | "AADHAAR_BACK" }
 GET  /healthz           { status: "ok" | "loading" | "error", models: {...}, versions: {...} }
-POST /match             (stub, unchanged from Phase 0)
+POST /face/liveness     { captureId, frameUrls[3], bestFrameUrl }                      the motion check
+POST /face/match        { selfieCaptureId, selfieBestUrl, idDocumentId, idDocumentUrl } score + crops + embeddings
+POST /face/config       { score, motionPasses }    only with AI_FACE_BACKEND=stub (404 otherwise)
 ```
 
-Both extract routes require `X-Internal-Key` (shared secret). The worker also sends
+Every route except the probes requires `X-Internal-Key` (shared secret). The worker also sends
 `X-Fetch-Authorization: Bearer <token>`, which the service forwards when it downloads `signedUrl`.
 The response contract is `packages/shared/src/schemas/extraction.ts` (zod) mirrored by `app/schemas.py`
 (pydantic); both are validated against the JSON samples in `/contracts`.
@@ -112,6 +114,14 @@ against each other), so no test here says anything about telling real people apa
 **Motion check, not liveness.** `POST /face/liveness` compares three frames shot 300 ms apart inside the face box (SSIM) and
 checks the face stays in frame. It catches a photograph held still in front of the camera. It does not catch a replayed
 video, a mask or a deepfake. Passive liveness models (MiniFASNet and similar) are deliberately out of scope for this phase.
+
+## The face stand-in (`AI_FACE_BACKEND=stub`)
+
+With `AI_FACE_BACKEND=stub` the service loads no face models and answers `/face/liveness` and `/face/match` from the last
+`POST /face/config` (default: a clear match that passes). It looks at no pixels, it is refused when `AI_ENV=production`,
+and `/face/config` does not exist with the real models. It is there so a browser run can drive the selfie step to each
+outcome without a model that would have to be fed real people's faces: `make ai-stub` starts it, and `scripts/e2e-ci.sh`
+does too. It says nothing about how SFace behaves; `tests/test_face.py` covers the real models.
 
 ## Licences
 

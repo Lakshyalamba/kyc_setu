@@ -106,15 +106,16 @@ can read.
 
 ## Not built, on purpose or not yet
 
-| Gap                                                                      | Why it matters                                                                             |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
-| A real KMS and key rotation                                              | Today the master key is an environment variable                                            |
-| An HSM-backed signing key for audit packets                              | Today it is a file                                                                         |
-| MFA and e-mail verification for staff                                    | A password is all that stands between the internet and the review queue                    |
-| Server-side session revocation                                           | See above                                                                                  |
-| Virus scanning of uploads                                                |                                                                                            |
-| CSRF tokens                                                              | See above                                                                                  |
-| An external anchor for the audit chain                                   | See above                                                                                  |
-| Real liveness and deepfake resistance                                    | There is no selfie step, so there is nothing to defeat                                     |
-| A real purge for retention                                               | The periods are written down; nothing deletes ([retention-policy.md](retention-policy.md)) |
-| Penetration testing, threat-model review by someone who did not build it | This document is the author's view of their own work                                       |
+| Gap                                                                      | Why it matters                                                                                                  |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| A real KMS and key rotation                                              | Today the master key is an environment variable                                                                 |
+| An HSM-backed signing key for audit packets                              | Today it is a file                                                                                              |
+| MFA and e-mail verification for staff                                    | A password is all that stands between the internet and the review queue                                         |
+| Server-side session revocation                                           | See above                                                                                                       |
+| Virus scanning of uploads                                                |                                                                                                                 |
+| CSRF tokens                                                              | See above                                                                                                       |
+| An external anchor for the audit chain                                   | See above                                                                                                       |
+| Real liveness and deepfake resistance                                    | The selfie step has a motion check only: a replayed video, a mask or a deepfake passes it                       |
+| Face-match calibration and fairness                                      | Thresholds are not tuned on real faces and error rates per group are unknown ([calibration.md](calibration.md)) |
+| A real purge for retention                                               | The periods are written down; nothing deletes ([retention-policy.md](retention-policy.md))                      |
+| Penetration testing, threat-model review by someone who did not build it | This document is the author's view of their own work                                                            |

@@ -30,26 +30,29 @@ Also: `make verify` (the whole pre-push gauntlet), `pnpm test:coverage`, `pnpm t
 Defined in `.env` (git-ignored; copy from `.env.example`). Each app validates what it needs with zod
 on boot and exits with a list of problems if anything is missing or malformed.
 
-| Variable                          | Used by | Description                                                                                                   |
-| --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
-| `NODE_ENV`                        | api     | `development` \| `test` \| `production` (secure cookies in prod)                                              |
-| `DATABASE_URL`                    | api, db | Postgres connection string                                                                                    |
-| `TEST_DATABASE_URL`               | tests   | Separate DB (`kyc_setu_test`) so tests never touch dev data                                                   |
-| `REDIS_URL`                       | api     | BullMQ + health                                                                                               |
-| `S3_ENDPOINT`                     | api     | MinIO / S3 endpoint                                                                                           |
-| `S3_REGION`                       | api     | Defaults to `us-east-1`                                                                                       |
-| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | api     | Object-storage credentials                                                                                    |
-| `S3_BUCKET`                       | api     | Bucket created on API boot (default `kyc-documents`)                                                          |
-| `API_PORT`                        | api     | Default `4000`                                                                                                |
-| `JWT_SECRET`                      | api     | ≥ 32 chars. `openssl rand -base64 48`                                                                         |
-| `JWT_EXPIRES_IN_SECONDS`          | api     | Session lifetime, default 86400                                                                               |
-| `WEB_ORIGIN`                      | api     | Allowed CORS origin (credentials enabled)                                                                     |
-| `AI_SERVICE_URL`                  | api     | Base URL of the OCR service                                                                                   |
-| `AI_INTERNAL_KEY`                 | api, ai | Shared secret (≥ 32 chars) sent as `X-Internal-Key`; the service rejects callers without it                   |
-| `AI_REQUEST_TIMEOUT_MS`           | api     | Per-request timeout when calling the OCR service (default 60000)                                              |
-| `EXTRACTION_BACKOFF_SECONDS`      | api     | Delays before retries 1, 2, 3 of a failed extraction (default `10,60,300`, so 4 attempts in total)            |
-| `OCR_RAW_TEXT_RETENTION_DAYS`     | api     | How long encrypted raw OCR text may be kept (default 90). The cleanup job exists but is **not scheduled** yet |
-| `RATE_LIMIT_ENABLED`              | api     | `true`/`false`: sign-in, OTP and reveal limits. Default on in production, off elsewhere                       |
-| `AUDIT_EXPORT_BUCKET`             | api     | Private bucket for signed session packets (default `kyc-audit-exports`)                                       |
-| `AUDIT_SIGNING_KEY_FILE`          | api     | Ed25519 PEM that signs packets. Dev: generated into `infra/dev-keys/`. Production: required, HSM/KMS-backed   |
-| `NEXT_PUBLIC_API_URL`             | web     | API base URL the browser and server components call                                                           |
+| Variable                          | Used by | Description                                                                                                                          |
+| --------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `NODE_ENV`                        | api     | `development` \| `test` \| `production` (secure cookies in prod)                                                                     |
+| `DATABASE_URL`                    | api, db | Postgres connection string                                                                                                           |
+| `TEST_DATABASE_URL`               | tests   | Separate DB (`kyc_setu_test`) so tests never touch dev data                                                                          |
+| `REDIS_URL`                       | api     | BullMQ + health                                                                                                                      |
+| `S3_ENDPOINT`                     | api     | MinIO / S3 endpoint                                                                                                                  |
+| `S3_REGION`                       | api     | Defaults to `us-east-1`                                                                                                              |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | api     | Object-storage credentials                                                                                                           |
+| `S3_BUCKET`                       | api     | Bucket created on API boot (default `kyc-documents`)                                                                                 |
+| `API_PORT`                        | api     | Default `4000`                                                                                                                       |
+| `JWT_SECRET`                      | api     | ≥ 32 chars. `openssl rand -base64 48`                                                                                                |
+| `JWT_EXPIRES_IN_SECONDS`          | api     | Session lifetime, default 86400                                                                                                      |
+| `WEB_ORIGIN`                      | api     | Allowed CORS origin (credentials enabled)                                                                                            |
+| `AI_SERVICE_URL`                  | api     | Base URL of the OCR service                                                                                                          |
+| `AI_INTERNAL_KEY`                 | api, ai | Shared secret (≥ 32 chars) sent as `X-Internal-Key`; the service rejects callers without it                                          |
+| `AI_REQUEST_TIMEOUT_MS`           | api     | Per-request timeout when calling the OCR service (default 60000)                                                                     |
+| `AI_FACE_BACKEND`                 | ai      | `models` (default) or `stub`: the stub answers the face calls from `POST /face/config` and looks at no pixels; refused in production |
+| `AI_FACE_MODEL_DIR`               | ai      | Where the YuNet and SFace weights are (default `models`; the Docker image has them in `/opt/face-models`)                            |
+| `E2E_WEB_PORT`                    | e2e     | Move the web app off :3000 for a Playwright run when something else holds it (the API's CORS origin follows)                         |
+| `EXTRACTION_BACKOFF_SECONDS`      | api     | Delays before retries 1, 2, 3 of a failed extraction (default `10,60,300`, so 4 attempts in total)                                   |
+| `OCR_RAW_TEXT_RETENTION_DAYS`     | api     | How long encrypted raw OCR text may be kept (default 90). The cleanup job exists but is **not scheduled** yet                        |
+| `RATE_LIMIT_ENABLED`              | api     | `true`/`false`: sign-in, OTP and reveal limits. Default on in production, off elsewhere                                              |
+| `AUDIT_EXPORT_BUCKET`             | api     | Private bucket for signed session packets (default `kyc-audit-exports`)                                                              |
+| `AUDIT_SIGNING_KEY_FILE`          | api     | Ed25519 PEM that signs packets. Dev: generated into `infra/dev-keys/`. Production: required, HSM/KMS-backed                          |
+| `NEXT_PUBLIC_API_URL`             | web     | API base URL the browser and server components call                                                                                  |
