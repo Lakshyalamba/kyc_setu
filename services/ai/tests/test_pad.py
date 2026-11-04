@@ -180,3 +180,37 @@ def test_readiness_waits_for_the_pad_models(client):
         assert c.get("/readyz").status_code == 503
     finally:
         app.state.engine = None
+
+
+def _jittered(img: np.ndarray, dx: int, dy: int, seed: int) -> np.ndarray:
+    moved = cv2.warpAffine(img, np.float32([[1, 0, dx], [0, 1, dy]]), (img.shape[1], img.shape[0]), borderMode=cv2.BORDER_REPLICATE)
+    noise = np.random.default_rng(seed).normal(0, 6, img.shape)
+    return np.clip(moved.astype(np.float32) + noise, 0, 255).astype(np.uint8)
+
+
+def test_a_wobbled_attack_passes_the_motion_check_and_the_pad_still_calls_it_a_spoof(monkeypatch, face_models, pad_models):
+    """The reason PAD exists: a picture that is moved a little between shots has frames that differ, so the motion check passes it."""
+    base = attack()
+    pictures = {
+        "f0": _jittered(base, -4, 0, 1),
+        "f1": _jittered(base, 0, 2, 2),
+        "f2": _jittered(base, 4, -2, 3),
+    }
+    pictures["best"] = pictures["f1"]
+    encoded = {k: cv2.imencode(".png", v)[1].tobytes() for k, v in pictures.items()}
+    monkeypatch.setattr(fetching, "fetch_document", lambda url, bearer, s: encoded[url.rsplit("/", 1)[1]])
+    app.dependency_overrides[get_settings] = lambda: Settings(load_models=False, internal_key=KEY)
+    app.state.face, app.state.pad = face_models, pad_models
+    try:
+        with TestClient(app) as c:
+            out = liveness(
+                c,
+                frameUrls=[f"http://localhost:4000/files/{k}" for k in ("f0", "f1", "f2")],
+                bestFrameUrl="http://localhost:4000/files/best",
+            )
+    finally:
+        app.dependency_overrides.clear()
+        app.state.pad = None
+    assert out.result == "PASSED"  # the motion check alone is fooled
+    assert out.pad is not None and out.pad.decision == "SPOOF" and out.pad.score < 0.05
+    assert set(out.pad.sub_scores) == {"scale2_7", "scale4_0"}

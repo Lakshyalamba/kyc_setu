@@ -136,7 +136,7 @@ async function main() {
   );
 
   const server = createServer((req, res) => {
-    const photo = photos[Number((req.url ?? '').slice(1))];
+    const photo = photos[Number((req.url ?? '').replace(/^\/files\//, ''))];
     if (!photo) return void res.writeHead(404).end();
     res
       .writeHead(200, {
@@ -152,9 +152,9 @@ async function main() {
       headers: { 'content-type': 'application/json', 'x-internal-key': KEY },
       body: JSON.stringify({
         selfieCaptureId: randomUUID(),
-        selfieBestUrl: `http://localhost:${PORT}/${a}`,
+        selfieBestUrl: `http://localhost:${PORT}/files/${a}`,
         idDocumentId: randomUUID(),
-        idDocumentUrl: `http://localhost:${PORT}/${b}`,
+        idDocumentUrl: `http://localhost:${PORT}/files/${b}`,
       }),
     });
     if (!res.ok) throw new Error(`the AI service answered ${res.status}: ${await res.text()}`);

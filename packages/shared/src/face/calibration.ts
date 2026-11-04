@@ -108,9 +108,24 @@ export function histogram(scores: number[], bins = 25): number[] {
 export function renderHistogramSvg(
   genuine: number[],
   impostor: number[],
-  opts: { autoPass: number; autoFail: number; title: string; stamp?: string; bins?: number },
+  opts: {
+    autoPass: number;
+    autoFail: number;
+    title: string;
+    stamp?: string;
+    bins?: number;
+    /** Wording for the other uses of this chart (liveness: bona fide vs attacks). */
+    words?: { good: string; bad: string; x: string; lowLine: string; highLine: string };
+  },
 ): string {
   const bins = opts.bins ?? 25;
+  const w = opts.words ?? {
+    good: 'same person',
+    bad: 'different people',
+    x: 'cosine similarity of the two faces',
+    lowLine: 'auto-fail below',
+    highLine: 'auto-pass from',
+  };
   const g = histogram(genuine, bins).map((c) => c / Math.max(1, genuine.length));
   const i = histogram(impostor, bins).map((c) => c / Math.max(1, impostor.length));
   const peak = Math.max(...g, ...i, 0.01);
@@ -143,10 +158,10 @@ export function renderHistogramSvg(
 ${bar(i, '#d1493f')}${bar(g, '#2a7de1')}
 <line x1="${m.l}" x2="${m.l + pw}" y1="${m.t + ph}" y2="${m.t + ph}" stroke="#555"/>
 ${ticks}
-<text x="${m.l + pw / 2}" y="${H - 8}" font-size="12" text-anchor="middle" fill="#333">cosine similarity of the two faces</text>
-${line(opts.autoFail, 'auto-fail below')}${line(opts.autoPass, 'auto-pass from')}
-<rect x="${W - 190}" y="${m.t + 4}" width="12" height="12" fill="#2a7de1" fill-opacity="0.55"/><text x="${W - 174}" y="${m.t + 14}" font-size="11" fill="#333">same person (n=${genuine.length})</text>
-<rect x="${W - 190}" y="${m.t + 22}" width="12" height="12" fill="#d1493f" fill-opacity="0.55"/><text x="${W - 174}" y="${m.t + 32}" font-size="11" fill="#333">different people (n=${impostor.length})</text>
+<text x="${m.l + pw / 2}" y="${H - 8}" font-size="12" text-anchor="middle" fill="#333">${w.x}</text>
+${line(opts.autoFail, w.lowLine)}${line(opts.autoPass, w.highLine)}
+<rect x="${W - 190}" y="${m.t + 4}" width="12" height="12" fill="#2a7de1" fill-opacity="0.55"/><text x="${W - 174}" y="${m.t + 14}" font-size="11" fill="#333">${w.good} (n=${genuine.length})</text>
+<rect x="${W - 190}" y="${m.t + 22}" width="12" height="12" fill="#d1493f" fill-opacity="0.55"/><text x="${W - 174}" y="${m.t + 32}" font-size="11" fill="#333">${w.bad} (n=${impostor.length})</text>
 ${opts.stamp ? `<text x="${W / 2}" y="${H / 2 + 20}" font-size="40" font-weight="700" text-anchor="middle" fill="#b00" fill-opacity="0.35" transform="rotate(-12 ${W / 2} ${H / 2})">${opts.stamp}</text>` : ''}
 </svg>
 `;

@@ -15,7 +15,7 @@ thresholds are **not calibrated on real faces** and whose "liveness" is a motion
 | 2     | Encrypted document upload, signed expiring links, signature pad                                                     | **Done**               | [features](features.md#documents-phase-2)                                                                                |
 | 3     | OCR service (PaddleOCR), PAN and Aadhaar parsers, worker with retries                                               | **Done**               | [features](features.md#ocr-extraction-phase-3)                                                                           |
 | 4     | Selfie capture, face match, motion check                                                                            | **Done, uncalibrated** | [calibration](calibration.md), [device pass](device-pass.md), [AI service](../services/ai/README.md#face-models-phase-4) |
-| 5     | Cross-document validation and the 18-rule risk engine                                                               | **Done**               | [risk engine](risk-engine.md)                                                                                            |
+| 5     | Cross-document validation and the 20-rule risk engine                                                               | **Done**               | [risk engine](risk-engine.md)                                                                                            |
 | 6     | Officer queue, one-request review page, claims, decisions, customer follow-up                                       | **Done**               | [features](features.md#officer-review-phase-6)                                                                           |
 | 7     | Permissions matrix, masking, hash-chained audit log, consent immutability, lockout, signed packets, auditor console | **Done**               | [security](security.md)                                                                                                  |
 | 8     | Demo seed, OpenAPI, observability, coverage gates, recorded e2e, load smoke, dark mode, CI, documentation           | **Done**               | [testing](testing.md), [performance](performance.md), [API](api.md)                                                      |
@@ -63,7 +63,7 @@ an environment variable) and the packet signing key (a file). The people and doc
 ## Reasonable next steps
 
 1. Calibrate the face thresholds on consented photographs (`pnpm calibrate:faces`), fill in the device pass, and add a passive
-   anti-spoofing model behind the motion check (backlog: needs a licence-checked model and spoof data).
+   anti-spoofing model behind the motion check (built, off by default in shadow, **uncalibrated**; needs a real attack set: [liveness calibration](calibration.md#liveness-calibration)).
 2. Run the two workflows on GitHub until both are green, then protect `main` with the PR check.
 3. Pick a licence.
 4. Try the customer flow on a real phone, and a few consented real documents if any exist.

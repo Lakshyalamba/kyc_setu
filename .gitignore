@@ -28,3 +28,4 @@ apps/web/public/mediapipe/
 
 # Photos of real people for scripts/calibrate-face-match.ts: never committed
 calibration-photos/
+liveness-photos/

@@ -9,7 +9,7 @@ it fired, so an officer can disagree with a rule instead of arguing with a numbe
 typed details + what OCR read + the face-match decision and motion-check result + duplicate checks
         │
         ▼
-18 rules, each: applicable? → passed, or a penalty and a reason
+20 rules, each: applicable? → passed, or a penalty and a reason
         │
         ▼
 sum of penalties, clamped to 0..100  →  band from the table  →  raised by band floors and hard fails
@@ -31,26 +31,28 @@ sum of penalties, clamped to 0..100  →  band from the table  →  raised by ba
 
 ## The rules
 
-| Rule                         | Category       |                Points | Fires when                                                              |
-| ---------------------------- | -------------- | --------------------: | ----------------------------------------------------------------------- |
-| `name-mismatch-pan-aadhaar`  | identity       |                    25 | the name on the PAN and the name on the Aadhaar are less than 85% alike |
-| `name-mismatch-form-pan`     | identity       |                    15 | the name the customer typed is less than 85% like the PAN's             |
-| `dob-mismatch-pan-aadhaar`   | identity       |                    20 | the two cards give different days of birth                              |
-| `dob-mismatch-form-docs`     | identity       |                    15 | the typed date of birth differs from any document's                     |
-| `pan-form-mismatch`          | identity       |                    20 | the typed PAN is not the PAN that was read                              |
-| `aadhaar-form-mismatch`      | identity       |                    20 | the typed Aadhaar number is not the one that was read                   |
-| `pan-format-invalid`         | data integrity |                    15 | the PAN read is not `AAAAA9999A`                                        |
-| `aadhaar-checksum-invalid`   | data integrity |                    20 | the Aadhaar number read fails its Verhoeff checksum                     |
-| `extraction-unusable`        | data integrity |                    30 | a document came back as the wrong kind, unparseable, or errored         |
-| `low-ocr-confidence`         | quality        |                    10 | any key field was read with confidence under 0.6                        |
-| `document-quality-poor`      | quality        |                    10 | any document was too blurry or small to trust                           |
-| `face-match-below-threshold` | biometric      |             35 → HIGH | the face match decided `AUTO_FAIL` (score below 0.30)                   |
-| `face-match-borderline`      | biometric      |                    15 | the face match decided `REVIEW` (0.30 up to 0.50): a human should look  |
-| `liveness-failed`            | biometric      |                    25 | the motion check failed or was inconclusive                             |
-| `liveness-method-none`       | biometric      |                    15 | the selfie was uploaded as a file, so no motion check was possible      |
-| `duplicate-pan-approved`     | duplicate      |             40 → HIGH | the PAN belongs to an approved application of a different customer      |
-| `duplicate-aadhaar-approved` | duplicate      |             40 → HIGH | the same, for the Aadhaar number                                        |
-| `age-ineligible`             | data integrity | 100 → HIGH, hard fail | the youngest date of birth from any source is under 18                  |
+| Rule                         | Category       |                Points | Fires when                                                                             |
+| ---------------------------- | -------------- | --------------------: | -------------------------------------------------------------------------------------- |
+| `name-mismatch-pan-aadhaar`  | identity       |                    25 | the name on the PAN and the name on the Aadhaar are less than 85% alike                |
+| `name-mismatch-form-pan`     | identity       |                    15 | the name the customer typed is less than 85% like the PAN's                            |
+| `dob-mismatch-pan-aadhaar`   | identity       |                    20 | the two cards give different days of birth                                             |
+| `dob-mismatch-form-docs`     | identity       |                    15 | the typed date of birth differs from any document's                                    |
+| `pan-form-mismatch`          | identity       |                    20 | the typed PAN is not the PAN that was read                                             |
+| `aadhaar-form-mismatch`      | identity       |                    20 | the typed Aadhaar number is not the one that was read                                  |
+| `pan-format-invalid`         | data integrity |                    15 | the PAN read is not `AAAAA9999A`                                                       |
+| `aadhaar-checksum-invalid`   | data integrity |                    20 | the Aadhaar number read fails its Verhoeff checksum                                    |
+| `extraction-unusable`        | data integrity |                    30 | a document came back as the wrong kind, unparseable, or errored                        |
+| `low-ocr-confidence`         | quality        |                    10 | any key field was read with confidence under 0.6                                       |
+| `document-quality-poor`      | quality        |                    10 | any document was too blurry or small to trust                                          |
+| `face-match-below-threshold` | biometric      |             35 → HIGH | the face match decided `AUTO_FAIL` (score below 0.30)                                  |
+| `face-match-borderline`      | biometric      |                    15 | the face match decided `REVIEW` (0.30 up to 0.50): a human should look                 |
+| `liveness-failed`            | biometric      |                    25 | the check that decided failed or was inconclusive (motion, anti-spoofing, or both)     |
+| `liveness-pad-borderline`    | biometric      |                    10 | the anti-spoofing model counted and its score was between its fail and pass thresholds |
+| `liveness-method-legacy`     | biometric      |     0 (informational) | the model is meant to count but the motion check alone judged this selfie              |
+| `liveness-method-none`       | biometric      |                    15 | the selfie was uploaded as a file, so no motion check was possible                     |
+| `duplicate-pan-approved`     | duplicate      |             40 → HIGH | the PAN belongs to an approved application of a different customer                     |
+| `duplicate-aadhaar-approved` | duplicate      |             40 → HIGH | the same, for the Aadhaar number                                                       |
+| `age-ineligible`             | data integrity | 100 → HIGH, hard fail | the youngest date of birth from any source is under 18                                 |
 
 The engine's own `rule-evaluation-error` (20 points) comes on top of these, is the engine's own: if a rule throws, the run records that instead of crashing,
 so a bug in one rule makes the application look worse, never better.

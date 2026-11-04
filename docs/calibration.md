@@ -67,6 +67,81 @@ pairs auto-passing and at most 1% of same-person pairs auto-failing. With fewer 
 **That chart is illustrative.** It is drawn from made-up scores (`pnpm calibrate:faces --demo`) and is stamped as such in the
 image. It shows what the output looks like, nothing about this model.
 
+## Liveness calibration
+
+The face thresholds above are about whether two faces are the same person. This section is about whether the face in front of
+the camera is a live one, which is what the passive anti-spoofing model ([services/ai/README.md](../services/ai/README.md#passive-anti-spoofing-pad-behind-the-motion-check))
+tries to tell. **No real number exists yet.** The table at the end is empty on purpose; until a row is filled in from
+`pnpm calibrate:liveness` on a real set, there is no measured error rate, and nothing in this repository supports switching
+`LIVENESS_METHOD` away from its default of `MOTION_CHECK`.
+
+### Method
+
+The terms are ISO/IEC 30107-3's:
+
+- **APCER**, attack presentation classification error rate: the share of attacks the model accepts as live. The dangerous error.
+- **BPCER**, bona fide presentation classification error rate: the share of real selfies it turns away. The annoying one.
+
+Judged per kind of attack and by the worst kind, because an average hides a hole: a model that stops every print and no screen
+replay has a fine average and a useless worst case.
+
+**The dataset.** Local only, never committed (`liveness-photos/` is git-ignored):
+
+```
+~/liveness-photos/bonafide/*.jpg            real selfies, taken by real people who agreed, with the cameras you expect
+~/liveness-photos/attacks/print/*.jpg       a selfie printed on paper and photographed
+~/liveness-photos/attacks/screen-replay/*.jpg   a selfie shown on another phone's screen and photographed
+```
+
+Every picture must be a photograph taken with a camera of what it is labelled as: an attack is a picture of a print or a screen,
+not the selfie file itself. Aim for at least 20 attacks per kind and 100 real selfies. The script sends each picture alone (the
+motion check cannot be evaluated on a still) and reads only the anti-spoofing score.
+
+```bash
+AI_FETCH_ALLOWED_ORIGINS=http://localhost:4999 pnpm dev:ai
+```
+
+```bash
+pnpm calibrate:liveness --dir ~/liveness-photos --out docs/media/liveness-score-histogram.svg
+```
+
+It prints APCER and BPCER at the two thresholds in force and across a sweep, APCER per kind of attack, the lowest threshold that
+reaches 15% overall APCER, and the gate below.
+
+![What a liveness calibration run draws](media/liveness-score-histogram.svg)
+
+**That chart is illustrative**, drawn from made-up scores (`pnpm calibrate:liveness --demo`) and stamped as such in the image.
+
+### Which threshold is the real one
+
+The decision has three bands: **live** from 0.50, **borderline** from 0.40 up to 0.50, **spoof** below 0.40. A borderline selfie
+_passes_ (and the risk engine adds `liveness-pad-borderline`, 10 points, so an officer looks). So the line between "let through"
+and "stopped" is **0.40**, not 0.50, and APCER must be read there. The script reports both and judges the gate at 0.40. A
+picture with no usable face is rejected: it counts against the model for real selfies and in its favour for attacks.
+
+### The gate
+
+If the worst-kind APCER at 0.40 is above about **15%** on your set, do not switch the default: stay on `MOTION_CHECK`, keep
+recording the model in shadow, and write the finding here. The point is an honest number, not a good one.
+
+### What this cannot tell you
+
+- Whether the number holds on other cameras, lighting, phones and people. A few dozen pictures from one phone say little about
+  a population, and a model can fail more often for some faces than others; this method measures none of that.
+- Anything about masks, replays injected into the camera feed, or deepfakes. None of those are in the attack set, and the model
+  was not built or tested against them.
+- Anything about the model's training data, which its publisher does not disclose.
+- A certification. This is not iBeta/NIST testing and must not be described as it.
+
+### Results
+
+| Date     | Set (people / real selfies / attacks per kind) | Camera(s) | APCER at 0.40, worst kind | BPCER at 0.40 | Decision                     |
+| -------- | ---------------------------------------------- | --------- | ------------------------- | ------------- | ---------------------------- |
+| none yet |                                                |           |                           |               | default stays `MOTION_CHECK` |
+
+When a row exists, the sentence that goes with it is: "On a tiny local set, APCER was X%, BPCER was Y%; this is not certified
+anti-spoofing and should not be used as the sole liveness check in a regulated deployment."
+
 ## When you change a threshold
 
 It is a policy decision, not a tuning knob. Change `FACE_MATCH_THRESHOLDS`, update the table above and the snapshots, and

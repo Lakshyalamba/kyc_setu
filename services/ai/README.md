@@ -128,7 +128,7 @@ does too. It says nothing about how SFace behaves; `tests/test_face.py` covers t
 `POST /face/liveness` now answers with two results on the same pictures: the motion check (unchanged) and a `pad` object from a
 passive presentation-attack detector. The API decides which of them counts (`LIVENESS_METHOD`); the service always returns both,
 so a "shadow" run can record PAD without acting on it. **It is not certified anti-spoofing** and no label in the product says it
-is: the words are "passive anti-spoofing + motion check", never "liveness verified".
+is: the words are "passive anti-spoofing + motion check passed", never a claim that a person was proven live.
 
 | | |
 |---|---|

@@ -8,3 +8,4 @@ export * from './retention.js';
 export * from './face/thresholds.js';
 export * from './face/calibration.js';
 export * from './liveness/combine.js';
+export * from './liveness/calibration.js';

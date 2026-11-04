@@ -157,7 +157,8 @@ replayed video, a mask or a deepfake). The screens and the officer's page say so
   [services/ai/README.md](../services/ai/README.md#face-models-phase-4). Face embeddings are never logged or put in metrics.
 - **Testing without a face:** `AI_FACE_BACKEND=stub` makes the AI service answer the two face calls from a config (`make
 ai-stub`), and `/dev/ai-mock` does the same for the API; neither looks at pixels. The real models run in the AI test suite.
-- **Backlog, not built:** a passive anti-spoofing model (MiniFASNet and similar) behind the motion check.
+- **Passive anti-spoofing, behind a flag.** The same call also scores the best frame with two MiniFASNet networks (see the AI README). `LIVENESS_METHOD` picks what decides: `MOTION_CHECK` (the default: the model's score is recorded and compared, but decides nothing), `PASSIVE_PAD`, or `PASSIVE_PLUS_MOTION` (both must pass). It is **not calibrated and not certified**; [liveness-rollout.md](liveness-rollout.md) is the plan to switch it on, and [calibration.md](calibration.md#liveness-calibration) says what has and has not been measured (nothing yet).
+- **Backlog, not built:** an active challenge (blink, head turn): a separate project with its own failure modes.
 
 ## Risk engine (Phase 5)
 
@@ -273,7 +274,7 @@ cannot claim, reveal or decide.
   `kyc.documents.cleared`, `notification.queued` / `sent`, `kyc.approval_slip_downloaded`.
 - **The face section** shows the two aligned crops the score came from, the score as a cosine similarity with the thresholds
   in force (and "not yet calibrated on real faces"), the embedding model in a tooltip, and a motion-check panel with the three
-  frames and "Motion check is not production-grade liveness. Use judgment." No result can be entered from the page.
+  frames. The method badge says which check decided; with the anti-spoofing model counting there is its score, sub-scores (collapsed), thresholds and the model version and weights hash, and the banner reads "Passive anti-spoofing + motion check. Not certified — use judgment on borderline scores." (motion-only: "Motion check only: not production-grade anti-spoofing. Use judgment."). No result can be entered from the page.
 - **Try it:** `pnpm seed` (after `make up` and `pnpm db:migrate`) wipes the local stack and creates the demo: three applications
   under review (LOW, MEDIUM, HIGH), one left at `DOCS_UPLOADED` for the worker to finish, earlier approvals and a rejection,
   and prints the logins. Applications are made through the real upload, extraction and risk code, with the OCR service replaced
