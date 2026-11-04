@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { makeJpeg } from './fixtures.js';
+import { padResponse } from './helpers.js';
 import { ENGINE_VERSION } from '@kyc-setu/risk';
 import { createHarness, type Agent, type Harness } from './harness.js';
 import { assertFourEyes } from '../src/modules/officer/officer.service.js';
@@ -331,7 +332,13 @@ describe('the one-shot review payload', () => {
       aadhaarCropUrl: { purpose: 'OFFICER_REVIEW', url: expect.stringContaining('/files/') },
       selfieCropUrl: { purpose: 'OFFICER_REVIEW', url: expect.stringContaining('/files/') },
     });
-    expect(p.liveness).toMatchObject({ available: true, passed: true, failureReason: null });
+    expect(p.liveness).toMatchObject({
+      available: true,
+      passed: true,
+      failureReason: null,
+      method: 'MOTION_CHECK', // the default setting: the model, if it ran, did not decide
+      pad: null, // the fake AI service sent no anti-spoofing result
+    });
     expect(p.liveness.frameUrls).toHaveLength(3);
     expect(p.risk).toMatchObject({ band: 'LOW', score: 0, engineVersion: ENGINE_VERSION });
     expect(p.assignment).toMatchObject({ officerName: 'officer@kycsetu.dev', isMine: true });
@@ -1123,5 +1130,40 @@ describe('the approval slip PDF', () => {
   it('escapes parentheses and replaces characters a base font cannot draw', () => {
     const text = buildSimplePdf([{ text: 'a (b) \\ ✓ c' }]).toString('latin1');
     expect(text).toContain('(a \\(b\\) \\\\ ? c)');
+  });
+});
+
+describe('the review payload when the anti-spoofing model counted', () => {
+  it('carries the method, the score, both sub-scores, the thresholds and the model version and weights hash', async () => {
+    const hh = await createHarness({ LIVENESS_METHOD: 'PASSIVE_PLUS_MOTION' });
+    const cust = await hh.signedIn('a@kycsetu.dev');
+    const off = await hh.signedIn('officer@kycsetu.dev', 'officer');
+    const docs = await hh.reachExtracted(cust);
+    await hh.completeSelfie(cust, docs.sessionId, {
+      pad: padResponse({
+        score: 0.47,
+        decision: 'BORDERLINE',
+        subScores: { scale2_7: 0.3, scale4_0: 0.74 },
+      }),
+    });
+    await hh.runQueuedRisk();
+    const p = (await review(off, docs.sessionId)).body;
+    expect(p.liveness).toMatchObject({
+      available: true,
+      passed: true,
+      method: 'PASSIVE_PLUS_MOTION',
+      pad: {
+        score: 0.47,
+        decision: 'BORDERLINE',
+        passThreshold: 0.5,
+        failThreshold: 0.4,
+        subScores: { scale2_7: 0.3, scale4_0: 0.74 },
+        modelVersion: 'minifasnet-v2-2.7+v1se-4.0:test',
+        modelWeightsHash: 'a'.repeat(64),
+      },
+    });
+    expect(p.risk.triggeredRules.map((t: { ruleId: string }) => t.ruleId)).toContain(
+      'liveness-pad-borderline',
+    );
   });
 });

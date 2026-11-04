@@ -391,6 +391,19 @@ export function createOfficerService(deps: OfficerServiceDeps) {
             passed: bio.livenessResult === 'PASSED',
             failureReason: bio.livenessFailureReason,
             frameUrls: [],
+            method: bio.checkMethod ?? 'MOTION_CHECK',
+            pad: bio.padDecision
+              ? {
+                  score: bio.padScore,
+                  decision: bio.padDecision,
+                  passThreshold: bio.padThreshold,
+                  failThreshold: bio.padFailThreshold,
+                  subScores: bio.padSubScores ?? {},
+                  modelVersion: bio.padModelVersion,
+                  modelWeightsHash: bio.modelWeightsHash,
+                  reason: bio.padReason,
+                }
+              : null,
           }
         : { available: false };
     return { faceMatch, liveness };

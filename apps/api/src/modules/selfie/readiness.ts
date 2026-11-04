@@ -77,6 +77,7 @@ export interface BiometricRecord {
   padFailThreshold: number | null;
   padSubScores: Record<string, number> | null;
   padModelVersion: string | null;
+  padReason: string | null;
   modelWeightsHash: string | null;
   face: {
     score: number;
@@ -101,6 +102,11 @@ const numbersOnly = (v: unknown): Record<string, number> | null => {
 /** The model version rides in the row's subScores metadata only when the service sent one; the weights hash is the stable id. */
 const padModelVersionOf = (l: { subScores?: unknown } | null | undefined): string | null => {
   const v = (l?.subScores as { modelVersion?: unknown } | null | undefined)?.modelVersion;
+  return typeof v === 'string' ? v : null;
+};
+
+const padReasonOf = (l: { subScores?: unknown } | null | undefined): string | null => {
+  const v = (l?.subScores as { padReason?: unknown } | null | undefined)?.padReason;
   return typeof v === 'string' ? v : null;
 };
 
@@ -131,6 +137,7 @@ export async function biometricsOf(
     padFailThreshold: liveness?.padFailThreshold ?? null,
     padSubScores: numbersOnly(liveness?.subScores),
     padModelVersion: padModelVersionOf(liveness),
+    padReason: padReasonOf(liveness),
     modelWeightsHash: liveness?.modelWeightsHash ?? null,
     face: face
       ? {

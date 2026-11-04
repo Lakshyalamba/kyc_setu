@@ -195,6 +195,23 @@ export const reviewLivenessSchema = z.discriminatedUnion('available', [
     failureReason: z.string().nullable(),
     /** The three motion-check frames, as short-lived officer links. */
     frameUrls: z.array(signedUrlRefSchema),
+    /** Which check DECIDED. With MOTION_CHECK the anti-spoofing result below (if any) was recorded but did not count. */
+    method: z.enum(['MOTION_CHECK', 'PASSIVE_PAD', 'PASSIVE_PLUS_MOTION']),
+    /** The passive anti-spoofing model's answer. Not certified anti-spoofing. Null on a selfie from before it existed. */
+    pad: z
+      .object({
+        score: z.number().nullable(),
+        decision: z.enum(['LIVE', 'BORDERLINE', 'SPOOF', 'UNAVAILABLE']),
+        passThreshold: z.number().nullable(),
+        failThreshold: z.number().nullable(),
+        /** `scale2_7` and `scale4_0`: the crops at 2.7x and 4x the face box. */
+        subScores: z.record(z.string(), z.number()),
+        modelVersion: z.string().nullable(),
+        modelWeightsHash: z.string().nullable(),
+        /** Why it could not judge, or that it timed out. */
+        reason: z.string().nullable(),
+      })
+      .nullable(),
   }),
 ]);
 

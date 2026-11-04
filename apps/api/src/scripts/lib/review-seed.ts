@@ -251,6 +251,18 @@ function cannedAi(
           brightness: 150,
         },
         modelVersion: 'seed-motion-check',
+        // Canned like everything else here: a clear LIVE for a clean selfie, a clear SPOOF where the motion check failed.
+        pad: {
+          score: ok ? 0.88 : 0.06,
+          decision: ok ? 'LIVE' : 'SPOOF',
+          reason: null,
+          subScores: ok ? { scale2_7: 0.82, scale4_0: 0.94 } : { scale2_7: 0.02, scale4_0: 0.18 },
+          passThreshold: req.padPassThreshold ?? 0.5,
+          failThreshold: req.padFailThreshold ?? 0.4,
+          modelVersion: 'seed-canned-pad',
+          modelWeightsHash: '0'.repeat(64),
+          latencyMs: 9,
+        },
       };
     },
     async faceMatch(req) {
@@ -336,7 +348,9 @@ export interface Seeded {
 
 /** Everything a seeding run needs: the same service graph the API builds, on the real database and bucket. */
 export async function createSeeder(deps: { enqueuer?: VerificationEnqueuer } = {}) {
-  const env = loadEnv();
+  // The demo applications are judged by both checks, so the officer's page has an anti-spoofing result to show; the numbers are
+  // canned, like the face scores, and the page says nothing about a real model having run.
+  const env = { ...loadEnv(), LIVENESS_METHOD: 'PASSIVE_PLUS_MOTION' as const };
   if (env.NODE_ENV === 'production') {
     throw new Error('Refusing to seed review data with NODE_ENV=production');
   }

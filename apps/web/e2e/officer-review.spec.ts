@@ -213,6 +213,18 @@ test.describe('officer workbench', () => {
     await expect(page.getByTestId('face-score')).toHaveText('0.22');
     await expect(page.getByTestId('face-threshold')).toContainText('0.30');
     await expect(page.getByTestId('liveness-banner')).toContainText('Motion check did not pass');
+    // The anti-spoofing result, beside the motion check: method, score, sub-scores (collapsed), model and weights, honest copy.
+    await expect(page.getByTestId('liveness-method')).toHaveText('PASSIVE_PLUS_MOTION');
+    await expect(page.getByTestId('pad-score')).toHaveText('0.06');
+    await expect(page.getByTestId('pad-decision')).toHaveText('spoof');
+    await expect(page.getByTestId('pad-threshold')).toContainText('0.50');
+    await expect(page.getByTestId('pad-model')).toHaveAttribute('title', /Weights SHA-256: 0{64}/);
+    await expect(page.getByTestId('pad-subscores')).not.toHaveAttribute('open', '');
+    await page.getByTestId('pad-subscores').locator('summary').click();
+    await expect(page.getByTestId('pad-subscores')).toContainText('Tight crop');
+    await expect(page.getByTestId('motion-disclaimer')).toHaveText(
+      'Passive anti-spoofing + motion check. Not certified — use judgment on borderline scores.',
+    );
     await expect(page.getByTestId('face-match')).toContainText('Photo on Aadhaar');
     await expect(page.getByTestId('face-match')).toContainText('Selfie');
 
