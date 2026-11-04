@@ -30,8 +30,12 @@ def readyz(request: Request, response: Response) -> Health:
     if face:
         versions.update(face.versions)
 
-    stub = get_settings().face_backend == "stub"
-    ready = engine is not None and (face is not None or stub)
+    settings = get_settings()
+    stub = settings.face_backend == "stub"
+    pad = getattr(state, "pad", None)
+    pad_needed = settings.pad_enabled and not stub
+    models.update(pad.status if pad else ({"pad-minifasnet-v2": "loading", "pad-minifasnet-v1se": "loading"} if pad_needed and not face_error else {}))
+    ready = engine is not None and (face is not None or stub) and (pad is not None or not pad_needed)
     if not ready:
         response.status_code = 503
     failed = bool(ocr_error or face_error)

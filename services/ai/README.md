@@ -113,7 +113,7 @@ against each other), so no test here says anything about telling real people apa
 
 **Motion check, not liveness.** `POST /face/liveness` compares three frames shot 300 ms apart inside the face box (SSIM) and
 checks the face stays in frame. It catches a photograph held still in front of the camera. It does not catch a replayed
-video, a mask or a deepfake. Passive liveness models (MiniFASNet and similar) are deliberately out of scope for this phase.
+video, a mask or a deepfake. A passive anti-spoofing model sits behind it: see the next section.
 
 ## The face stand-in (`AI_FACE_BACKEND=stub`)
 
@@ -122,6 +122,41 @@ With `AI_FACE_BACKEND=stub` the service loads no face models and answers `/face/
 and `/face/config` does not exist with the real models. It is there so a browser run can drive the selfie step to each
 outcome without a model that would have to be fed real people's faces: `make ai-stub` starts it, and `scripts/e2e-ci.sh`
 does too. It says nothing about how SFace behaves; `tests/test_face.py` covers the real models.
+
+## Passive anti-spoofing (PAD) behind the motion check
+
+`POST /face/liveness` now answers with two results on the same pictures: the motion check (unchanged) and a `pad` object from a
+passive presentation-attack detector. The API decides which of them counts (`LIVENESS_METHOD`); the service always returns both,
+so a "shadow" run can record PAD without acting on it. **It is not certified anti-spoofing** and no label in the product says it
+is: the words are "passive anti-spoofing + motion check", never "liveness verified".
+
+| | |
+|---|---|
+| Model | Two MiniFASNet networks from Minivision's [Silent-Face-Anti-Spoofing](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing), commit `b6d5f04ad78778917853b25c778acef6d5626d15` |
+| Weights, as published | `2.7_80x80_MiniFASNetV2.pth` (1,849,453 bytes) SHA-256 `a5eb02e1843f19b5386b953cc4c9f011c3f985d0ee2bb9819eea9a142099bec0`; `4_0_0_80x80_MiniFASNetV1SE.pth` (1,856,130 bytes) SHA-256 `84ee1d37d96894d5e82de5a57df044ef80a58be2b218b5ed7cdfd875ec2f5990` |
+| Weights, as shipped | `pad_models/2.7_80x80_MiniFASNetV2.onnx` SHA-256 `1cb86b65b7e204950a10a868049e1012c0892f6f908dc93587f29cf3b3794419`; `pad_models/4_0_0_80x80_MiniFASNetV1SE.onnx` SHA-256 `0a4539e34fd8428967614df33657edbc8ffc0404049104a22dc7eb1589f378a9`. Converted once by `scripts/convert_minifasnet.py`, which refuses a `.pth` that does not match the hash above and checks that cv2.dnn and PyTorch agree. Committed (3.7 MB), copied into the image, checked at start-up: no download at build or run time. |
+| Stored with each result | `modelWeightsHash`: SHA-256 of the two ONNX hashes joined by `:`, so a score traces to the exact files. Currently `1da2640b2db1566f0d37158a78d1735efbe0234338edad3ebefdcbc7a77278d2`. |
+| Code licence | Apache-2.0 (GitHub reports it; the repository carries the licence text). `scripts/vendor/minifasnet_arch.py` is the upstream architecture file, kept for the conversion only. |
+| Training data | **Not disclosed by the publisher.** Neither README names a training set; the repository publishes the training scripts and no data. It is not the case that these weights are documented as trained on CelebA-Spoof, and this project does not claim so. Face anti-spoofing sets are often academic-licence only, and Minivision sells a commercial SDK, so whether these weights may be used commercially is a question for them, not answered by the Apache-2.0 on the code. |
+| Not used | SCRFD (insightface's pretrained models are non-commercial research use only): faces are found with YuNet. The upstream models were trained with RetinaFace boxes, so the crop differs slightly from theirs; that is one more reason to calibrate the threshold on your own cameras (docs/calibration.md). |
+
+**How it scores.** The best frame is cut around the face box at 2.7x and at 4x, resized to 80x80, and fed as raw 0-255 BGR (no
+scaling, as upstream does) to the two networks; each gives a probability of class 1 ("live"). The score is the geometric mean.
+Sub-scores are named for the crop (`scale2_7`, `scale4_0`), not for what they supposedly detect: upstream calls both "patches"
+and "full face" only loosely. Scores at or above the pass threshold (default 0.5) are `LIVE`, below the fail threshold (default
+0.4) `SPOOF`, between them `BORDERLINE` (a person should look). The API sends the thresholds it holds in `packages/shared`, and
+the response echoes them. A picture with no usable face is `UNAVAILABLE` with a reason (`NO_FACE`, `AMBIGUOUS_FACES`).
+
+**Time budget.** PAD runs beside the motion check. It took 7 to 18 ms per frame on the author's laptop (CPU). If it takes longer
+than `AI_PAD_BUDGET_MS` (default 600) its answer is dropped, the result is `UNAVAILABLE` / `TIMED_OUT`, and the motion check
+answers alone: the call degrades and says so.
+
+**What the tests show.** The real networks run on synthetic input only: a cartoon face on a grey card, photographed by script
+(`tests/fixtures/pad-attack-grey-card.png`, made by `scripts/make_pad_fixtures.py`), scores 0.0001 and is a `SPOOF`; a grey square
+has no face and degrades with a reason. **There is no photograph of a live face in this repository, so no test shows the networks
+calling a real person live.** That positive case is tested with stand-in networks that return fixed probabilities, which proves
+the arithmetic and says nothing about the model. Measured error rates need a local, uncommitted set of real selfies and real
+attacks: `docs/calibration.md`.
 
 ## Licences
 
@@ -141,6 +176,7 @@ the `license:` field of each downloaded model card.
 | pypdfium2 5.x (PDFium)                      | BSD-3-Clause, Apache-2.0 (plus bundled dependency licences) | package metadata |
 | NumPy 2.x                                   | BSD-3-Clause (and other permissive licences for bundled code) | package metadata |
 | YuNet / SFace weights (see above)            | MIT / Apache-2.0                          | OpenCV Zoo directory READMEs             |
+| MiniFASNet weights (see PAD section)         | Apache-2.0 (code); training data undisclosed | upstream repository licence file       |
 | FastAPI / Starlette / Pydantic / httpx      | MIT / BSD-3-Clause / MIT / BSD-3-Clause   | package metadata                         |
 
 PyMuPDF (AGPL) was deliberately avoided. Re-check against `uv.lock` and the model cards before

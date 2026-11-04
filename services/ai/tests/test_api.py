@@ -1,5 +1,5 @@
 import pytest
-from conftest import FakeEngine, FakeFace, load_golden, sample_bytes
+from conftest import FakeEngine, FakeFace, FakePad, load_golden, sample_bytes
 from fastapi.testclient import TestClient
 
 from app import fetch as fetching
@@ -19,6 +19,7 @@ def client(monkeypatch):
     app.state.engine = FakeEngine(load_golden("pan"))
     app.state.load_error = None
     app.state.face = FakeFace()
+    app.state.pad = FakePad()
     app.state.face_error = None
     seen: dict = {}
 
@@ -55,6 +56,8 @@ def test_readyz_reports_model_status(client):
         "hi": "loaded",
         "face-detector": "loaded",
         "face-recognizer": "loaded",
+        "pad-minifasnet-v2": "loaded",
+        "pad-minifasnet-v1se": "loaded",
     }
     assert {"paddleocr", "opencv"} <= set(body["versions"])
 

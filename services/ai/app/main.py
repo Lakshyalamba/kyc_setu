@@ -38,6 +38,11 @@ def _load_face_models(app: FastAPI) -> None:
         settings = get_settings()
         app.state.face = load_face_models(settings.face_model_dir, min_confidence=settings.face_min_confidence)
         log.info("face_models_loaded")
+        if settings.pad_enabled:
+            from app.face.pad import load_pad_models
+
+            app.state.pad = load_pad_models(settings.pad_model_dir)
+            log.info("pad_models_loaded")
     except Exception as err:  # noqa: BLE001 - reported through /readyz
         app.state.face_error = str(err)
         log.exception("face_model_load_failed")
@@ -48,6 +53,7 @@ async def lifespan(app: FastAPI):
     app.state.engine = getattr(app.state, "engine", None)
     app.state.load_error = None
     app.state.face = getattr(app.state, "face", None)
+    app.state.pad = getattr(app.state, "pad", None)
     app.state.face_error = None
     if get_settings().load_models and app.state.face is None and get_settings().face_backend == "models":
         # The face models are small and quick; load them first so the process is useful sooner.

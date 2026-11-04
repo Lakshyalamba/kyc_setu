@@ -244,13 +244,14 @@ def test_stub_backend_answers_from_its_config_and_looks_at_no_pixels(monkeypatch
     try:
         h = {"x-internal-key": DEV_INTERNAL_KEY}
         cid = "3f2b8c1e-5a4d-4e6f-9b7a-1c2d3e4f5a6b"
-        assert client.post("/face/config", json={"score": 0.2, "motionPasses": False}, headers=h).status_code == 200
+        assert client.post("/face/config", json={"score": 0.2, "motionPasses": False, "padScore": 0.45}, headers=h).status_code == 200
         live = client.post(
             "/face/liveness",
             json={"captureId": cid, "frameUrls": ["http://x/a"] * 3, "bestFrameUrl": "http://x/a"},
             headers=h,
         )
         assert live.json()["result"] == "FAILED" and live.json()["failureReason"] == "FRAMES_TOO_SIMILAR"
+        assert live.json()["pad"]["decision"] == "BORDERLINE" and live.json()["pad"]["score"] == 0.45
         match = client.post(
             "/face/match",
             json={"selfieCaptureId": cid, "selfieBestUrl": "http://x/a", "idDocumentId": cid, "idDocumentUrl": "http://x/b"},

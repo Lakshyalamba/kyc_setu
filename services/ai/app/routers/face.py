@@ -1,4 +1,6 @@
 import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeout
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -6,21 +8,26 @@ from pydantic import BaseModel, Field
 from app import fetch as fetching
 from app.config import Settings, get_settings
 from app.face.liveness import run_motion_check
+from app.face.pad import MODEL_VERSION as PAD_VERSION
+from app.face.pad import decide as pad_decide
+from app.face.pad import run_passive_pad
 from app.face.match import match_faces
-from app.observability import bind_session, face_latency
-from app.schemas import FaceMatchRequest, FaceMatchResponse, MotionCheckMetrics, MotionCheckRequest, MotionCheckResponse
+from app.observability import bind_session, face_latency, pad_decisions, pad_latency
+from app.schemas import FaceMatchRequest, FaceMatchResponse, MotionCheckMetrics, MotionCheckRequest, MotionCheckResponse, PadResult
 from app.security import require_internal_key
 from app.vision.decode import DecodeError, decode_image
 
+_pool = ThreadPoolExecutor(max_workers=4, thread_name_prefix="liveness")
 router = APIRouter(prefix="/face", dependencies=[Depends(require_internal_key)])
 
 # AI_FACE_BACKEND=stub only: what the stand-in answers next. A process setting for a dev/CI run, not data about anyone.
-_stub = {"score": 0.85, "motion_passes": True}
+_stub = {"score": 0.85, "motion_passes": True, "pad_score": 0.9}
 
 
 class StubConfig(BaseModel):
     score: float = Field(ge=0, le=1)
     motion_passes: bool = Field(alias="motionPasses")
+    pad_score: float = Field(default=0.9, ge=0, le=1, alias="padScore")
     model_config = {"populate_by_name": True}
 
 
@@ -28,7 +35,7 @@ class StubConfig(BaseModel):
 def stub_config(body: StubConfig, settings: Settings = Depends(get_settings)) -> dict[str, bool]:
     if settings.face_backend != "stub":
         raise HTTPException(status_code=404, detail="not available")
-    _stub.update(score=body.score, motion_passes=body.motion_passes)
+    _stub.update(score=body.score, motion_passes=body.motion_passes, pad_score=body.pad_score)
     return {"ok": True}
 
 
@@ -55,14 +62,45 @@ def _bearer(request: Request) -> str | None:
     return request.headers.get("x-fetch-authorization", "").removeprefix("Bearer ").strip() or None
 
 
+def _pad_unavailable(reason: str, thresholds: tuple[float, float], started: float, pad=None) -> PadResult:
+    return PadResult(
+        score=None,
+        decision="UNAVAILABLE",
+        reason=reason,
+        sub_scores={},
+        pass_threshold=thresholds[0],
+        fail_threshold=thresholds[1],
+        model_version=PAD_VERSION,
+        model_weights_hash=getattr(pad, "weights_hash", None),
+        latency_ms=round((time.perf_counter() - started) * 1000, 1),
+    )
+
+
 @router.post("/liveness", response_model=MotionCheckResponse, response_model_by_alias=True)
 def liveness(
     body: MotionCheckRequest, request: Request, settings: Settings = Depends(get_settings)
 ) -> MotionCheckResponse:
     """The motion check. Named for what it is: it only notices a picture held still in front of the camera."""
+    thresholds = (
+        body.pad_pass_threshold if body.pad_pass_threshold is not None else settings.pad_pass_threshold,
+        body.pad_fail_threshold if body.pad_fail_threshold is not None else settings.pad_fail_threshold,
+    )
+    method_label = body.mode or "unspecified"
     if settings.face_backend == "stub":
         ok = bool(_stub["motion_passes"])
+        pad_score = float(_stub["pad_score"])
         return MotionCheckResponse(
+            pad=PadResult(
+                score=pad_score,
+                decision=pad_decide(pad_score, *thresholds),
+                reason=None,
+                sub_scores={"scale2_7": pad_score, "scale4_0": pad_score},
+                pass_threshold=thresholds[0],
+                fail_threshold=thresholds[1],
+                model_version="stub",
+                model_weights_hash=None,
+                latency_ms=0.0,
+            ),
             capture_id=body.capture_id,
             method="MOTION_CHECK",
             result="PASSED" if ok else "FAILED",
@@ -82,9 +120,39 @@ def liveness(
     started = time.perf_counter()
     frames = [_image(url, bearer, settings) for url in body.frame_urls]
     best = _image(body.best_frame_url, bearer, settings)
+
+    # Both checks run on the same pictures, side by side. The PAD gets a time budget: past it, its answer is dropped and the
+    # motion check carries on alone (reason TIMED_OUT), so a slow or broken model degrades the call instead of failing it.
+    pad_started = time.perf_counter()
+    pad_models = getattr(request.app.state, "pad", None)
+    future = None
+    if settings.pad_enabled and pad_models is not None:
+        future = _pool.submit(
+            run_passive_pad,
+            models,
+            pad_models,
+            best,
+            pass_threshold=thresholds[0],
+            fail_threshold=thresholds[1],
+            ambiguous_ratio=settings.ambiguous_face_ratio,
+        )
     result = run_motion_check(models, frames, best, settings)
+    if future is None:
+        pad = _pad_unavailable("DISABLED" if not settings.pad_enabled else "ERROR", thresholds, pad_started)
+    else:
+        try:
+            pad = PadResult.model_validate(
+                future.result(timeout=max(0.0, settings.pad_budget_ms / 1000 - (time.perf_counter() - pad_started)))
+            )
+        except FutureTimeout:
+            pad = _pad_unavailable("TIMED_OUT", thresholds, pad_started, pad_models)
+        except Exception:  # noqa: BLE001 - the motion check must still answer
+            pad = _pad_unavailable("ERROR", thresholds, pad_started, pad_models)
+    pad_decisions.labels(pad.decision.lower(), method_label).inc()
+    pad_latency.observe(pad.latency_ms)
     face_latency.labels("motion_check").observe(time.perf_counter() - started)
     return MotionCheckResponse(
+        pad=pad,
         capture_id=body.capture_id,
         method=result["method"],
         result=result["result"],

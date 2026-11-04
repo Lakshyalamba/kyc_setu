@@ -62,6 +62,11 @@ class FakeFace:
     versions = {"face-embedding": "fake"}
 
 
+class FakePad:
+    status = {"pad-minifasnet-v2": "loaded", "pad-minifasnet-v1se": "loaded"}
+    weights_hash = "f" * 64
+
+
 @pytest.fixture(scope="session")
 def face_models():
     """The real YuNet and SFace models. Skipped when the weights are not downloaded, unless REQUIRE_FACE_MODELS=1."""

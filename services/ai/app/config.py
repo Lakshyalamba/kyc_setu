@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     # An ID card photo is a few dozen pixels wide in a phone picture of the card; the selfie must hold one dominant face.
     ambiguous_face_ratio: float = 0.6  # a second face this fraction of the largest makes the selfie ambiguous
 
+    # ---- passive anti-spoofing (MiniFASNet pair, see app/face/pad.py and README.md) ------------------------------------------
+    pad_enabled: bool = True
+    pad_model_dir: str = "pad_models"
+    # Defaults only: the API sends the thresholds it holds in packages/shared with every request, so there is one source.
+    pad_pass_threshold: float = 0.5
+    pad_fail_threshold: float = 0.4
+    # Over this, the PAD result is dropped (reason TIMED_OUT) and the motion check alone decides: the call degrades, it does not fail.
+    pad_budget_ms: int = 600
+
     max_pixels: int = 40_000_000
     pdf_render_dpi: int = 200
     # Tests turn this off and inject a fake OCR engine.

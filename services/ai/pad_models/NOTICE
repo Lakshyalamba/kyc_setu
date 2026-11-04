@@ -1,0 +1,6 @@
+These two ONNX files are conversions of the MiniFASNet checkpoints published by Minivision at
+https://github.com/minivision-ai/Silent-Face-Anti-Spoofing (commit b6d5f04ad78778917853b25c778acef6d5626d15), which is
+licensed under the Apache License 2.0 (https://www.apache.org/licenses/LICENSE-2.0). Copyright Minivision.
+The weights are numerically unchanged (scripts/convert_minifasnet.py checks that onnx and PyTorch agree to 1e-3 on random
+inputs; the largest difference measured was 3e-6). What data they were trained on is NOT stated by the publisher: see
+services/ai/README.md before using them for anything a bank would deploy.

@@ -99,6 +99,9 @@ class Health(CamelModel):
 
 LivenessOutcome = Literal["PASSED", "FAILED", "INCONCLUSIVE"]
 LivenessFailureReason = Literal["FRAMES_TOO_SIMILAR", "NO_FACE_IN_FRAME", "FACE_MOVED_OUT", "QUALITY_TOO_LOW"]
+LivenessMode = Literal["MOTION_CHECK", "PASSIVE_PAD", "PASSIVE_PLUS_MOTION"]
+PadDecision = Literal["LIVE", "BORDERLINE", "SPOOF", "UNAVAILABLE"]
+PadReason = Literal["NO_FACE", "AMBIGUOUS_FACES", "TIMED_OUT", "DISABLED", "ERROR"]
 FaceMatchReason = Literal["no_face_in_id", "no_face_in_selfie", "ambiguous_selfie"]
 
 
@@ -106,6 +109,11 @@ class MotionCheckRequest(CamelModel):
     capture_id: str
     frame_urls: list[str] = Field(min_length=3, max_length=3)
     best_frame_url: str
+    # The API holds the thresholds (packages/shared) and sends them; absent, the service's own defaults apply.
+    pad_pass_threshold: float | None = Field(default=None, ge=0, le=1)
+    pad_fail_threshold: float | None = Field(default=None, ge=0, le=1)
+    # Which check the API will decide on. It only labels the metrics: the service always returns both results.
+    mode: LivenessMode | None = None
 
 
 class MotionCheckMetrics(CamelModel):
@@ -117,6 +125,20 @@ class MotionCheckMetrics(CamelModel):
     brightness: float | None
 
 
+class PadResult(CamelModel):
+    """Passive anti-spoofing on the best frame. `score` is the geometric mean of two sub-scores, 0..1, higher = more likely live."""
+
+    score: float | None
+    decision: PadDecision
+    reason: PadReason | None
+    sub_scores: dict[str, float]
+    pass_threshold: float
+    fail_threshold: float
+    model_version: str
+    model_weights_hash: str | None
+    latency_ms: float
+
+
 class MotionCheckResponse(CamelModel):
     capture_id: str
     method: Literal["MOTION_CHECK"]
@@ -124,6 +146,7 @@ class MotionCheckResponse(CamelModel):
     failure_reason: LivenessFailureReason | None
     metrics: MotionCheckMetrics
     model_version: str
+    pad: PadResult | None = None
 
 
 class FaceMatchRequest(CamelModel):

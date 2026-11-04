@@ -41,6 +41,18 @@ extract_latency = Histogram(
     buckets=(0.25, 0.5, 1, 2, 5, 10, 20, 40, 60),
     registry=registry,
 )
+pad_decisions = Counter(
+    "liveness_pad_decisions",
+    "Passive anti-spoofing decisions, by outcome (live, borderline, spoof, unavailable) and the method the API decides with",
+    ["outcome", "method"],
+    registry=registry,
+)
+pad_latency = Histogram(
+    "liveness_pad_latency_ms",
+    "Time the passive anti-spoofing step took on the best frame (detection and both networks), in milliseconds",
+    buckets=(5, 10, 25, 50, 100, 200, 400, 600, 1000),
+    registry=registry,
+)
 face_latency = Histogram(
     "ai_face_latency_seconds",
     "Time spent on a face call (the motion check or the face match), excluding nothing: fetching the images is included",

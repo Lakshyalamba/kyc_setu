@@ -13,6 +13,7 @@ ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy \
     PADDLE_PDX_CACHE_HOME=/opt/paddlex \
     PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK=True \
     AI_FACE_MODEL_DIR=/opt/face-models \
+    AI_PAD_MODEL_DIR=/app/pad_models \
     PYTHONUNBUFFERED=1 \
     # PaddlePaddle's Linux arm64 build segfaults on its default CPU-thread setting; an explicit small
     # count works (measured 2-3 s per document). oneDNN is not used on arm64.
@@ -24,6 +25,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 FROM base AS runtime
 COPY app ./app
+# The anti-spoofing networks (ONNX, 1.8 MB each) are in the repository, so the build needs no network for them; they are checked
+# against a known SHA-256 when the service starts.
+COPY pad_models ./pad_models
 COPY scripts/download_models.py scripts/download_face_models.py ./scripts/
 # Pre-download the OCR models at build time (PaddleOCR would otherwise fetch them on first use).
 RUN PYTHONPATH=/app python scripts/download_models.py

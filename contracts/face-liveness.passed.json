@@ -11,5 +11,19 @@
     "sharpness": 51.47,
     "brightness": 154.93
   },
-  "modelVersion": "motion-check-1:yunet-2023mar"
+  "modelVersion": "motion-check-1:yunet-2023mar",
+  "pad": {
+    "score": 0.8123,
+    "decision": "LIVE",
+    "reason": null,
+    "subScores": {
+      "scale2_7": 0.7411,
+      "scale4_0": 0.8903
+    },
+    "passThreshold": 0.5,
+    "failThreshold": 0.4,
+    "modelVersion": "minifasnet-v2-2.7+v1se-4.0:silent-face-anti-spoofing-b6d5f04:yunet-2023mar",
+    "modelWeightsHash": "1da2640b2db1566f0d37158a78d1735efbe0234338edad3ebefdcbc7a77278d2",
+    "latencyMs": 14.2
+  }
 }
