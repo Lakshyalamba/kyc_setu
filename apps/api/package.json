@@ -18,7 +18,8 @@
     "audit:chain": "tsx --env-file=../../.env src/scripts/audit-chain.ts",
     "demo:docs": "tsx --env-file=../../.env src/scripts/demo-docs.ts",
     "demo:risk": "tsx --env-file=../../.env src/scripts/demo-risk.ts",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "liveness:shadow-report": "tsx --env-file=../../.env src/scripts/liveness-shadow-report.ts"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^13.1.0",

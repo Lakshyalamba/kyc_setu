@@ -88,9 +88,20 @@ enum RiskTrigger {
 }
 
 /// How the customer proved they were present. NONE = they used the file-upload fallback, so no motion check was possible.
+/// How the pictures were taken (SelfieCapture: MOTION_CHECK = three frames, NONE = one uploaded file) and, on a
+/// LivenessResult, which check DECIDED: the motion check, the passive anti-spoofing model, or both (both must pass).
 enum LivenessMethod {
   MOTION_CHECK
   NONE
+  PASSIVE_PAD
+  PASSIVE_PLUS_MOTION
+}
+
+enum PadDecision {
+  LIVE
+  BORDERLINE
+  SPOOF
+  UNAVAILABLE
 }
 
 enum LivenessOutcome {
@@ -104,6 +115,8 @@ enum LivenessFailureReason {
   NO_FACE_IN_FRAME
   FACE_MOVED_OUT
   QUALITY_TOO_LOW
+  PAD_SPOOF
+  PAD_UNAVAILABLE
 }
 
 /// From the face-match thresholds in packages/shared (the same config the risk engine reads).
@@ -174,10 +187,10 @@ model KycSession {
   updatedAt DateTime  @updatedAt
   expiresAt DateTime
 
-  currentStep    KycStep   @default(CONTACT)
-  completedSteps KycStep[] @default([])
+  currentStep    KycStep        @default(CONTACT)
+  completedSteps KycStep[]      @default([])
   /// Problems for officers to look at, e.g. EXTRACTION_WRONG_DOCUMENT, EXTRACTION_ERROR.
-  flags          String[]  @default([])
+  flags          String[]       @default([])
   /// When the application last entered SUBMITTED (a resubmission starts the clock again). Drives queue order and waiting time.
   submittedAt    DateTime?
   /// While RESUBMIT_REQUESTED: the document slots the customer may fill again. Emptied when they submit.
@@ -189,15 +202,15 @@ model KycSession {
   consentVersionId  String?   @db.Uuid
   consentAcceptedAt DateTime?
 
-  user           User            @relation(fields: [userId], references: [id], onDelete: Restrict)
-  consentVersion ConsentVersion? @relation(fields: [consentVersionId], references: [id], onDelete: Restrict)
-  otpChallenges  OtpChallenge[]
-  documents      Document[]
-  riskAssessments  RiskAssessment[]
-  selfieCaptures   SelfieCapture[]
-  faceMatches      FaceMatch[]
-  decisions        Decision[]
-  assignments      OfficerAssignment[]
+  user            User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  consentVersion  ConsentVersion?     @relation(fields: [consentVersionId], references: [id], onDelete: Restrict)
+  otpChallenges   OtpChallenge[]
+  documents       Document[]
+  riskAssessments RiskAssessment[]
+  selfieCaptures  SelfieCapture[]
+  faceMatches     FaceMatch[]
+  decisions       Decision[]
+  assignments     OfficerAssignment[]
 
   // Note: a partial unique index on (userId) WHERE status NOT IN (APPROVED, REJECTED, EXPIRED)
   // enforces "one active session per user". Prisma can't express it; it lives in the migration SQL.
@@ -249,16 +262,16 @@ model OtpChallenge {
 /// "Active" means replacedById IS NULL. A replaced row points at its replacement; a deleted row
 /// points at itself. Rows and ciphertext are never removed.
 model Document {
-  id         String       @id @default(uuid()) @db.Uuid
-  sessionId  String       @db.Uuid
-  type       DocumentType
-  storageKey String
-  mimeType   String
-  sizeBytes  Int
+  id           String       @id @default(uuid()) @db.Uuid
+  sessionId    String       @db.Uuid
+  type         DocumentType
+  storageKey   String
+  mimeType     String
+  sizeBytes    Int
   /// SHA-256 of the plaintext, hex.
-  sha256     String
-  uploadedAt DateTime     @default(now())
-  replacedById String?    @db.Uuid
+  sha256       String
+  uploadedAt   DateTime     @default(now())
+  replacedById String?      @db.Uuid
 
   encryptedDataKey Bytes
   kmsKeyId         String
@@ -492,20 +505,20 @@ model AuditExport {
 /// `livenessMethod = NONE` marks the file-upload fallback (one image, no motion check possible).
 /// Sensitive: a face is as identifying as a document. The frames are never returned to the customer.
 model SelfieCapture {
-  id               String         @id @default(uuid()) @db.Uuid
-  sessionId        String         @db.Uuid
+  id                String         @id @default(uuid()) @db.Uuid
+  sessionId         String         @db.Uuid
   /// Object keys of the encrypted frames, in capture order. The best frame is also one of these, stored again under its own key.
   framesStorageKeys String[]
-  bestFrameKey     String
+  bestFrameKey      String
   /// One entry per key in framesStorageKeys, in the same order: { wrappedKey, iv, authTag, kmsKeyId } (base64).
-  frameEnvelopes   Json           @db.JsonB
-  livenessMethod   LivenessMethod @default(MOTION_CHECK)
+  frameEnvelopes    Json           @db.JsonB
+  livenessMethod    LivenessMethod @default(MOTION_CHECK)
   /// User agent and screen size, as the browser reports them. Nothing else: no fingerprinting.
-  deviceMeta       Json           @default("{}") @db.JsonB
-  capturedAt       DateTime       @default(now())
+  deviceMeta        Json           @default("{}") @db.JsonB
+  capturedAt        DateTime       @default(now())
   /// When the customer chose to go on after a failed check instead of retaking (or the retake was already used). Null until then.
-  confirmedAt      DateTime?
-  replacedById     String?        @unique @db.Uuid
+  confirmedAt       DateTime?
+  replacedById      String?        @unique @db.Uuid
 
   session    KycSession      @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   replacedBy SelfieCapture?  @relation("SelfieReplacement", fields: [replacedById], references: [id], onDelete: Restrict)
@@ -521,15 +534,27 @@ model SelfieCapture {
 /// The result of the motion check on one capture. Written once, by the worker. It is a motion check, not production
 /// liveness: it catches a photo held up to the camera and little else, and every label that shows it says so.
 model LivenessResult {
-  id              String                 @id @default(uuid()) @db.Uuid
-  selfieCaptureId String                 @unique @db.Uuid
-  method          LivenessMethod         @default(MOTION_CHECK)
-  result          LivenessOutcome
-  failureReason   LivenessFailureReason?
+  id               String                 @id @default(uuid()) @db.Uuid
+  selfieCaptureId  String                 @unique @db.Uuid
+  method           LivenessMethod         @default(MOTION_CHECK)
+  result           LivenessOutcome
+  failureReason    LivenessFailureReason?
   /// Per-frame-pair SSIM inside the face box, box overlap between frames, sharpness and brightness of the best frame.
-  metrics         Json                   @db.JsonB
-  modelVersion    String
-  computedAt      DateTime               @default(now())
+  metrics          Json                   @db.JsonB
+  modelVersion     String
+  /// The passive anti-spoofing score of the best frame (0..1, higher = more likely live), recorded even when the decision
+  /// came from the motion check alone ("shadow"), so the two can be compared. Null when PAD did not run or could not judge.
+  padScore         Float?
+  /// The pass threshold and the fail threshold in force when the score was judged (between them: BORDERLINE).
+  padThreshold     Float?
+  padFailThreshold Float?
+  padDecision      PadDecision?
+  /// The two sub-scores (`scale2_7`, `scale4_0`), why PAD could not judge if it could not (`padReason`, `pad_timed_out`),
+  /// and the latency. Never pictures or embeddings.
+  subScores        Json?                  @db.JsonB
+  /// SHA-256 of the pair of model files that produced padScore.
+  modelWeightsHash String?
+  computedAt       DateTime               @default(now())
 
   selfieCapture SelfieCapture @relation(fields: [selfieCaptureId], references: [id], onDelete: Restrict)
 
@@ -540,26 +565,26 @@ model LivenessResult {
 /// officer review page shows them); so are the embeddings, tagged with `embeddingVersion` so a model upgrade can recompute
 /// old rows. `score` is cosine similarity clamped to 0..1, `threshold` the AUTO_PASS value in force when it was decided.
 model FaceMatch {
-  id               String            @id @default(uuid()) @db.Uuid
-  sessionId        String            @db.Uuid
-  selfieCaptureId  String            @db.Uuid
-  idDocumentId     String            @db.Uuid
-  score            Float
-  threshold        Float
+  id                String            @id @default(uuid()) @db.Uuid
+  sessionId         String            @db.Uuid
+  selfieCaptureId   String            @db.Uuid
+  idDocumentId      String            @db.Uuid
+  score             Float
+  threshold         Float
   /// The AUTO_FAIL boundary in force at the time (below it: AUTO_FAIL; between the two: REVIEW).
-  failThreshold    Float
-  decision         FaceMatchDecision
+  failThreshold     Float
+  decision          FaceMatchDecision
   /// Why there is no real comparison, when there is none: no_face_in_id, no_face_in_selfie, ambiguous_selfie.
-  reason           String?
+  reason            String?
   /// Detector, recogniser and weights, e.g. "yunet-2023mar+sface-2021dec".
-  embeddingVersion String
-  selfieEmbedding  Bytes?
-  idEmbedding      Bytes?
-  idFaceCropKey    String?
+  embeddingVersion  String
+  selfieEmbedding   Bytes?
+  idEmbedding       Bytes?
+  idFaceCropKey     String?
   selfieFaceCropKey String?
   /// { idCrop, selfieCrop }: each { wrappedKey, iv, authTag, kmsKeyId } (base64).
-  cropEnvelopes    Json?             @db.JsonB
-  computedAt       DateTime          @default(now())
+  cropEnvelopes     Json?             @db.JsonB
+  computedAt        DateTime          @default(now())
 
   session       KycSession    @relation(fields: [sessionId], references: [id], onDelete: Restrict)
   selfieCapture SelfieCapture @relation(fields: [selfieCaptureId], references: [id], onDelete: Restrict)

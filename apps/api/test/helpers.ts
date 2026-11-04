@@ -40,6 +40,7 @@ export const testEnv = (overrides: Partial<Env> = {}): Env => ({
   AI_SERVICE_URL: 'http://localhost:8000',
   AI_INTERNAL_KEY: 'test-internal-key-0123456789abcdef',
   AI_REQUEST_TIMEOUT_MS: 5000,
+  LIVENESS_METHOD: 'MOTION_CHECK',
   EXTRACTION_BACKOFF_SECONDS: [0, 0, 0],
   OCR_RAW_TEXT_RETENTION_DAYS: 90,
   ...overrides,
@@ -338,6 +339,7 @@ import type {
   FaceMatchResponse,
   MotionCheckRequest,
   MotionCheckResponse,
+  PadResult,
 } from '@kyc-setu/shared';
 import {
   AiServiceError,
@@ -612,6 +614,22 @@ export function motionResponse(
       brightness: 150,
     },
     modelVersion: 'motion-check-1:fake',
+    ...over,
+  };
+}
+
+/** A contract-valid passive anti-spoofing result (a clear LIVE unless overridden). */
+export function padResponse(over: Partial<PadResult> = {}): PadResult {
+  return {
+    score: 0.82,
+    decision: 'LIVE',
+    reason: null,
+    subScores: { scale2_7: 0.75, scale4_0: 0.9 },
+    passThreshold: 0.5,
+    failThreshold: 0.4,
+    modelVersion: 'minifasnet-v2-2.7+v1se-4.0:test',
+    modelWeightsHash: 'a'.repeat(64),
+    latencyMs: 12.5,
     ...over,
   };
 }
@@ -1228,11 +1246,11 @@ export function createFakeSelfieStore(audits: AuditEntry[]): FakeSelfieStore {
     async livenessFor(cid) {
       return store.liveness.find((l) => l.selfieCaptureId === cid) ?? null;
     },
-    async insertLiveness(input, entry) {
+    async insertLiveness(input, entries) {
       if (store.liveness.some((l) => l.selfieCaptureId === input.selfieCaptureId)) return null;
       const row = { ...input, id: id(), computedAt: new Date() };
       store.liveness.push(row);
-      audits.push(entry);
+      audits.push(...entries);
       return row;
     },
     async faceMatchFor(cid, docId) {

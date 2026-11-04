@@ -3,7 +3,9 @@ import type { SafeClient } from '../../db/safeClient.js';
 import type {
   FaceMatchDecisionValue,
   LivenessFailureReasonValue,
+  CaptureMethodValue,
   LivenessMethodValue,
+  PadDecisionValue,
   LivenessOutcomeValue,
 } from '@kyc-setu/shared';
 import type { AuditEntry } from '../auth/store.js';
@@ -22,7 +24,7 @@ export interface CaptureRecord {
   framesStorageKeys: string[];
   bestFrameKey: string;
   frameEnvelopes: StoredEnvelope[];
-  livenessMethod: LivenessMethodValue;
+  livenessMethod: CaptureMethodValue;
   deviceMeta: unknown;
   capturedAt: Date;
   confirmedAt: Date | null;
@@ -37,6 +39,13 @@ export interface LivenessRecord {
   failureReason: LivenessFailureReasonValue | null;
   metrics: unknown;
   modelVersion: string;
+  /** Passive anti-spoofing, recorded even when the motion check alone decided (shadow). Null when it did not run or could not judge. */
+  padScore: number | null;
+  padThreshold: number | null;
+  padFailThreshold: number | null;
+  padDecision: PadDecisionValue | null;
+  subScores: unknown;
+  modelWeightsHash: string | null;
   computedAt: Date;
 }
 
@@ -77,7 +86,7 @@ export interface SelfieStore {
   ): Promise<CaptureRecord>;
   confirmCapture(id: string, audit: AuditEntry): Promise<boolean>;
   livenessFor(captureId: string): Promise<LivenessRecord | null>;
-  insertLiveness(input: NewLiveness, audit: AuditEntry): Promise<LivenessRecord | null>;
+  insertLiveness(input: NewLiveness, audits: AuditEntry[]): Promise<LivenessRecord | null>;
   faceMatchFor(captureId: string, idDocumentId?: string): Promise<FaceMatchRecord | null>;
   insertFaceMatch(input: NewFaceMatch, audit: AuditEntry): Promise<FaceMatchRecord | null>;
   writeAudit(entry: AuditEntry): Promise<void>;
@@ -95,6 +104,8 @@ const auditData = (e: AuditEntry) => ({
 type DbCapture = Prisma.SelfieCaptureGetPayload<object>;
 const toCapture = (c: DbCapture): CaptureRecord => ({
   ...c,
+  // The column shares an enum with LivenessResult.method, but a capture only ever has the first two values.
+  livenessMethod: c.livenessMethod as CaptureMethodValue,
   frameEnvelopes: c.frameEnvelopes as unknown as StoredEnvelope[],
 });
 
@@ -166,13 +177,17 @@ export function createPrismaSelfieStore(prisma: SafeClient): SelfieStore {
       const row = await prisma.livenessResult.findUnique({ where: { selfieCaptureId: captureId } });
       return row as LivenessRecord | null;
     },
-    async insertLiveness(input, audit) {
+    async insertLiveness(input, audits) {
       try {
         return await prisma.$transaction(async (tx) => {
           const row = await tx.livenessResult.create({
-            data: { ...input, metrics: json(input.metrics) },
+            data: {
+              ...input,
+              metrics: json(input.metrics),
+              subScores: input.subScores == null ? Prisma.JsonNull : json(input.subScores),
+            },
           });
-          await tx.auditLog.create({ data: auditData(audit) });
+          for (const entry of audits) await tx.auditLog.create({ data: auditData(entry) });
           return row as LivenessRecord;
         });
       } catch (err) {

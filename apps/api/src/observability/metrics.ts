@@ -23,6 +23,20 @@ export const decisionOutcomes = new Counter({
   registers: [registry],
 });
 
+export const livenessPadShadow = new Counter({
+  name: 'kyc_liveness_pad_comparisons_total',
+  help: 'Passive anti-spoofing against the motion check on the same selfie: did they agree on pass/fail? (a PAD that could not judge is not counted)',
+  labelNames: ['agree', 'deciding_method'],
+  registers: [registry],
+});
+
+export const livenessDecisions = new Counter({
+  name: 'kyc_liveness_decisions_total',
+  help: 'Liveness results by the check that decided and the outcome',
+  labelNames: ['method', 'result'],
+  registers: [registry],
+});
+
 export const httpDuration = new Histogram({
   name: 'http_request_duration_seconds',
   help: 'HTTP request latency by route pattern',

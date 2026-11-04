@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AUDIT_EXPORT_BUCKET } from '@kyc-setu/shared';
+import { AUDIT_EXPORT_BUCKET, LIVENESS_CHECK_METHODS } from '@kyc-setu/shared';
 import { parsePiiKey } from '@kyc-setu/shared/pii';
 import { LocalKmsClient } from '@kyc-setu/shared/crypto';
 
@@ -38,6 +38,10 @@ export const envSchema = z
     /** Shared secret sent to the AI service as X-Internal-Key. */
     AI_INTERNAL_KEY: z.string().min(32, 'AI_INTERNAL_KEY must be at least 32 characters'),
     AI_REQUEST_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
+    // Which liveness check decides. MOTION_CHECK (the default) is "shadow": the anti-spoofing model still runs and its result is
+    // recorded for comparison, but the motion check alone decides. Switch to PASSIVE_PLUS_MOTION only once docs/calibration.md
+    // has real error rates for it, and see docs/liveness-rollout.md. One env change rolls it back.
+    LIVENESS_METHOD: z.enum(LIVENESS_CHECK_METHODS).default('MOTION_CHECK'),
     /** Seconds to wait before retry 1, 2 and 3 of a failed extraction (so 4 attempts in total). */
     EXTRACTION_BACKOFF_SECONDS: z
       .string()

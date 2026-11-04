@@ -14,7 +14,10 @@ import {
   applyTransition,
   decideFaceMatch,
   type FaceMatchDecisionValue,
-  type LivenessMethodValue,
+  type CaptureMethodValue,
+  PAD_THRESHOLDS,
+  combineLiveness,
+  padAgreesWithMotion,
   type SelfieDeviceMeta,
   type SelfieStatusResponse,
   type SelfieUploadResponse,
@@ -31,6 +34,7 @@ import type { Env } from '../../config/env.js';
 import { AppError } from '../../lib/errors.js';
 import { signToken } from '../../lib/jwt.js';
 import { annotateContext } from '../../observability/context.js';
+import { livenessDecisions, livenessPadShadow } from '../../observability/metrics.js';
 import { loggerFor } from '../../observability/logger.js';
 import type { AuditEntry, AuthStore } from '../auth/store.js';
 import type { DocumentsService } from '../documents/documents.service.js';
@@ -286,7 +290,7 @@ export function createSelfieService(deps: SelfieServiceDeps) {
         throw new AppError(502, 'STORAGE_ERROR', 'Could not store the pictures. Please try again.');
       }
 
-      const method: LivenessMethodValue = input.method === 'NONE' ? 'NONE' : 'MOTION_CHECK';
+      const method: CaptureMethodValue = input.method === 'NONE' ? 'NONE' : 'MOTION_CHECK';
       const frameStored = method === 'MOTION_CHECK' ? stored.slice(0, SELFIE_FRAME_COUNT) : stored;
       const bestStored = method === 'MOTION_CHECK' ? stored[SELFIE_FRAME_COUNT]! : stored[0]!;
       const audits = [
@@ -439,27 +443,75 @@ export function createSelfieService(deps: SelfieServiceDeps) {
           captureId,
           frameUrls: [await link('frame:0'), await link('frame:1'), await link('frame:2')],
           bestFrameUrl: await link('best'),
+          // The thresholds live in packages/shared; the service echoes what it was given.
+          padPassThreshold: PAD_THRESHOLDS.pass,
+          padFailThreshold: PAD_THRESHOLDS.fail,
+          mode: env.LIVENESS_METHOD,
         },
         await serviceToken(service),
       );
+      // The service always returns both answers. Which one counts is a setting: with MOTION_CHECK (shadow) the anti-spoofing
+      // result is recorded and compared, and decides nothing.
+      const pad = result.pad ?? null;
+      const decided = combineLiveness(env.LIVENESS_METHOD, result, pad);
+      const agree = padAgreesWithMotion(result, pad);
+      if (agree !== null)
+        livenessPadShadow.inc({ agree: agree ? 'yes' : 'no', deciding_method: decided.method });
+      livenessDecisions.inc({ method: decided.method, result: decided.result });
+      const subScores = pad
+        ? {
+            ...pad.subScores,
+            padReason: pad.reason,
+            ...(pad.reason === 'TIMED_OUT' ? { pad_timed_out: true } : {}),
+            padLatencyMs: pad.latencyMs,
+            // What decided, and whether the model was meant to count but could not.
+            decidedBy: decided.method,
+            degraded: decided.degraded,
+            configured: env.LIVENESS_METHOD,
+          }
+        : null;
       await store.insertLiveness(
         {
           selfieCaptureId: captureId,
-          method: 'MOTION_CHECK',
-          result: result.result,
-          failureReason: result.failureReason,
+          method: decided.method,
+          result: decided.result,
+          failureReason: decided.failureReason,
           metrics: result.metrics,
           modelVersion: result.modelVersion,
+          padScore: pad?.score ?? null,
+          padThreshold: pad?.passThreshold ?? null,
+          padFailThreshold: pad?.failThreshold ?? null,
+          padDecision: pad?.decision ?? null,
+          subScores,
+          modelWeightsHash: pad?.modelWeightsHash ?? null,
         },
-        {
-          ...audit(null, AUDIT_ACTIONS.MOTION_CHECK_COMPLETED, capture.sessionId, {
+        [
+          audit(null, AUDIT_ACTIONS.MOTION_CHECK_COMPLETED, capture.sessionId, {
             captureId,
             result: result.result,
             failureReason: result.failureReason,
             meanSsim: result.metrics.meanSsim,
             modelVersion: result.modelVersion,
+            decidedBy: decided.method,
+            decidedResult: decided.result,
           }),
-        },
+          // Numbers and names only: never a picture, a crop or an embedding.
+          ...(pad
+            ? [
+                audit(null, AUDIT_ACTIONS.LIVENESS_PAD_EVALUATED, capture.sessionId, {
+                  sessionId: capture.sessionId,
+                  captureId,
+                  method: decided.method,
+                  configured: env.LIVENESS_METHOD,
+                  outcome: pad.decision,
+                  padScore: pad.score,
+                  subScores,
+                  modelVersion: pad.modelVersion,
+                  modelWeightsHash: pad.modelWeightsHash,
+                }),
+              ]
+            : []),
+        ],
       );
       await deps.onChecksChanged(capture.sessionId);
       return { kind: 'done' };

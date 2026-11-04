@@ -33,7 +33,8 @@
     "consent:revise": "pnpm build:libs && pnpm --filter @kyc-setu/api run consent:revise --",
     "audit:chain": "pnpm build:libs && pnpm --filter @kyc-setu/api run audit:chain",
     "demo:risk": "pnpm build:libs && pnpm --filter @kyc-setu/api run demo:risk --",
-    "calibrate:faces": "pnpm build:libs && pnpm --filter @kyc-setu/api exec tsx ../../scripts/calibrate-face-match.ts"
+    "calibrate:faces": "pnpm build:libs && pnpm --filter @kyc-setu/api exec tsx ../../scripts/calibrate-face-match.ts",
+    "liveness:shadow-report": "pnpm build:libs && pnpm --filter @kyc-setu/api run liveness:shadow-report --"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

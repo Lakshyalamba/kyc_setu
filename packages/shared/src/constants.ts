@@ -111,6 +111,7 @@ export const AUDIT_ACTIONS = {
   MOTION_CHECK_COMPLETED: 'selfie.motion_check_completed',
   FACE_MATCH_COMPLETED: 'selfie.face_match_completed',
   SELFIE_LINK_ISSUED: 'selfie.link_issued',
+  LIVENESS_PAD_EVALUATED: 'liveness.pad_evaluated',
 } as const;
 
 /** A signed session packet may be downloaded for an hour after it is built. */
