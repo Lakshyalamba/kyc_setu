@@ -69,6 +69,15 @@ export interface BiometricRecord {
   livenessMethod: 'MOTION_CHECK' | 'NONE';
   livenessResult: 'PASSED' | 'FAILED' | 'INCONCLUSIVE' | 'NOT_PERFORMED' | null;
   livenessFailureReason: string | null;
+  /** Which check decided (the motion check, the anti-spoofing model, or both) and what the model said, even when it did not decide. */
+  checkMethod: 'MOTION_CHECK' | 'PASSIVE_PAD' | 'PASSIVE_PLUS_MOTION' | null;
+  padScore: number | null;
+  padDecision: 'LIVE' | 'BORDERLINE' | 'SPOOF' | 'UNAVAILABLE' | null;
+  padThreshold: number | null;
+  padFailThreshold: number | null;
+  padSubScores: Record<string, number> | null;
+  padModelVersion: string | null;
+  modelWeightsHash: string | null;
   face: {
     score: number;
     decision: FaceMatchDecisionValue;
@@ -80,6 +89,20 @@ export interface BiometricRecord {
     hasCrops: boolean;
   } | null;
 }
+
+const numbersOnly = (v: unknown): Record<string, number> | null => {
+  if (!v || typeof v !== 'object') return null;
+  const out = Object.fromEntries(
+    Object.entries(v).filter(([, n]) => typeof n === 'number'),
+  ) as Record<string, number>;
+  return Object.keys(out).length > 0 ? out : null;
+};
+
+/** The model version rides in the row's subScores metadata only when the service sent one; the weights hash is the stable id. */
+const padModelVersionOf = (l: { subScores?: unknown } | null | undefined): string | null => {
+  const v = (l?.subScores as { modelVersion?: unknown } | null | undefined)?.modelVersion;
+  return typeof v === 'string' ? v : null;
+};
 
 export async function biometricsOf(
   store: Pick<SelfieStore, 'activeCapture' | 'livenessFor' | 'faceMatchFor'>,
@@ -98,6 +121,17 @@ export async function biometricsOf(
     livenessResult:
       capture.livenessMethod === 'NONE' ? 'NOT_PERFORMED' : (liveness?.result ?? null),
     livenessFailureReason: liveness?.failureReason ?? null,
+    checkMethod:
+      liveness && liveness.method !== 'NONE'
+        ? (liveness.method as BiometricRecord['checkMethod'])
+        : null,
+    padScore: liveness?.padScore ?? null,
+    padDecision: liveness?.padDecision ?? null,
+    padThreshold: liveness?.padThreshold ?? null,
+    padFailThreshold: liveness?.padFailThreshold ?? null,
+    padSubScores: numbersOnly(liveness?.subScores),
+    padModelVersion: padModelVersionOf(liveness),
+    modelWeightsHash: liveness?.modelWeightsHash ?? null,
     face: face
       ? {
           score: face.score,

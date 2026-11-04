@@ -130,6 +130,7 @@
     "face-match-below-threshold",
     "face-match-borderline",
     "liveness-failed",
+    "liveness-method-legacy",
     "liveness-method-none",
     "low-ocr-confidence",
     "name-mismatch-form-pan",
@@ -137,6 +138,11 @@
     "pan-form-mismatch",
     "pan-format-invalid"
   ],
-  "skippedRules": [],
-  "engineVersion": "1.1.0"
+  "skippedRules": [
+    {
+      "ruleId": "liveness-pad-borderline",
+      "reason": "The passive anti-spoofing model did not decide this selfie"
+    }
+  ],
+  "engineVersion": "1.2.0"
 }

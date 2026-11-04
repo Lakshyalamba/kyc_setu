@@ -38,7 +38,15 @@
     {
       "ruleId": "liveness-failed",
       "reason": "No motion check was performed (file upload)"
+    },
+    {
+      "ruleId": "liveness-method-legacy",
+      "reason": "No check was performed (file upload)"
+    },
+    {
+      "ruleId": "liveness-pad-borderline",
+      "reason": "No anti-spoofing check was performed (file upload)"
     }
   ],
-  "engineVersion": "1.1.0"
+  "engineVersion": "1.2.0"
 }

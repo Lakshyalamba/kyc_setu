@@ -464,6 +464,7 @@ export function createSelfieService(deps: SelfieServiceDeps) {
             padReason: pad.reason,
             ...(pad.reason === 'TIMED_OUT' ? { pad_timed_out: true } : {}),
             padLatencyMs: pad.latencyMs,
+            modelVersion: pad.modelVersion,
             // What decided, and whether the model was meant to count but could not.
             decidedBy: decided.method,
             degraded: decided.degraded,

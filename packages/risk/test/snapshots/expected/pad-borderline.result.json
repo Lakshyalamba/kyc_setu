@@ -1,0 +1,43 @@
+{
+  "score": 10,
+  "band": "LOW",
+  "rawBand": "LOW",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "liveness-pad-borderline",
+      "category": "biometric",
+      "penalty": 10,
+      "reason": "The anti-spoofing score was close to the line (0.45): an officer should look at the selfie",
+      "details": {
+        "padDecision": "BORDERLINE",
+        "padScore": 0.45
+      }
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "liveness-method-legacy",
+    "liveness-method-none",
+    "liveness-pad-borderline",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [],
+  "engineVersion": "1.2.0"
+}

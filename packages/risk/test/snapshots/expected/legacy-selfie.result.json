@@ -1,0 +1,46 @@
+{
+  "score": 0,
+  "band": "LOW",
+  "rawBand": "LOW",
+  "hardFail": false,
+  "triggeredRules": [
+    {
+      "ruleId": "liveness-method-legacy",
+      "category": "biometric",
+      "penalty": 0,
+      "reason": "Judged by the motion check alone: no passive anti-spoofing result counted for this selfie",
+      "details": {
+        "checkMethod": "MOTION_CHECK"
+      }
+    }
+  ],
+  "bandFloors": [],
+  "appliedRules": [
+    "aadhaar-checksum-invalid",
+    "aadhaar-form-mismatch",
+    "age-ineligible",
+    "dob-mismatch-form-docs",
+    "dob-mismatch-pan-aadhaar",
+    "document-quality-poor",
+    "duplicate-aadhaar-approved",
+    "duplicate-pan-approved",
+    "extraction-unusable",
+    "face-match-below-threshold",
+    "face-match-borderline",
+    "liveness-failed",
+    "liveness-method-legacy",
+    "liveness-method-none",
+    "low-ocr-confidence",
+    "name-mismatch-form-pan",
+    "name-mismatch-pan-aadhaar",
+    "pan-form-mismatch",
+    "pan-format-invalid"
+  ],
+  "skippedRules": [
+    {
+      "ruleId": "liveness-pad-borderline",
+      "reason": "The passive anti-spoofing model did not decide this selfie"
+    }
+  ],
+  "engineVersion": "1.2.0"
+}

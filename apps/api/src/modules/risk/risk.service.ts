@@ -110,7 +110,7 @@ export function createRiskService(deps: RiskServiceDeps) {
         findPriorCandidates: ({ panHmac, aadhaarLast4 }) =>
           store.findPriorApprovedCandidates({ userId: session.userId, panHmac, aadhaarLast4 }),
       },
-      { piiKey, kms },
+      { piiKey, kms, livenessPolicy: deps.env.LIVENESS_METHOD },
     );
     const evaluatedAt = now();
     const result = runRiskEngine({ ...input, now: evaluatedAt }, rules);

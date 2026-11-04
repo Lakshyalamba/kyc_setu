@@ -93,7 +93,9 @@ describe('runRiskEngine', () => {
       'face-match-below-threshold',
       'face-match-borderline',
       'liveness-failed',
+      'liveness-method-legacy',
       'liveness-method-none',
+      'liveness-pad-borderline',
     ]);
     expect(r.skippedRules.every((s) => s.reason.length > 0)).toBe(true);
     expect(r.appliedRules).not.toContain('liveness-failed');
@@ -174,7 +176,7 @@ describe('runRiskEngine', () => {
       bandFloors: [],
       skippedRules: [],
     });
-    expect(r.appliedRules).toHaveLength(18);
+    expect(r.appliedRules).toHaveLength(20);
     expect(r.engineVersion).toBe(ENGINE_VERSION);
   });
 
@@ -197,9 +199,9 @@ describe('runRiskEngine', () => {
 
 describe('the default rule set', () => {
   const rules = createRules();
-  it('has 18 uniquely named kebab-case rules whose weights come from the config', () => {
-    expect(rules).toHaveLength(18);
-    expect(new Set(rules.map((r) => r.id)).size).toBe(18);
+  it('has 20 uniquely named kebab-case rules whose weights come from the config', () => {
+    expect(rules).toHaveLength(20);
+    expect(new Set(rules.map((r) => r.id)).size).toBe(20);
     for (const r of rules) {
       expect(r.id).toMatch(/^[a-z]+(-[a-z0-9]+)+$/);
       expect(r.weight).toBe((defaultConfig.weights as Record<string, number>)[r.id]);

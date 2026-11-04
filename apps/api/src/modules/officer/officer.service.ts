@@ -224,7 +224,7 @@ export function createOfficerService(deps: OfficerServiceDeps) {
     const typed = decryptStored(session.personalDetails, piiKey);
     const { input } = await buildRiskInput(
       { session, extractions, biometrics: null, findPriorCandidates: async () => [] },
-      { piiKey, kms: deps.kms },
+      { piiKey, kms: deps.kms, livenessPolicy: deps.env.LIVENESS_METHOD },
     );
     const byType = new Map(extractions.map((e) => [e.documentType, e]));
     const field = (type: DocumentType, key: string) => {

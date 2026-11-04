@@ -28,6 +28,23 @@ export function live(
 ): LivenessFacts {
   return { method: 'MOTION_CHECK', result, ...(failureReason ? { failureReason } : {}) };
 }
+/** A selfie judged with the passive anti-spoofing model counting (both must pass unless `check` says otherwise). */
+export function withPad(
+  decision: 'LIVE' | 'BORDERLINE' | 'SPOOF' | 'UNAVAILABLE',
+  over: Partial<LivenessFacts> = {},
+): LivenessFacts {
+  const score = { LIVE: 0.82, BORDERLINE: 0.45, SPOOF: 0.08, UNAVAILABLE: null }[decision];
+  return {
+    method: 'MOTION_CHECK',
+    checkMethod: 'PASSIVE_PLUS_MOTION',
+    result: decision === 'SPOOF' ? 'FAILED' : 'PASSED',
+    ...(decision === 'SPOOF' ? { failureReason: 'PAD_SPOOF' } : {}),
+    padScore: score,
+    padDecision: decision,
+    padRequired: true,
+    ...over,
+  };
+}
 export const noMotionCheck = (): LivenessFacts => ({ method: 'NONE', result: 'NOT_PERFORMED' });
 
 export const NOW = new Date('2026-10-10T00:00:00Z');
@@ -57,7 +74,8 @@ export function happyContext(): RuleContext {
     },
     comparisons: { panTypedMatchesExtracted: true, aadhaarTypedMatchesExtracted: true },
     faceMatch: face(0.8),
-    liveness: live('PASSED'),
+    // Judged the way the product does it once the model counts: both checks, both fine.
+    liveness: withPad('LIVE'),
     priorApprovedMatches: [],
   };
 }

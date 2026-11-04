@@ -22,6 +22,8 @@ export const RULE_IDS = [
   'face-match-borderline',
   'liveness-failed',
   'liveness-method-none',
+  'liveness-pad-borderline',
+  'liveness-method-legacy',
   'duplicate-pan-approved',
   'duplicate-aadhaar-approved',
   'age-ineligible',
@@ -67,6 +69,9 @@ export const defaultConfig: RiskConfig = {
     'face-match-borderline': 15,
     'liveness-failed': 25,
     'liveness-method-none': 15,
+    'liveness-pad-borderline': 10,
+    // Informational: it says a selfie was judged by the motion check alone. It must never move a score or a band.
+    'liveness-method-legacy': 0,
     'duplicate-pan-approved': 40,
     'duplicate-aadhaar-approved': 40,
     'age-ineligible': 100,

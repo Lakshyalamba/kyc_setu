@@ -5,6 +5,7 @@ import {
   type PriorApprovedMatch,
   type RuleInput,
 } from '@kyc-setu/risk';
+import type { LivenessCheckMethod } from '@kyc-setu/shared';
 import { decryptToBuffer, type KmsClient } from '@kyc-setu/shared/crypto';
 import { decryptPii } from '@kyc-setu/shared/pii';
 import { decryptStored } from '../kyc/personal-codec.js';
@@ -47,7 +48,7 @@ export interface BuiltInput {
  */
 export async function buildRiskInput(
   raw: RawRiskInputs,
-  deps: { piiKey: Buffer; kms: KmsClient },
+  deps: { piiKey: Buffer; kms: KmsClient; livenessPolicy: LivenessCheckMethod },
 ): Promise<BuiltInput> {
   const { session } = raw;
   const typed = decryptStored(session.personalDetails, deps.piiKey);
@@ -163,6 +164,11 @@ export async function buildRiskInput(
       liveness: b?.livenessResult
         ? {
             method: b.livenessMethod,
+            ...(b.checkMethod ? { checkMethod: b.checkMethod } : {}),
+            padScore: b.padScore,
+            padDecision: b.padDecision,
+            // Policy now, not then: "the model is supposed to count" is what makes a motion-only selfie worth a note.
+            padRequired: deps.livenessPolicy !== 'MOTION_CHECK',
             result: b.livenessResult,
             ...(b.livenessFailureReason ? { failureReason: b.livenessFailureReason } : {}),
           }

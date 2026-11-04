@@ -2,7 +2,7 @@
 // Regenerates test/snapshots/*.json from the builders. The JSON is committed and is what the snapshot test reads.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { build, face, live, noMotionCheck } from '../test/builders.js';
+import { build, face, live, noMotionCheck, withPad } from '../test/builders.js';
 import type { RuleContext } from '../src/types.js';
 
 const dir = path.resolve(import.meta.dirname, '../test/snapshots');
@@ -55,6 +55,18 @@ const scenarios: Record<string, (c: RuleContext) => void> = {
   // Three identical frames: a photograph held still. The face matched, so only the motion check is interesting.
   'photo-of-a-photo': (c) => {
     c.liveness = live('FAILED', 'FRAMES_TOO_SIMILAR');
+  },
+  // Motion passed, but the passive anti-spoofing model says the picture looks like a picture of a face (both must pass).
+  'pad-spoof': (c) => {
+    c.liveness = withPad('SPOOF');
+  },
+  // Passed, but close to the line: weight 10, an officer should look.
+  'pad-borderline': (c) => {
+    c.liveness = withPad('BORDERLINE');
+  },
+  // A selfie from before the model counted, judged by the motion check alone: informational, weight 0.
+  'legacy-selfie': (c) => {
+    c.liveness = { ...live('PASSED'), checkMethod: 'MOTION_CHECK', padRequired: true };
   },
   // A PAN card in the Aadhaar slot: most identity rules are skipped, which must NOT look clean.
   'wrong-document': (c) => {

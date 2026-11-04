@@ -47,13 +47,22 @@ export interface FaceMatchFacts {
 }
 
 export type LivenessMethod = 'MOTION_CHECK' | 'NONE';
+export type LivenessCheckMethod = 'MOTION_CHECK' | 'PASSIVE_PAD' | 'PASSIVE_PLUS_MOTION';
 
 /**
  * The anti-spoofing result. It is a MOTION CHECK (three frames, did anything move?), not production liveness; `NONE` means the
  * customer used the file-upload fallback and no check was possible.
  */
 export interface LivenessFacts {
+  /** How the pictures were taken: three frames (MOTION_CHECK) or one uploaded file (NONE). */
   method: LivenessMethod;
+  /** Which check DECIDED, as recorded with the result: the motion check alone, the passive anti-spoofing model, or both. */
+  checkMethod?: LivenessCheckMethod | undefined;
+  /** The anti-spoofing model's score and decision, recorded even when it did not decide (shadow). Not certified anti-spoofing. */
+  padScore?: number | null | undefined;
+  padDecision?: 'LIVE' | 'BORDERLINE' | 'SPOOF' | 'UNAVAILABLE' | null | undefined;
+  /** Policy at the time of the assessment: is the anti-spoofing model supposed to count? (LIVENESS_METHOD is not MOTION_CHECK.) */
+  padRequired?: boolean | undefined;
   /** NOT_PERFORMED exactly when the method is NONE. */
   result: 'PASSED' | 'FAILED' | 'INCONCLUSIVE' | 'NOT_PERFORMED';
   failureReason?: string | undefined;

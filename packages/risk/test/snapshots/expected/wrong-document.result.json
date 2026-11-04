@@ -27,7 +27,9 @@
     "face-match-below-threshold",
     "face-match-borderline",
     "liveness-failed",
+    "liveness-method-legacy",
     "liveness-method-none",
+    "liveness-pad-borderline",
     "low-ocr-confidence",
     "name-mismatch-form-pan",
     "pan-form-mismatch",
@@ -51,5 +53,5 @@
       "reason": "The name was not extracted from both the PAN and the Aadhaar"
     }
   ],
-  "engineVersion": "1.1.0"
+  "engineVersion": "1.2.0"
 }

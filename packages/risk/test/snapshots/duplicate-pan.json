@@ -60,7 +60,11 @@
   },
   "liveness": {
     "method": "MOTION_CHECK",
-    "result": "PASSED"
+    "checkMethod": "PASSIVE_PLUS_MOTION",
+    "result": "PASSED",
+    "padScore": 0.82,
+    "padDecision": "LIVE",
+    "padRequired": true
   },
   "priorApprovedMatches": [
     {

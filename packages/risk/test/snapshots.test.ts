@@ -73,6 +73,21 @@ const EXPECT: Record<string, (r: RiskResult) => void> = {
       failureReason: 'FRAMES_TOO_SIMILAR',
     });
   },
+  'pad-spoof': (r) => {
+    expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['liveness-failed']);
+    expect(r.triggeredRules[0]?.reason).toContain('passive anti-spoofing');
+    expect(r.triggeredRules[0]?.details).toEqual({ result: 'FAILED', failureReason: 'PAD_SPOOF' });
+  },
+  'pad-borderline': (r) => {
+    expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['liveness-pad-borderline']);
+    expect(r.score).toBe(10);
+    expect(r.band).toBe('LOW'); // it asks for a look; it does not call anything suspicious on its own
+  },
+  'legacy-selfie': (r) => {
+    expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['liveness-method-legacy']);
+    expect(r.score).toBe(0); // informational: listed for the officer, never scored
+    expect(r.band).toBe('LOW');
+  },
   'wrong-document': (r) => {
     expect(r.band).toBe('MEDIUM'); // not LOW: skipped rules must not look like a clean bill of health
     expect(r.triggeredRules.map((t) => t.ruleId)).toEqual(['extraction-unusable']);

@@ -6,7 +6,7 @@ import { panBlindIndex } from '../src/modules/extraction/pii.js';
 import type { VerificationJobData } from '../src/queue/verification.js';
 import { createVerificationProcessor } from '../src/workers/verification.js';
 import { ENGINE_VERSION } from '@kyc-setu/risk';
-import { aiResponse } from './helpers.js';
+import { aiResponse, padResponse } from './helpers.js';
 import { createHarness, type Agent, type Harness } from './harness.js';
 
 let h: Harness;
@@ -80,7 +80,7 @@ describe('exit criterion 1: a clean flow', () => {
       score: 0,
       band: 'LOW',
       engineVersion: ENGINE_VERSION,
-      ruleCount: 18,
+      ruleCount: 19, // 20 rules; the borderline-anti-spoofing one is skipped when the model does not decide (the default)
       hardFail: false,
       assessmentId: assessment?.id,
     });
@@ -433,5 +433,60 @@ describe('dev routes', () => {
     expect(
       (await o.get('/dev/risk/preview?sessionId=7b1d3c5e-0000-4000-8000-000000000001')).status,
     ).toBe(404);
+  });
+});
+
+describe('the anti-spoofing result in the assessment', () => {
+  const assessWith = async (
+    method: 'MOTION_CHECK' | 'PASSIVE_PLUS_MOTION',
+    pad: ReturnType<typeof padResponse> | null,
+  ) => {
+    const hh = await createHarness({ LIVENESS_METHOD: method });
+    const cust = await hh.signedIn('a@kycsetu.dev');
+    const docs = await hh.reachExtracted(cust);
+    await hh.completeSelfie(cust, docs.sessionId, { pad });
+    await hh.runQueuedRisk();
+    return hh.riskStore.latestAssessment(docs.sessionId);
+  };
+
+  it('a SPOOF under PASSIVE_PLUS_MOTION fires liveness-failed, with the anti-spoofing wording', async () => {
+    const a = await assessWith(
+      'PASSIVE_PLUS_MOTION',
+      padResponse({ score: 0.05, decision: 'SPOOF' }),
+    );
+    expect(fired(a)).toEqual(['liveness-failed']);
+    expect((a?.triggeredRules as { reason: string }[])[0]?.reason).toContain(
+      'passive anti-spoofing',
+    );
+  });
+
+  it('a borderline score fires liveness-pad-borderline (10 points) and the selfie still passes', async () => {
+    const a = await assessWith(
+      'PASSIVE_PLUS_MOTION',
+      padResponse({ score: 0.45, decision: 'BORDERLINE' }),
+    );
+    expect(fired(a)).toEqual(['liveness-pad-borderline']);
+    expect(a?.score).toBe(10);
+  });
+
+  it('shadow mode: the model saying SPOOF changes nothing in the assessment', async () => {
+    const a = await assessWith('MOTION_CHECK', padResponse({ score: 0.05, decision: 'SPOOF' }));
+    expect(fired(a)).toEqual([]);
+    expect(a?.score).toBe(0);
+  });
+
+  it('a model that timed out under PASSIVE_PLUS_MOTION leaves the informational liveness-method-legacy note, scored 0', async () => {
+    const a = await assessWith(
+      'PASSIVE_PLUS_MOTION',
+      padResponse({
+        score: null,
+        decision: 'UNAVAILABLE',
+        reason: 'TIMED_OUT',
+        subScores: {},
+        modelWeightsHash: null,
+      }),
+    );
+    expect(fired(a)).toEqual(['liveness-method-legacy']);
+    expect(a?.score).toBe(0);
   });
 });

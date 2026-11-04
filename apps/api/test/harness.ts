@@ -11,6 +11,7 @@ import {
   createFakeStore,
   matchResponse,
   motionResponse,
+  type padResponse,
   testEnv,
 } from './helpers.js';
 
@@ -146,14 +147,21 @@ export async function createHarness(
   async function completeSelfie(
     agent: Agent,
     sessionId: string,
-    opts: { face?: number; liveness?: boolean; runChecks?: boolean } = {},
+    opts: {
+      face?: number;
+      liveness?: boolean;
+      runChecks?: boolean;
+      pad?: ReturnType<typeof padResponse> | null;
+    } = {},
   ) {
     fakes.aiClient.match = (req) =>
       matchResponse(req.selfieCaptureId, req.idDocumentId, { score: opts.face ?? 0.92 });
     fakes.aiClient.motion = (req) =>
       motionResponse(
         req.captureId,
-        opts.liveness === false ? { result: 'FAILED', failureReason: 'FRAMES_TOO_SIMILAR' } : {},
+        opts.liveness === false
+          ? { result: 'FAILED', failureReason: 'FRAMES_TOO_SIMILAR', pad: opts.pad ?? null }
+          : { pad: opts.pad ?? null },
       );
     const frames = [makeJpeg(3000, 1), makeJpeg(3000, 2), makeJpeg(3000, 3)];
     let req = agent.post(`/kyc/sessions/${sessionId}/selfie`);
